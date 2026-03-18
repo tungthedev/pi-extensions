@@ -1,0 +1,52 @@
+{
+  "name": "@tungnguyensipher/pi-extensions",
+  "version": "0.1.0",
+  "description": "A Pi package containing the codex-content and ext-manager extensions.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "bun@1.3.8",
+  "keywords": ["pi-package"],
+  "engines": {
+    "bun": ">=1.3.8",
+    "node": ">=20.6.0"
+  },
+  "files": [
+    "extensions",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "bun run test && bun run lint && bun run typecheck",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint extensions",
+    "lint:fix": "oxlint --fix extensions",
+    "test": "bun test ./extensions/codex-content ./extensions/ext-manager",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  },
+  "dependencies": {
+    "@silvia-odwyer/photon-node": "^0.3.4",
+    "file-type": "^21.1.1"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-coding-agent": "0.58.4",
+    "@mariozechner/pi-tui": "0.58.4",
+    "@sinclair/typebox": "0.34.48",
+    "@types/node": "^24.3.0",
+    "oxfmt": "0.41.0",
+    "oxlint": "1.56.0",
+    "typescript": "^5.7.3"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/codex-content/index.ts",
+      "./extensions/ext-manager/index.ts"
+    ]
+  }
+}

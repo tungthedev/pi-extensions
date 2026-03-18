@@ -1,0 +1,10 @@
+{
+  "packages": [
+    {
+      "source": "..",
+      "extensions": [
+        "+extensions/codex-content/index.ts"
+      ]
+    }
+  ]
+}
