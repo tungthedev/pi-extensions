@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import { getMarkdownTheme, SessionManager, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import {
+  buildSessionContext,
+  getMarkdownTheme,
+  SessionManager,
+  type ExtensionAPI,
+  type SessionEntry,
+} from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 
@@ -25,6 +31,8 @@ import {
   truncateSubagentReply,
 } from "./rendering.ts";
 import { rebuildDurableRegistry } from "./persistence.ts";
+import { applySpawnAgentProfile, resolveRequestedAgentType } from "./profiles-apply.ts";
+import { buildSpawnAgentTypeDescription, clearResolvedAgentProfilesCache, resolveAgentProfiles } from "./profiles.ts";
 import { conciseResult, shorten } from "./render.ts";
 import { childSnapshot } from "./registry.ts";
 import { parseJsonLines, rejectPendingResponses, respondToUiRequest, sendRpcCommand } from "./rpc.ts";
@@ -227,6 +235,40 @@ export function normalizeReasoningEffortToThinkingLevel(
         `Unsupported reasoning_effort: ${reasoningEffort}. Expected one of none, minimal, low, medium, high, xhigh, or off`,
       );
   }
+}
+
+export function normalizeThinkingLevelToReasoningEffort(
+  thinkingLevel: string | undefined,
+): "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | undefined {
+  const value = thinkingLevel?.trim().toLowerCase();
+  if (!value) return undefined;
+
+  switch (value) {
+    case "off":
+    case "minimal":
+    case "low":
+    case "medium":
+    case "high":
+    case "xhigh":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+export function resolveParentSpawnDefaults(options: {
+  modelId?: string;
+  sessionEntries?: SessionEntry[];
+  leafId?: string | null;
+}): { model?: string; reasoningEffort?: string } {
+  const sessionContext = buildSessionContext(options.sessionEntries ?? [], options.leafId ?? null);
+  const model = options.modelId?.trim() || sessionContext.model?.modelId || undefined;
+  const reasoningEffort = normalizeThinkingLevelToReasoningEffort(sessionContext.thinkingLevel);
+
+  return {
+    ...(model ? { model } : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
+  };
 }
 
 export function resolveForkContextSessionFile(options: {
@@ -669,10 +711,21 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     record: DurableChildRecord,
     mode: "fresh" | "resume" | "fork",
   ): Promise<{ attachment: LiveChildAttachment; record: DurableChildRecord }> => {
+    const resolvedProfiles = resolveAgentProfiles({ includeHidden: true });
+    const profile = record.agentType ? resolvedProfiles.profiles.get(record.agentType) : undefined;
     const attachment = createLiveAttachment({
       agentId: record.agentId,
       cwd: record.cwd,
       model: mode === "fresh" ? record.model : undefined,
+      profileBootstrap: profile
+        ? {
+            name: profile.name,
+            developerInstructions: profile.developerInstructions,
+            model: profile.model,
+            reasoningEffort: profile.reasoningEffort,
+            source: profile.source,
+          }
+        : undefined,
       sessionFile: mode === "fresh" ? undefined : record.sessionFile,
     });
     liveAttachmentsById.set(record.agentId, attachment);
@@ -809,12 +862,14 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     activeSessionFile = ctx.sessionManager.getSessionFile();
+    clearResolvedAgentProfilesCache();
     await closeAllLiveAttachments("detach");
     reconstructDurableRegistry(ctx.sessionManager.getEntries() as SessionEntryLike[]);
   });
 
   pi.on("session_switch", async (_event, ctx) => {
     activeSessionFile = ctx.sessionManager.getSessionFile();
+    clearResolvedAgentProfilesCache();
     await closeAllLiveAttachments("detach");
     reconstructDurableRegistry(ctx.sessionManager.getEntries() as SessionEntryLike[]);
   });
@@ -852,7 +907,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         }),
       ),
       agent_type: Type.Optional(
-        Type.String({ description: "Optional agent role hint for the child agent." }),
+        Type.String({ description: buildSpawnAgentTypeDescription(resolveAgentProfiles()) }),
       ),
       fork_context: Type.Optional(
         Type.Boolean({
@@ -879,7 +934,20 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const workdir = params.workdir ? path.resolve(ctx.cwd, params.workdir) : ctx.cwd;
       const agentId = randomUUID();
-      const thinkingLevel = normalizeReasoningEffortToThinkingLevel(params.reasoning_effort);
+      const inheritedDefaults = resolveParentSpawnDefaults({
+        modelId: ctx.model?.id,
+        sessionEntries: ctx.sessionManager.getEntries() as SessionEntry[],
+        leafId: ctx.sessionManager.getLeafId(),
+      });
+      const appliedProfile = applySpawnAgentProfile({
+        requestedAgentType: params.agent_type,
+        profiles: resolveAgentProfiles({ includeHidden: true }).profiles,
+        requestedModel: params.model?.trim() ? params.model : inheritedDefaults.model,
+        requestedReasoningEffort: params.reasoning_effort?.trim()
+          ? params.reasoning_effort
+          : inheritedDefaults.reasoningEffort,
+      });
+      const thinkingLevel = normalizeReasoningEffortToThinkingLevel(appliedProfile.effectiveReasoningEffort);
       const forkedSessionFile = params.fork_context
         ? resolveForkContextSessionFile({
             sessionFile: ctx.sessionManager.getSessionFile(),
@@ -895,8 +963,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       );
       const baseRecord: DurableChildRecord = {
         agentId,
+        agentType: appliedProfile.agentType,
         cwd: workdir,
-        model: params.model,
+        model: appliedProfile.effectiveModel,
         name: subagentName,
         status: "live_running",
         createdAt: new Date().toISOString(),
@@ -917,7 +986,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           if (!thinkingResponse.success) {
             throw new Error(
               thinkingResponse.error ??
-                `Failed to set child reasoning level to ${params.reasoning_effort ?? thinkingLevel}`,
+                `Failed to set child reasoning level to ${appliedProfile.effectiveReasoningEffort ?? thinkingLevel}`,
             );
           }
         }
@@ -956,7 +1025,10 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           details: {
             ...childSnapshot(durableRecord, attachment),
             nickname: durableRecord.name ?? null,
-            model_label: formatSubagentModelLabel(params.model, params.reasoning_effort),
+            model_label: formatSubagentModelLabel(
+              appliedProfile.effectiveModel,
+              appliedProfile.effectiveReasoningEffort,
+            ),
             prompt,
           },
         };
@@ -985,8 +1057,10 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     },
     renderCall(args, theme) {
       const predictedName = resolveSubagentName(durableChildrenById.values(), args.name, spawnNameSeed(args));
+      const agentType = resolveRequestedAgentType(args.agent_type);
+      const roleLabel = agentType !== "default" ? ` [${agentType}]` : "";
       const modelLabel = formatSubagentModelLabel(args.model, args.reasoning_effort);
-      const title = `${theme.fg("muted", "• ")}${theme.fg("toolTitle", "Spawned ")}${theme.fg("accent", predictedName)}${modelLabel ? theme.fg("muted", ` (${modelLabel})`) : ""}`;
+      const title = `${theme.fg("muted", "• ")}${theme.fg("toolTitle", "Spawned ")}${theme.fg("accent", `${predictedName}${roleLabel}`)}${modelLabel ? theme.fg("muted", ` (${modelLabel})`) : ""}`;
       return new Text(title, 0, 0);
     },
     renderResult(result, _options, theme) {
@@ -1435,3 +1509,17 @@ export {
   formatSubagentNotificationMessage,
 };
 export type { AgentSnapshot, DurableChildRecord, LiveChildAttachment };
+export type { AgentProfileConfig, ResolvedAgentProfiles } from "./profiles.ts";
+export type { AppliedSpawnProfile, ChildProfileBootstrap } from "./profiles-apply.ts";
+export {
+  buildSpawnAgentTypeDescription,
+  clearResolvedAgentProfilesCache,
+  loadCustomAgentProfiles,
+  parseCodexRoleDeclarations,
+  parseCodexRoleFile,
+  parseBundledRoleAsset,
+  resolveAgentProfiles,
+  resolveBuiltInAgentProfiles,
+  resolveCodexConfigPath,
+} from "./profiles.ts";
+export { applySpawnAgentProfile, resolveRequestedAgentType } from "./profiles-apply.ts";

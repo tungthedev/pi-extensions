@@ -7,6 +7,7 @@ import test from "node:test";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 
 import {
+  applySpawnAgentProfile,
   buildSendInputContent,
   buildSpawnAgentContent,
   buildWaitAgentContent,
@@ -21,17 +22,20 @@ import {
   MAX_SUBAGENT_NOTIFICATION_PREVIEW_CHARS,
   MAX_SUBAGENT_REPLY_PREVIEW_LINES,
   normalizeReasoningEffortToThinkingLevel,
+  normalizeThinkingLevelToReasoningEffort,
   parseSubagentNotificationMessage,
   parseJsonLines,
+  resolveAgentProfiles,
   rebuildDurableRegistry,
   resolveAgentIdAlias,
   resolveAgentIdsAlias,
   resolveForkContextSessionFile,
+  resolveParentSpawnDefaults,
   resolveSubagentName,
   resolveSpawnPrompt,
   summarizeSubagentReply,
   truncateSubagentReply,
-} from "./subagents.ts";
+} from "./index.ts";
 
 function createPersistedSessionFixture() {
   const root = mkdtempSync(path.join(tmpdir(), "codex-subagents-"));
@@ -225,6 +229,50 @@ test("normalizeReasoningEffortToThinkingLevel rejects unsupported values", () =>
   );
 });
 
+test("normalizeThinkingLevelToReasoningEffort keeps supported inherited values", () => {
+  assert.equal(normalizeThinkingLevelToReasoningEffort(undefined), undefined);
+  assert.equal(normalizeThinkingLevelToReasoningEffort("off"), "off");
+  assert.equal(normalizeThinkingLevelToReasoningEffort("minimal"), "minimal");
+  assert.equal(normalizeThinkingLevelToReasoningEffort("low"), "low");
+  assert.equal(normalizeThinkingLevelToReasoningEffort("medium"), "medium");
+  assert.equal(normalizeThinkingLevelToReasoningEffort("high"), "high");
+  assert.equal(normalizeThinkingLevelToReasoningEffort("xhigh"), "xhigh");
+  assert.equal(normalizeThinkingLevelToReasoningEffort("weird"), undefined);
+});
+
+test("resolveParentSpawnDefaults inherits parent model and thinking level from session context", () => {
+  const fixture = createPersistedSessionFixture();
+
+  fixture.manager.appendModelChange("openai", "gpt-5");
+  fixture.manager.appendThinkingLevelChange("high");
+
+  const resolved = resolveParentSpawnDefaults({
+    sessionEntries: fixture.manager.getEntries() as never,
+    leafId: fixture.manager.getLeafId(),
+  });
+
+  assert.deepEqual(resolved, { model: "gpt-5", reasoningEffort: "high" });
+
+  fixture.cleanup();
+});
+
+test("resolveParentSpawnDefaults prefers the live parent model over session history", () => {
+  const fixture = createPersistedSessionFixture();
+
+  fixture.manager.appendModelChange("openai", "gpt-5");
+  fixture.manager.appendThinkingLevelChange("medium");
+
+  const resolved = resolveParentSpawnDefaults({
+    modelId: "gpt-5-mini",
+    sessionEntries: fixture.manager.getEntries() as never,
+    leafId: fixture.manager.getLeafId(),
+  });
+
+  assert.deepEqual(resolved, { model: "gpt-5-mini", reasoningEffort: "medium" });
+
+  fixture.cleanup();
+});
+
 test("generateUniqueSubagentName skips used aliases and falls back deterministically", () => {
   const name = generateUniqueSubagentName(["amber-badger", "amber-comet"], () => 0);
   assert.equal(name, "amber-crane");
@@ -281,6 +329,25 @@ test("truncateSubagentReply limits previews to 50 lines and reports hidden rows"
 test("getSubagentDisplayName prefers alias over agent id", () => {
   assert.equal(getSubagentDisplayName({ agent_id: "agent-1", name: "amber-badger" }), "amber-badger");
   assert.equal(getSubagentDisplayName({ agent_id: "agent-2" }), "agent-2");
+});
+
+test("getSubagentDisplayName includes role when available", () => {
+  assert.equal(
+    getSubagentDisplayName({ agent_id: "agent-1", name: "amber-badger", agent_type: "explorer" }),
+    "amber-badger [explorer]",
+  );
+  assert.equal(getSubagentDisplayName({ agent_id: "agent-2", agent_type: "worker" }), "[worker]");
+});
+
+test("applySpawnAgentProfile produces child bootstrap data for built-in roles", () => {
+  const applied = applySpawnAgentProfile({
+    requestedAgentType: "explorer",
+    profiles: resolveAgentProfiles({ includeHidden: true }).profiles,
+  });
+
+  assert.equal(applied.agentType, "explorer");
+  assert.equal(applied.bootstrap.name, "explorer");
+  assert.equal(applied.bootstrap.developerInstructions, undefined);
 });
 
 test("summarizeSubagentReply flattens markdown into a compact one-line preview", () => {

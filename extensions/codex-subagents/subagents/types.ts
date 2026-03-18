@@ -18,10 +18,12 @@ export const CODEX_SUBAGENT_RESERVED_TOOL_NAMES = [
   "close_agent",
 ] as const;
 export const CODEX_SUBAGENT_CHILD_ENV = "PI_CODEX_SUBAGENT_CHILD";
+export const CODEX_AGENT_PROFILE_NAME_ENV = "PI_CODEX_AGENT_PROFILE_NAME";
+export const CODEX_AGENT_PROFILE_JSON_ENV = "PI_CODEX_AGENT_PROFILE_JSON";
 
 export const PROJECT_ROOT = process.env.PI_CODEX_PROJECT_ROOT || process.cwd();
 const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
-export const EXTENSION_ENTRY = path.join(EXTENSION_DIR, "..", "index.ts");
+export const EXTENSION_ENTRY = path.join(EXTENSION_DIR, "..", "child-entry.ts");
 export const RPC_COMMAND_TIMEOUT_MS = 5_000;
 export const CHILD_EXIT_GRACE_MS = 1_000;
 export const SUBAGENT_ENTRY_TYPES = {
@@ -43,6 +45,7 @@ export type PendingResponse = {
 
 export type DurableChildRecord = {
   agentId: string;
+  agentType?: string;
   cwd: string;
   model?: string;
   name?: string;
@@ -83,6 +86,7 @@ export type RpcResponse = {
 
 export type AgentSnapshot = {
   agent_id: string;
+  agent_type?: string;
   status: AgentToolStatus;
   durable_status: DurableChildStatus;
   cwd: string;

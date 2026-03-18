@@ -1,4 +1,7 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+} from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { detailLine, renderLines, titleLine } from "../renderers/common.ts";
@@ -38,7 +41,9 @@ function updatePlanStatusIcon(status: WorkflowPlanStatus): string {
   }
 }
 
-function updatePlanStatusColor(status: WorkflowPlanStatus): "success" | "accent" | "warning" | "dim" | "text" {
+function updatePlanStatusColor(
+  status: WorkflowPlanStatus,
+): "success" | "accent" | "warning" | "dim" | "text" {
   switch (status) {
     case "completed":
       return "success";
@@ -68,7 +73,10 @@ function planFocusIndex(items: WorkflowPlanItem[]): number {
   return Math.max(0, index);
 }
 
-function visiblePlanItems(items: WorkflowPlanItem[], expanded: boolean): {
+function visiblePlanItems(
+  items: WorkflowPlanItem[],
+  expanded: boolean,
+): {
   visible: WorkflowPlanItem[];
   hiddenCount: number;
 } {
@@ -112,13 +120,17 @@ export function buildUpdatePlanResultLines(
   const { visible, hiddenCount } = visiblePlanItems(details.items, expanded);
 
   for (const item of visible) {
-    const prefix = theme.fg("dim", "    ");
+    const prefix = theme.fg("dim", "  ");
     const text = `${updatePlanStatusIcon(item.status)} ${shorten(item.step)}`;
-    lines.push(`${prefix}${theme.fg(updatePlanStatusColor(item.status), text)}`);
+    lines.push(
+      `${prefix}${theme.fg(updatePlanStatusColor(item.status), text)}`,
+    );
   }
 
   if (!expanded && hiddenCount > 0) {
-    lines.push(`${theme.fg("dim", "    ")}${theme.fg("muted", `... +${hiddenCount} more tasks (Ctrl+O to expand)`)}`);
+    lines.push(
+      `${theme.fg("dim", "  ")}${theme.fg("muted", `... +${hiddenCount} more tasks (Ctrl+O to expand)`)}`,
+    );
   }
 
   return lines;
@@ -206,7 +218,14 @@ export function planWidgetLines(
         ? shorten(explanation)
         : undefined;
 
-  return [theme.fg("accent", detail ? `Plan ${completed}/${items.length} • ${detail}` : `Plan ${completed}/${items.length}`)];
+  return [
+    theme.fg(
+      "accent",
+      detail
+        ? `Plan ${completed}/${items.length} • ${detail}`
+        : `Plan ${completed}/${items.length}`,
+    ),
+  ];
 }
 
 export function syncPlanUi(
@@ -242,10 +261,16 @@ export function registerUpdatePlanTool(
       "Updates the current working plan with ordered steps, statuses, and an optional explanation.",
     parameters: Type.Object({
       explanation: Type.Optional(
-        Type.String({ description: "Optional short summary of the current plan state." }),
+        Type.String({
+          description: "Optional short summary of the current plan state.",
+        }),
       ),
-      plan: Type.Optional(Type.Array(PlanItemSchema, { description: "Ordered plan items." })),
-      items: Type.Optional(Type.Array(PlanItemSchema, { description: "Alias for plan items." })),
+      plan: Type.Optional(
+        Type.Array(PlanItemSchema, { description: "Ordered plan items." }),
+      ),
+      items: Type.Optional(
+        Type.Array(PlanItemSchema, { description: "Alias for plan items." }),
+      ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const rawItems = params.plan ?? params.items ?? [];
@@ -254,35 +279,45 @@ export function registerUpdatePlanTool(
       state.setPlan(normalizePlanItems(rawItems));
       syncPlanUi(ctx, state.getExplanation(), state.getPlan());
 
-      const completed = state.getPlan().filter((item) => item.status === "completed").length;
+      const completed = state
+        .getPlan()
+        .filter((item) => item.status === "completed").length;
       const summary =
         state.getPlan().length === 0
           ? "Plan cleared"
           : `Plan updated: ${completed}/${state.getPlan().length} completed`;
 
-        return {
-          content: [{ type: "text", text: summary }],
-          details: {
-            changeType:
-              state.getPlan().length === 0 ? "cleared" : previousPlanLength === 0 ? "new" : "updated",
-            explanation: state.getExplanation(),
-            items: state.getPlan(),
-          } as UpdatePlanDetails,
-        };
-      },
-      renderCall() {
-        return undefined;
-      },
-      renderResult(result, _options, theme) {
-        const details = result.details as UpdatePlanDetails | undefined;
-        if (!details) {
+      return {
+        content: [{ type: "text", text: summary }],
+        details: {
+          changeType:
+            state.getPlan().length === 0
+              ? "cleared"
+              : previousPlanLength === 0
+                ? "new"
+                : "updated",
+          explanation: state.getExplanation(),
+          items: state.getPlan(),
+        } as UpdatePlanDetails,
+      };
+    },
+    renderCall() {
+      return undefined;
+    },
+    renderResult(result, _options, theme) {
+      const details = result.details as UpdatePlanDetails | undefined;
+      if (!details) {
         return conciseResult(
           "update_plan",
-          shorten(result.content[0]?.type === "text" ? result.content[0].text : ""),
+          shorten(
+            result.content[0]?.type === "text" ? result.content[0].text : "",
+          ),
         );
       }
 
-        return renderLines(buildUpdatePlanResultLines(theme, details, _options.expanded));
-      },
-    });
+      return renderLines(
+        buildUpdatePlanResultLines(theme, details, _options.expanded),
+      );
+    },
+  });
 }

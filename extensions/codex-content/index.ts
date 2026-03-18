@@ -12,14 +12,12 @@ import {
 import { registerCodexCompatibilityTools } from "./compatibility-tools/index.ts";
 import { installCodexEditorUi } from "./editor/index.ts";
 import { installExplorationEventHandlers } from "./exploration/events.ts";
-import { registerCodexPrompt } from "./prompt.ts";
 import { renderBashResult } from "./renderers/bash.ts";
 import { renderEditResult } from "./renderers/edit.ts";
 import { renderWriteResult } from "./renderers/write.ts";
 import { codexArgs, withCodexArgs } from "./shared/tool-results.ts";
 
 export default function codexContentRendering(pi: ExtensionAPI) {
-  registerCodexPrompt(pi);
   registerCodexCompatibilityTools(pi);
   installCodexEditorUi(pi);
   installExplorationEventHandlers(pi);

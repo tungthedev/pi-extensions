@@ -3,8 +3,15 @@ import type { AgentSnapshot } from "./types.ts";
 export const MAX_SUBAGENT_REPLY_PREVIEW_LINES = 50;
 export const MAX_SUBAGENT_NOTIFICATION_PREVIEW_CHARS = 220;
 
-export function getSubagentDisplayName(snapshot: Pick<AgentSnapshot, "agent_id" | "name">): string {
-  return snapshot.name?.trim() || snapshot.agent_id;
+export function getSubagentDisplayName(
+  snapshot: Pick<AgentSnapshot, "agent_id" | "agent_type" | "name">,
+): string {
+  const name = snapshot.name?.trim();
+  const agentType = snapshot.agent_type?.trim();
+  if (name && agentType) return `${name} [${agentType}]`;
+  if (name) return name;
+  if (agentType) return `[${agentType}]`;
+  return snapshot.agent_id;
 }
 
 export function truncateSubagentReply(

@@ -1,8 +1,10 @@
 # @tungnguyensipher/pi-extensions
 
-A Pi package repo that bundles two extensions from this repository:
+A Pi package repo that bundles four extensions from this repository:
 
 - `codex-content`
+- `codex-system-prompt`
+- `codex-subagents`
 - `ext-manager`
 
 ## Install
@@ -33,7 +35,9 @@ From another project, add the package to `.pi/settings.json`:
 
 This package exposes these extension entrypoints:
 
+- `extensions/codex-system-prompt/index.ts`
 - `extensions/codex-content/index.ts`
+- `extensions/codex-subagents/index.ts`
 - `extensions/ext-manager/index.ts`
 
 ## Development

@@ -5,10 +5,13 @@ import { StringDecoder } from "node:string_decoder";
 
 import type { LiveChildAttachment } from "./types.ts";
 import {
+  CODEX_AGENT_PROFILE_JSON_ENV,
+  CODEX_AGENT_PROFILE_NAME_ENV,
   CODEX_SUBAGENT_CHILD_ENV,
   EXTENSION_ENTRY,
   PROJECT_ROOT,
 } from "./types.ts";
+import type { ChildProfileBootstrap } from "./profiles-apply.ts";
 
 function resolveChildSessionDir(): string {
   const sessionDir = path.join(PROJECT_ROOT, ".pi", "subagents", "sessions");
@@ -25,6 +28,7 @@ export function createLiveAttachment(options: {
   agentId: string;
   cwd: string;
   model?: string;
+  profileBootstrap?: ChildProfileBootstrap;
   sessionFile?: string;
 }): LiveChildAttachment {
   const childSessionDir = resolveChildSessionDir();
@@ -46,6 +50,12 @@ export function createLiveAttachment(options: {
       ...process.env,
       FORCE_COLOR: "0",
       PI_CODEX_PROJECT_ROOT: PROJECT_ROOT,
+      ...(options.profileBootstrap?.name
+        ? { [CODEX_AGENT_PROFILE_NAME_ENV]: options.profileBootstrap.name }
+        : {}),
+      ...(options.profileBootstrap
+        ? { [CODEX_AGENT_PROFILE_JSON_ENV]: JSON.stringify(options.profileBootstrap) }
+        : {}),
       [CODEX_SUBAGENT_CHILD_ENV]: "1",
     },
     stdio: ["pipe", "pipe", "pipe"],
