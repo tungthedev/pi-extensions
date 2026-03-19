@@ -248,7 +248,7 @@ function explorationDetailFromArgs(
       ? formatSearchTarget(args as { pattern?: string; path?: string; glob?: string })
       : toolName === "grep_files"
         ? formatGrepFilesTarget(args as { pattern?: string; path?: string; include?: string })
-        : toolName === "find"
+        : toolName === "find" || toolName === "find_files"
           ? formatFindTarget(args as { pattern?: string; path?: string })
           : formatListTarget(args as { path?: string; dir_path?: string });
 }
@@ -260,6 +260,7 @@ export function explorationItemFromEvent(event: ToolResultEvent): ExplorationIte
     event.toolName !== "grep" &&
     event.toolName !== "grep_files" &&
     event.toolName !== "find" &&
+    event.toolName !== "find_files" &&
     event.toolName !== "ls" &&
     event.toolName !== "list_dir"
   ) {
@@ -267,21 +268,50 @@ export function explorationItemFromEvent(event: ToolResultEvent): ExplorationIte
   }
 
   const detail = explorationDetailFromArgs(event.toolName, event.input);
+  return explorationItemFromResult(event.toolName, detail, event.content, event.isError);
+}
 
-  const text = event.content
+function explorationResultText(content: Array<{ type?: string; text?: string }>): string {
+  return content
     .filter((item) => item.type === "text")
     .map((item) => item.text ?? "")
     .join("\n")
     .replace(/\r/g, "")
     .trim();
-  const failed = event.isError || isErrorText(text);
+}
+
+function explorationItemFromResult(
+  toolName: ExplorationItem["toolName"],
+  detail: string,
+  content: Array<{ type?: string; text?: string }>,
+  isError = false,
+): ExplorationItem {
+  const text = explorationResultText(content);
+  const failed = isError || isErrorText(text);
 
   return {
-    toolName: event.toolName,
+    toolName,
     detail,
     failed,
     errorPreview: failed ? previewLines(text, 3) : undefined,
   };
+}
+
+function explorationItemFromExecutionEnd(
+  toolName: string,
+  detail: string | undefined,
+  result: unknown,
+  isError: boolean,
+): ExplorationItem | undefined {
+  if (!isExplorationToolName(toolName)) {
+    return undefined;
+  }
+
+  const content = Array.isArray((result as { content?: unknown })?.content)
+    ? ((result as { content: Array<{ type?: string; text?: string }> }).content ?? [])
+    : [];
+
+  return explorationItemFromResult(toolName, detail ?? toolName, content, isError);
 }
 
 export class ExplorationTracker {
@@ -289,6 +319,7 @@ export class ExplorationTracker {
   private explorationToolGroupIndexByCallId = new Map<string, number>();
   private activeExplorationToolCallIds = new Set<string>();
   private activeExplorationDetailByCallId = new Map<string, string>();
+  private recordedExplorationResultCallIds = new Set<string>();
   private lastStartedToolKind: "exploration" | "other" | null = null;
 
   reset(): void {
@@ -296,6 +327,7 @@ export class ExplorationTracker {
     this.explorationToolGroupIndexByCallId.clear();
     this.activeExplorationToolCallIds.clear();
     this.activeExplorationDetailByCallId.clear();
+    this.recordedExplorationResultCallIds.clear();
     this.lastStartedToolKind = null;
   }
 
@@ -337,16 +369,35 @@ export class ExplorationTracker {
     }
 
     group.items.push(item);
+    this.recordedExplorationResultCallIds.add(event.toolCallId);
     return true;
   }
 
-  onToolExecutionEnd(toolCallId: string, toolName: string): boolean {
+  onToolExecutionEnd(
+    toolCallId: string,
+    toolName: string,
+    result?: unknown,
+    isError = false,
+  ): boolean {
     if (!isExplorationToolName(toolName)) {
       return false;
     }
 
+    if (!this.recordedExplorationResultCallIds.has(toolCallId)) {
+      const groupIndex = this.explorationToolGroupIndexByCallId.get(toolCallId);
+      const group = groupIndex === undefined ? undefined : this.explorationGroups[groupIndex];
+      const detail = this.activeExplorationDetailByCallId.get(toolCallId);
+      const item = explorationItemFromExecutionEnd(toolName, detail, result, isError);
+
+      if (group && item) {
+        group.items.push(item);
+        this.recordedExplorationResultCallIds.add(toolCallId);
+      }
+    }
+
     this.activeExplorationToolCallIds.delete(toolCallId);
     this.activeExplorationDetailByCallId.delete(toolCallId);
+    this.recordedExplorationResultCallIds.delete(toolCallId);
     return true;
   }
 

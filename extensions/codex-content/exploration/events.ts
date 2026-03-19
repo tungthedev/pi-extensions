@@ -65,7 +65,9 @@ export function installExplorationEventHandlers(pi: ExtensionAPI): void {
     handleReset(event, ctx, { clearWidget: true });
   });
 
-  pi.on("turn_start", async (event, ctx) => {
+  // Reset once per agent run, not once per internal model turn. Otherwise the
+  // final exploration widget only flashes before the next tool-followup turn.
+  pi.on("agent_start", async (event, ctx) => {
     handleReset(event, ctx, { clearWidget: true });
   });
 
@@ -88,7 +90,7 @@ export function installExplorationEventHandlers(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_execution_end", async (event, ctx) => {
-    if (tracker.onToolExecutionEnd(event.toolCallId, event.toolName)) {
+    if (tracker.onToolExecutionEnd(event.toolCallId, event.toolName, event.result, event.isError)) {
       if (tracker.hasActiveExploration()) {
         syncLiveExplorationStatus(pi, tracker, ctx);
       } else {
