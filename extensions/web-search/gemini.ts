@@ -41,6 +41,20 @@ export function resolveGeminiBaseUrl(): string | undefined {
   return baseUrl || undefined;
 }
 
+export function splitGeminiBaseUrl(baseUrl: string): { baseUrl: string; apiVersion?: string } {
+  const trimmed = baseUrl.trim();
+  const match = trimmed.match(/^(.*?)(?:\/(v1alpha|v1beta|v1))\/?$/);
+  if (!match) {
+    return { baseUrl: trimmed };
+  }
+
+  const [, rawBaseUrl, apiVersion] = match;
+  return {
+    baseUrl: rawBaseUrl.endsWith("/") ? rawBaseUrl : `${rawBaseUrl}/`,
+    apiVersion,
+  };
+}
+
 export function clampMaxResults(value?: number): number {
   if (!Number.isFinite(value)) return DEFAULT_MAX_RESULTS;
   return Math.max(1, Math.min(MAX_RESULTS_CAP, Math.floor(value ?? DEFAULT_MAX_RESULTS)));
@@ -183,9 +197,10 @@ export function insertGroundingCitations(
 
 export function buildGeminiClientOptions(apiKey: string): GoogleGenAIOptions {
   const baseUrl = resolveGeminiBaseUrl();
+  const endpoint = baseUrl ? splitGeminiBaseUrl(baseUrl) : undefined;
   return {
     apiKey,
-    ...(baseUrl ? { httpOptions: { baseUrl } } : {}),
+    ...(endpoint ? { httpOptions: endpoint } : {}),
   };
 }
 

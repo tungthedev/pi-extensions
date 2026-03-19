@@ -1,12 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import {
-  CODEX_COMPATIBILITY_TOOL_NAMES,
-  setActiveAvailableTools,
-} from "../codex-content/shared/active-tools.ts";
-import {
   CODEX_SUBAGENT_CHILD_ENV,
-  CODEX_SUBAGENT_TOOL_NAMES,
   registerCodexSubagentTools,
 } from "./subagents/index.ts";
 
@@ -68,22 +63,6 @@ export type {
 export type { DurableChildStatus } from "./subagents/types.ts";
 
 export default function codexSubagents(pi: ExtensionAPI) {
-  const applyActiveTools = () => {
-    const desiredTools =
-      process.env[CODEX_SUBAGENT_CHILD_ENV] === "1"
-        ? [...CODEX_COMPATIBILITY_TOOL_NAMES]
-        : [...CODEX_COMPATIBILITY_TOOL_NAMES, ...CODEX_SUBAGENT_TOOL_NAMES];
-    setActiveAvailableTools(pi, desiredTools);
-  };
-
-  pi.on("session_start", async () => {
-    applyActiveTools();
-  });
-
-  pi.on("before_agent_start", async () => {
-    applyActiveTools();
-  });
-
   if (process.env[CODEX_SUBAGENT_CHILD_ENV] !== "1") {
     registerCodexSubagentTools(pi);
   }

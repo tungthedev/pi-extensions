@@ -5,6 +5,7 @@ import {
   buildGeminiClientOptions,
   citationsFromGrounding,
   insertGroundingCitations,
+  splitGeminiBaseUrl,
 } from "./gemini.ts";
 
 test("citationsFromGrounding deduplicates urls and respects cap", () => {
@@ -28,13 +29,20 @@ test("insertGroundingCitations injects citation markers at byte offsets", () => 
   assert.equal(result, "Hello[1] world[2][3]");
 });
 
-test("buildGeminiClientOptions forwards GEMINI_BASE_URL into httpOptions", () => {
+test("splitGeminiBaseUrl extracts API version from versioned base URLs", () => {
+  assert.deepEqual(splitGeminiBaseUrl("https://gemini.example/v1beta"), {
+    baseUrl: "https://gemini.example/",
+    apiVersion: "v1beta",
+  });
+});
+
+test("buildGeminiClientOptions preserves working requests for versioned custom gateways", () => {
   const previous = process.env.GEMINI_BASE_URL;
   process.env.GEMINI_BASE_URL = "https://gemini.example/v1beta";
   try {
     assert.deepEqual(buildGeminiClientOptions("test-key"), {
       apiKey: "test-key",
-      httpOptions: { baseUrl: "https://gemini.example/v1beta" },
+      httpOptions: { baseUrl: "https://gemini.example/", apiVersion: "v1beta" },
     });
   } finally {
     if (previous === undefined) {
