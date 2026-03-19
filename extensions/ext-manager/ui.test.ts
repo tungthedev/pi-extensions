@@ -74,3 +74,43 @@ test("StackPalette catches async failures scheduled via ctx.run", async () => {
   assert.ok(caught instanceof Error);
   assert.equal(caught.message, "hotkey failed");
 });
+
+test("StackPalette requests a render when async onSelect pushes a new view", async () => {
+  let renderRequests = 0;
+  const palette = new StackPalette(
+    {
+      title: "Packages",
+      items: [
+        {
+          id: "pkg-1",
+          label: "Package one",
+          onSelect: async (ctx) => {
+            await flushMicrotasks();
+            ctx.push({
+              title: "Package one extensions",
+              items: [
+                {
+                  id: "ext-1",
+                  label: "Extension one",
+                  onSelect: () => undefined,
+                },
+              ],
+            });
+          },
+        },
+      ],
+    },
+    theme,
+    () => undefined,
+    undefined,
+    () => {
+      renderRequests += 1;
+    },
+  );
+
+  palette.handleInput("\r");
+  await flushMicrotasks();
+
+  assert.equal(renderRequests, 1);
+  assert.ok(palette.render(80).some((line) => line.includes("Package one extensions")));
+});

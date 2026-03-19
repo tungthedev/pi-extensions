@@ -40,6 +40,7 @@ export class StackPalette implements Component, Focusable {
     private theme: Theme,
     private done: (result: ManagerAction | null) => void,
     private readonly onError?: (error: unknown) => void,
+    private readonly requestRender?: () => void,
   ) {
     this.stack = [initialView];
     this.filtered = [...initialView.items];
@@ -67,9 +68,11 @@ export class StackPalette implements Component, Focusable {
         this.stack.push(view);
         this.resetView();
         this.invalidate();
+        this.requestRender?.();
       },
       replace: (view, options) => {
         this.replaceCurrentView(view, options?.preserveState === true);
+        this.requestRender?.();
       },
       close: () => this.done(null),
       finish: (action) => this.done(action),

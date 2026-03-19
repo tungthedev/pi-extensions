@@ -1,3 +1,6 @@
+/**
+ * Injects Codex prompts and collaboration-mode guidance into Pi sessions.
+ */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import fs from "node:fs";

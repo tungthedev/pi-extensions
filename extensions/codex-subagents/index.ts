@@ -1,3 +1,6 @@
+/**
+ * Adds Codex-style subagent tools for spawning and managing child agents.
+ */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { CODEX_SUBAGENT_CHILD_ENV, registerCodexSubagentTools } from "./subagents/index.ts";

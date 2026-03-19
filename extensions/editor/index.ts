@@ -1,3 +1,6 @@
+/**
+ * Replaces the editor UI with a Codex-style boxed editor and status widgets.
+ */
 import type {
   ContextUsage,
   ExtensionAPI,

@@ -51,7 +51,7 @@ export function buildRootView(controller: ExtensionManagerController): PaletteVi
 
   items.push({
     id: "refresh",
-    label: "↻ Refresh inventory",
+    label: "🔄 Refresh inventory",
     description: "Rescan local extensions and installed packages",
     category: "action",
     shortcut: "enter",
@@ -60,7 +60,7 @@ export function buildRootView(controller: ExtensionManagerController): PaletteVi
 
   items.push({
     id: "reload",
-    label: "⟳ Reload pi",
+    label: "♻️  Reload pi",
     description: "Reload extensions, skills, prompts, and themes",
     category: "action",
     shortcut: "enter",
