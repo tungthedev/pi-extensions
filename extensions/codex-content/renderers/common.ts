@@ -1,4 +1,5 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
+
 import { Text } from "@mariozechner/pi-tui";
 
 export function titleLine(
@@ -21,16 +22,12 @@ function pluralize(label: string, count: number): string {
   return count === 1 ? label : `${label}s`;
 }
 
-export function expandHintLine(
-  theme: Theme,
-  hiddenCount?: number,
-  hiddenLabel = "line",
-): string {
+export function expandHintLine(theme: Theme, hiddenCount?: number, hiddenLabel = "line"): string {
   const text =
     typeof hiddenCount === "number" && hiddenCount > 0
       ? `... +${hiddenCount} more ${pluralize(hiddenLabel, hiddenCount)} (Ctrl+O to expand)`
       : "(Ctrl+O to expand)";
-  return detailLine(theme, text, true);
+  return `${theme.fg("dim", "  ")}${theme.fg("muted", text)}`;
 }
 
 export function renderLines(lines: string[]): Text {

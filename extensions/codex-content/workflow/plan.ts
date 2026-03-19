@@ -1,11 +1,9 @@
-import type {
-  ExtensionAPI,
-  ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { detailLine, renderLines, titleLine } from "../renderers/common.ts";
 
+import { detailLine, renderLines, titleLine } from "../renderers/common.ts";
 import {
   PlanItemSchema,
   PLAN_STATUS_KEY,
@@ -122,9 +120,7 @@ export function buildUpdatePlanResultLines(
   for (const item of visible) {
     const prefix = theme.fg("dim", "  ");
     const text = `${updatePlanStatusIcon(item.status)} ${shorten(item.step)}`;
-    lines.push(
-      `${prefix}${theme.fg(updatePlanStatusColor(item.status), text)}`,
-    );
+    lines.push(`${prefix}${theme.fg(updatePlanStatusColor(item.status), text)}`);
   }
 
   if (!expanded && hiddenCount > 0) {
@@ -265,12 +261,8 @@ export function registerUpdatePlanTool(
           description: "Optional short summary of the current plan state.",
         }),
       ),
-      plan: Type.Optional(
-        Type.Array(PlanItemSchema, { description: "Ordered plan items." }),
-      ),
-      items: Type.Optional(
-        Type.Array(PlanItemSchema, { description: "Alias for plan items." }),
-      ),
+      plan: Type.Optional(Type.Array(PlanItemSchema, { description: "Ordered plan items." })),
+      items: Type.Optional(Type.Array(PlanItemSchema, { description: "Alias for plan items." })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const rawItems = params.plan ?? params.items ?? [];
@@ -279,9 +271,7 @@ export function registerUpdatePlanTool(
       state.setPlan(normalizePlanItems(rawItems));
       syncPlanUi(ctx, state.getExplanation(), state.getPlan());
 
-      const completed = state
-        .getPlan()
-        .filter((item) => item.status === "completed").length;
+      const completed = state.getPlan().filter((item) => item.status === "completed").length;
       const summary =
         state.getPlan().length === 0
           ? "Plan cleared"
@@ -291,11 +281,7 @@ export function registerUpdatePlanTool(
         content: [{ type: "text", text: summary }],
         details: {
           changeType:
-            state.getPlan().length === 0
-              ? "cleared"
-              : previousPlanLength === 0
-                ? "new"
-                : "updated",
+            state.getPlan().length === 0 ? "cleared" : previousPlanLength === 0 ? "new" : "updated",
           explanation: state.getExplanation(),
           items: state.getPlan(),
         } as UpdatePlanDetails,
@@ -309,15 +295,11 @@ export function registerUpdatePlanTool(
       if (!details) {
         return conciseResult(
           "update_plan",
-          shorten(
-            result.content[0]?.type === "text" ? result.content[0].text : "",
-          ),
+          shorten(result.content[0]?.type === "text" ? result.content[0].text : ""),
         );
       }
 
-      return renderLines(
-        buildUpdatePlanResultLines(theme, details, _options.expanded),
-      );
+      return renderLines(buildUpdatePlanResultLines(theme, details, _options.expanded));
     },
   });
 }

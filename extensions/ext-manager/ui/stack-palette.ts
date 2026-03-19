@@ -1,4 +1,5 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
+
 import {
   type Component,
   CURSOR_MARKER,
@@ -10,6 +11,7 @@ import {
 } from "@mariozechner/pi-tui";
 
 import type { ManagerAction, PaletteActionContext, PaletteItem, PaletteView } from "../types.ts";
+
 import { boxLine, makeBottom, makeTop, pad } from "./palette-render.ts";
 
 const MAX_VISIBLE = 12;
@@ -162,7 +164,9 @@ export class StackPalette implements Component, Focusable {
         const shortcut = item.shortcut ? ` ${this.theme.fg("dim", item.shortcut)}` : "";
         const detail = item.description ? ` ${this.theme.fg("dim", `— ${item.description}`)}` : "";
         let line = truncateToWidth(`${item.label}${detail}${shortcut}`, innerWidth);
-        line = selected ? this.theme.bg("selectedBg", pad(line, innerWidth)) : pad(line, innerWidth);
+        line = selected
+          ? this.theme.bg("selectedBg", pad(line, innerWidth))
+          : pad(line, innerWidth);
         lines.push(boxLine("│", line, "│"));
       }
 

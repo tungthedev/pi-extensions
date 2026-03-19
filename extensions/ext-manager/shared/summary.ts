@@ -45,7 +45,10 @@ export async function readSummary(path: string): Promise<string> {
       if (firstLine) return truncate(firstLine);
     }
 
-    const firstCodeLine = text.split("\n").map((line) => line.trim()).find(Boolean);
+    const firstCodeLine = text
+      .split("\n")
+      .map((line) => line.trim())
+      .find(Boolean);
     if (firstCodeLine) return truncate(firstCodeLine);
   } catch {
     // ignore

@@ -1,8 +1,9 @@
 import type { Theme, ToolResultEvent } from "@mariozechner/pi-coding-agent";
 
+import type { ExplorationGroup, ExplorationItem } from "./types.ts";
+
 import { titleLine } from "../renderers/common.ts";
 import { firstLine, isErrorText, previewLines, shortenPath } from "../shared/text.ts";
-import type { ExplorationGroup, ExplorationItem } from "./types.ts";
 import { EXPLORATION_TOOL_NAMES } from "./types.ts";
 
 const MAX_VISIBLE_EXPLORATION_ITEMS = 5;
@@ -27,7 +28,9 @@ function emptyExplorationCounts(): ExplorationSummaryCounts {
   return { read: 0, search: 0, list: 0 };
 }
 
-function explorationSummaryCategory(toolName: ExplorationItem["toolName"]): keyof ExplorationSummaryCounts {
+function explorationSummaryCategory(
+  toolName: ExplorationItem["toolName"],
+): keyof ExplorationSummaryCounts {
   if (toolName === "read" || toolName === "read_file") return "read";
   if (toolName === "ls" || toolName === "list_dir") return "list";
   return "search";
@@ -69,7 +72,10 @@ export function explorationSummaryLine(
   prefix: string,
   items: ExplorationItem[],
 ): string {
-  return theme.fg("accent", formatExplorationCountSummary(prefix, summarizeExplorationCounts(items)));
+  return theme.fg(
+    "accent",
+    formatExplorationCountSummary(prefix, summarizeExplorationCounts(items)),
+  );
 }
 
 function formatReadTarget(args: {
@@ -95,7 +101,11 @@ function formatSearchTarget(args: { pattern?: string; path?: string; glob?: stri
   return `Search ${pattern} in ${path}${glob}`;
 }
 
-function formatGrepFilesTarget(args: { pattern?: string; path?: string; include?: string }): string {
+function formatGrepFilesTarget(args: {
+  pattern?: string;
+  path?: string;
+  include?: string;
+}): string {
   return formatSearchTarget({ pattern: args.pattern, path: args.path, glob: args.include });
 }
 
@@ -137,9 +147,7 @@ export function explorationGroupLines(
 
   if (!expanded && hiddenCount > 0) {
     const isOnlyRow = visibleItems.length === 0;
-    lines.push(
-      explorationTreeLine(theme, `... ${hiddenCount} more`, isOnlyRow ? "end" : "tee"),
-    );
+    lines.push(explorationTreeLine(theme, `... ${hiddenCount} more`, isOnlyRow ? "end" : "tee"));
   }
 
   for (const [index, item] of visibleItems.entries()) {
@@ -165,7 +173,9 @@ function canMergeReadItems(left: ExplorationItem, right: ExplorationItem): boole
 }
 
 function mergeReadDetails(details: string[]): string {
-  const names = [...new Set(details.map((detail) => detail.replace(/^Read\s+/, "").trim()).filter(Boolean))];
+  const names = [
+    ...new Set(details.map((detail) => detail.replace(/^Read\s+/, "").trim()).filter(Boolean)),
+  ];
   return names.length > 0 ? `Read ${names.join(", ")}` : "Read";
 }
 
@@ -177,7 +187,12 @@ export function summarizeExplorationItems(items: ExplorationItem[]): Exploration
     if (
       previous &&
       canMergeReadItems(
-        { toolName: "read_file", detail: previous.detail, failed: previous.failed, errorPreview: previous.errorPreview },
+        {
+          toolName: "read_file",
+          detail: previous.detail,
+          failed: previous.failed,
+          errorPreview: previous.errorPreview,
+        },
         item,
       ) &&
       previous.detail.startsWith("Read ")
@@ -196,7 +211,10 @@ export function summarizeExplorationItems(items: ExplorationItem[]): Exploration
   return summarized;
 }
 
-export function combinedExplorationSummaryLines(theme: Theme, groups: ExplorationGroup[]): string[] {
+export function combinedExplorationSummaryLines(
+  theme: Theme,
+  groups: ExplorationGroup[],
+): string[] {
   const visibleGroups = groups.slice(-MAX_VISIBLE_COMPLETED_GROUPS);
   const items = visibleGroups.flatMap((group) => group.items);
   if (items.length === 0) return [];
@@ -205,7 +223,10 @@ export function combinedExplorationSummaryLines(theme: Theme, groups: Exploratio
   const summary = formatExplorationCountSummary("Explored", summarizeExplorationCounts(items));
   return [
     hiddenGroups > 0
-      ? theme.fg("accent", `${summary} (+${hiddenGroups} earlier group${hiddenGroups === 1 ? "" : "s"})`)
+      ? theme.fg(
+          "accent",
+          `${summary} (+${hiddenGroups} earlier group${hiddenGroups === 1 ? "" : "s"})`,
+        )
       : theme.fg("accent", summary),
   ];
 }
@@ -227,9 +248,9 @@ function explorationDetailFromArgs(
       ? formatSearchTarget(args as { pattern?: string; path?: string; glob?: string })
       : toolName === "grep_files"
         ? formatGrepFilesTarget(args as { pattern?: string; path?: string; include?: string })
-      : toolName === "find"
-        ? formatFindTarget(args as { pattern?: string; path?: string })
-        : formatListTarget(args as { path?: string; dir_path?: string });
+        : toolName === "find"
+          ? formatFindTarget(args as { pattern?: string; path?: string })
+          : formatListTarget(args as { path?: string; dir_path?: string });
 }
 
 export function explorationItemFromEvent(event: ToolResultEvent): ExplorationItem | undefined {
@@ -278,7 +299,11 @@ export class ExplorationTracker {
     this.lastStartedToolKind = null;
   }
 
-  onToolExecutionStart(toolCallId: string, toolName: string, args: Record<string, unknown>): boolean {
+  onToolExecutionStart(
+    toolCallId: string,
+    toolName: string,
+    args: Record<string, unknown>,
+  ): boolean {
     if (!isExplorationToolName(toolName)) {
       this.lastStartedToolKind = "other";
       return false;

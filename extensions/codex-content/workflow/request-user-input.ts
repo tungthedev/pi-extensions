@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+
 import { Type } from "@sinclair/typebox";
 
 import { renderRequestUserInputResult } from "../renderers/request-user-input.ts";
@@ -72,8 +73,7 @@ export function registerRequestUserInputTool(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "request_user_input",
     label: "request_user_input",
-    description:
-      "Request user input for one to three short questions and wait for the response.",
+    description: "Request user input for one to three short questions and wait for the response.",
     parameters: Type.Object({
       questions: Type.Optional(
         Type.Array(RequestQuestionSchema, {
@@ -131,7 +131,13 @@ export function registerRequestUserInputTool(pi: ExtensionAPI): void {
                 options:
                   legacyOptions.length > 0
                     ? legacyOptions
-                    : [{ label: "Answer", value: "Answer", description: "Provide a custom answer." }],
+                    : [
+                        {
+                          label: "Answer",
+                          value: "Answer",
+                          description: "Provide a custom answer.",
+                        },
+                      ],
               },
             ]
           : [];
@@ -239,7 +245,9 @@ export function registerRequestUserInputTool(pi: ExtensionAPI): void {
         };
       }
 
-      const answeredCount = Object.values(answers).filter((answer) => answer.answers.length > 0).length;
+      const answeredCount = Object.values(answers).filter(
+        (answer) => answer.answers.length > 0,
+      ).length;
       const contentText = interrupted
         ? `User input interrupted after ${answeredCount}/${questions.length} answers`
         : `Collected user input for ${answeredCount} question${answeredCount === 1 ? "" : "s"}`;

@@ -1,8 +1,8 @@
+import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import assert from "node:assert/strict";
 
 import { ApplyPatchError, applyPatch, parsePatch, seekSequence } from "./apply-patch.ts";
 
@@ -186,7 +186,9 @@ test("applyPatch updates file content", async () => {
       dir,
     );
     assert.equal(result.summary, "Success. Updated the following files:\nM update.txt\n");
-    assert.deepEqual(result.files, [{ action: "modified", path: "update.txt", diff: "  foo\n- bar\n+ baz" }]);
+    assert.deepEqual(result.files, [
+      { action: "modified", path: "update.txt", diff: "  foo\n- bar\n+ baz" },
+    ]);
     assert.equal(await readFile(path.join(dir, "update.txt"), "utf8"), "foo\nbaz\n");
   });
 });

@@ -9,9 +9,10 @@ import type {
   UpdateFileHunk,
   VirtualFileState,
 } from "./types.ts";
-import { applyFailed } from "./types.ts";
-import { parsePatch } from "./parser.ts";
+
 import { seekSequence } from "./matching.ts";
+import { parsePatch } from "./parser.ts";
+import { applyFailed } from "./types.ts";
 
 type DiffRow = {
   kind: "context" | "removed" | "added";
@@ -78,7 +79,9 @@ function diffLineSequences(oldLines: string[], newLines: string[]): DiffRow[] {
 
 function formatDiffRows(rows: DiffRow[]): string {
   return rows
-    .map((row) => `${row.kind === "context" ? " " : row.kind === "removed" ? "-" : "+"} ${row.text}`)
+    .map(
+      (row) => `${row.kind === "context" ? " " : row.kind === "removed" ? "-" : "+"} ${row.text}`,
+    )
     .join("\n");
 }
 

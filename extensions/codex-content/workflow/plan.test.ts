@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  buildUpdatePlanResultLines,
-  planWidgetLines,
-  syncPlanUi,
-} from "./plan.ts";
+import { buildUpdatePlanResultLines, planWidgetLines, syncPlanUi } from "./plan.ts";
 
 const ctx = {
   ui: {
@@ -80,8 +76,7 @@ test("buildUpdatePlanResultLines renders a new plan block", () => {
     ctx.ui.theme,
     {
       changeType: "new",
-      explanation:
-        "Test plan for exercising plan rendering and per-item status updates.",
+      explanation: "Test plan for exercising plan rendering and per-item status updates.",
       items: [
         { step: "Create a tiny test plan with three items", status: "pending" },
         { step: "Mark the first item in progress", status: "pending" },

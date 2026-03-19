@@ -1,8 +1,9 @@
 import type { AgentToolResult, Theme } from "@mariozechner/pi-coding-agent";
 import type { Text } from "@mariozechner/pi-tui";
 
-import { firstLine, firstText } from "../shared/text.ts";
 import type { RequestUserInputDetails } from "../workflow/types.ts";
+
+import { firstLine, firstText } from "../shared/text.ts";
 import { detailLine, expandHintLine, renderLines, titleLine } from "./common.ts";
 
 type RequestUserAnswer = RequestUserInputDetails["answers"][string];
@@ -21,7 +22,10 @@ function answerValue(answer: RequestUserAnswer | undefined): string {
   );
 }
 
-export function summarizeRequestAnswer(answer: RequestUserAnswer | undefined, expanded: boolean): string {
+export function summarizeRequestAnswer(
+  answer: RequestUserAnswer | undefined,
+  expanded: boolean,
+): string {
   if (!answer) return "No response";
   if (answer.cancelled || answer.answers.length === 0) return "Cancelled";
 
@@ -38,7 +42,9 @@ export function buildRequestUserInputLines(
   expanded: boolean,
 ): string[] {
   const lines: string[] = [];
-  const askedQuestions = details.questions.filter((question) => details.answers[question.id] !== undefined);
+  const askedQuestions = details.questions.filter(
+    (question) => details.answers[question.id] !== undefined,
+  );
 
   for (const question of askedQuestions) {
     const answer = details.answers[question.id];
@@ -52,13 +58,22 @@ export function buildRequestUserInputLines(
     );
 
     const headerPrefix = question.header.trim() ? `${question.header.trim()}: ` : "";
-    lines.push(detailLine(theme, `${headerPrefix}${summarizeRequestAnswer(answer, expanded)}`, true));
+    lines.push(
+      detailLine(theme, `${headerPrefix}${summarizeRequestAnswer(answer, expanded)}`, true),
+    );
   }
 
   if (details.interrupted) {
-    const answeredCount = Object.values(details.answers).filter((answer) => answer.answers.length > 0).length;
+    const answeredCount = Object.values(details.answers).filter(
+      (answer) => answer.answers.length > 0,
+    ).length;
     lines.push(
-      titleLine(theme, "error", "Interrupted", theme.fg("dim", `after ${answeredCount}/${details.questions.length} answers`)),
+      titleLine(
+        theme,
+        "error",
+        "Interrupted",
+        theme.fg("dim", `after ${answeredCount}/${details.questions.length} answers`),
+      ),
     );
   }
 
@@ -102,7 +117,10 @@ export function renderRequestUserInputResult(
       theme,
       failed ? "error" : "text",
       failed ? "Question failed" : "Asked",
-      theme.fg("dim", shortenInline(firstLine(text) || "No user input collected", expanded ? 120 : 90)),
+      theme.fg(
+        "dim",
+        shortenInline(firstLine(text) || "No user input collected", expanded ? 120 : 90),
+      ),
     ),
   ];
   if (!expanded && text.length > 90) {

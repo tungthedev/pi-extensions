@@ -6,14 +6,9 @@ function readOrientationFromTiff(bytes: Uint8Array, tiffStart: number): number {
     littleEndian ? bytes[pos] | (bytes[pos + 1] << 8) : (bytes[pos] << 8) | bytes[pos + 1];
   const read32 = (pos: number) =>
     littleEndian
-      ? bytes[pos] |
-        (bytes[pos + 1] << 8) |
-        (bytes[pos + 2] << 16) |
-        (bytes[pos + 3] << 24)
-      : ((bytes[pos] << 24) |
-          (bytes[pos + 1] << 16) |
-          (bytes[pos + 2] << 8) |
-          bytes[pos + 3]) >>> 0;
+      ? bytes[pos] | (bytes[pos + 1] << 8) | (bytes[pos + 2] << 16) | (bytes[pos + 3] << 24)
+      : ((bytes[pos] << 24) | (bytes[pos + 1] << 16) | (bytes[pos + 2] << 8) | bytes[pos + 3]) >>>
+        0;
 
   const ifdOffset = read32(tiffStart + 4);
   const ifdStart = tiffStart + ifdOffset;

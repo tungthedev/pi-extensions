@@ -1,14 +1,15 @@
+import type { Theme } from "@mariozechner/pi-coding-agent";
+
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import type { RequestUserInputDetails } from "../workflow/types.ts";
 
 import {
   buildRequestUserInputLines,
   renderRequestUserInputResult,
   summarizeRequestAnswer,
 } from "./request-user-input.ts";
-import type { RequestUserInputDetails } from "../workflow/types.ts";
 
 const theme = {
   fg: (_color: string, text: string) => text,
@@ -64,9 +65,9 @@ test("buildRequestUserInputLines renders asked questions only and preserves inte
 
   assert.deepEqual(buildRequestUserInputLines(theme, details, false), [
     "• Asked Which approach should I use?",
-    "  └ Confirm: Patch in place (Recommended)",
+    "└ Confirm: Patch in place (Recommended)",
     "• Asked Anything else to preserve?",
-    "  └ Notes: Cancelled",
+    "└ Notes: Cancelled",
     "• Interrupted after 1/3 answers",
   ]);
 });
@@ -93,7 +94,7 @@ test("buildRequestUserInputLines labels typed answers clearly", () => {
 
   assert.deepEqual(buildRequestUserInputLines(theme, details, false), [
     "• Asked Anything else to preserve?",
-    "  └ Notes: Typed: Keep the current API shape",
+    "└ Notes: Typed: Keep the current API shape",
   ]);
 });
 
@@ -111,7 +112,8 @@ test("renderRequestUserInputResult shows hidden line counts when collapsed conte
     answers: {
       notes: {
         answers: ["preserve_current_contract"],
-        label: "Preserve the current contract and avoid changing tool output semantics unless absolutely necessary.",
+        label:
+          "Preserve the current contract and avoid changing tool output semantics unless absolutely necessary.",
         wasCustom: false,
       },
     },
@@ -128,9 +130,12 @@ test("renderRequestUserInputResult shows hidden line counts when collapsed conte
     false,
   );
 
-  assert.deepEqual(component.render(200).map((line) => line.trimEnd()), [
-    "• Asked Please describe the exact compatibility constraints and migration concerns I should kee...",
-    "  └ Notes: Preserve the current contract and avoid changing tool output semantics unless absolutel...",
-    "  └ ... +2 more lines (Ctrl+O to expand)",
-  ]);
+  assert.deepEqual(
+    component.render(200).map((line) => line.trimEnd()),
+    [
+      "• Asked Please describe the exact compatibility constraints and migration concerns I should kee...",
+      "└ Notes: Preserve the current contract and avoid changing tool output semantics unless absolutel...",
+      "  ... +2 more lines (Ctrl+O to expand)",
+    ],
+  );
 });

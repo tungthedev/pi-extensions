@@ -1,8 +1,15 @@
 import type { AgentToolResult, EditToolDetails, Theme } from "@mariozechner/pi-coding-agent";
 import type { Text } from "@mariozechner/pi-tui";
 
+import {
+  countDiff,
+  firstLine,
+  firstText,
+  isErrorText,
+  previewLines,
+  shortenPath,
+} from "../shared/text.ts";
 import { detailLine, expandHintLine, renderLines, titleLine } from "./common.ts";
-import { countDiff, firstLine, firstText, isErrorText, previewLines, shortenPath } from "../shared/text.ts";
 
 export function renderEditResult(
   theme: Theme,
@@ -16,7 +23,9 @@ export function renderEditResult(
   const details = result.details as EditToolDetails | undefined;
   const diffStats = countDiff(details?.diff);
   const diffPreview = details?.diff ? previewLines(details.diff, 10) : [];
-  const diffSuffix = details?.diff ? theme.fg("dim", ` (+${diffStats.added} -${diffStats.removed})`) : "";
+  const diffSuffix = details?.diff
+    ? theme.fg("dim", ` (+${diffStats.added} -${diffStats.removed})`)
+    : "";
   const suffix = `${theme.fg("accent", path)}${diffSuffix}`;
   const lines = [
     titleLine(theme, failed ? "error" : "text", failed ? "Edit failed" : "Edited", suffix),

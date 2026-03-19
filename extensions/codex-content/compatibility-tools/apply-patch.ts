@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
 import { Type } from "@sinclair/typebox";
 
 import { applyPatch as runNativeApplyPatch } from "../apply-patch.ts";

@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
 import {
   createBashTool,
   createEditTool,
@@ -10,7 +11,6 @@ import {
 } from "@mariozechner/pi-coding-agent";
 
 import { registerCodexCompatibilityTools } from "./compatibility-tools/index.ts";
-import { installCodexEditorUi } from "./editor/index.ts";
 import { installExplorationEventHandlers } from "./exploration/events.ts";
 import { renderBashResult } from "./renderers/bash.ts";
 import { renderEditResult } from "./renderers/edit.ts";
@@ -19,7 +19,6 @@ import { codexArgs, withCodexArgs } from "./shared/tool-results.ts";
 
 export default function codexContentRendering(pi: ExtensionAPI) {
   registerCodexCompatibilityTools(pi);
-  installCodexEditorUi(pi);
   installExplorationEventHandlers(pi);
 
   const cwd = process.cwd();

@@ -5,9 +5,10 @@ import type {
   KeybindingsManager,
   Theme,
 } from "@mariozechner/pi-coding-agent";
+import type { EditorTheme, TUI } from "@mariozechner/pi-tui";
+
 import { CustomEditor } from "@mariozechner/pi-coding-agent";
 import { visibleWidth } from "@mariozechner/pi-tui";
-import type { EditorTheme, TUI } from "@mariozechner/pi-tui";
 
 import {
   EDITOR_BASE_LEFT_SEGMENT_KEY,
@@ -32,37 +33,6 @@ const RESERVED_SEGMENT_KEYS = new Set([
 ]);
 const HORIZONTAL = "─";
 const SHIFT_ENTER_SEQUENCES = new Set(["\u001b[13;2u", "\u001b[13;2~", "\u001b[27;2;13~"]);
-
-function extractAnsiCode(str: string, pos: number): { code: string; length: number } | null {
-  if (pos >= str.length || str[pos] !== "\u001b") return null;
-
-  const next = str[pos + 1];
-
-  if (next === "[") {
-    let index = pos + 2;
-    while (index < str.length && !/[mGKHJ]/.test(str[index]!)) index += 1;
-    if (index < str.length) {
-      return { code: str.slice(pos, index + 1), length: index + 1 - pos };
-    }
-    return null;
-  }
-
-  if (next === "]" || next === "_") {
-    let index = pos + 2;
-    while (index < str.length) {
-      if (str[index] === "\u0007") {
-        return { code: str.slice(pos, index + 1), length: index + 1 - pos };
-      }
-      if (str[index] === "\u001b" && str[index + 1] === "\\") {
-        return { code: str.slice(pos, index + 2), length: index + 2 - pos };
-      }
-      index += 1;
-    }
-    return null;
-  }
-
-  return null;
-}
 
 function formatCompactNumber(value: number): string {
   if (!Number.isFinite(value)) return "0";
@@ -426,4 +396,8 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
     externalSegments.delete(payload.key);
     statusRow?.remove(payload.key);
   });
+}
+
+export default function editor(pi: ExtensionAPI): void {
+  installCodexEditorUi(pi);
 }

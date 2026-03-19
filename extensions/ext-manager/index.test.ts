@@ -1,12 +1,10 @@
-import assert from "node:assert/strict";
 import { test } from "bun:test";
+import assert from "node:assert/strict";
 
 import extensionManager from "./index.ts";
 
 test("extmgr command returns early without touching ctx.ui when UI is unavailable", async () => {
-  let commandHandler:
-    | ((args: string[], ctx: Record<string, unknown>) => Promise<void>)
-    | undefined;
+  let commandHandler: ((args: string[], ctx: Record<string, unknown>) => Promise<void>) | undefined;
 
   extensionManager({
     registerShortcut() {

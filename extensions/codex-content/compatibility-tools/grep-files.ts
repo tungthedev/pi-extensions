@@ -1,8 +1,8 @@
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
+import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
-
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
 
 import { execCommand, resolveAbsolutePath, trimToBudget } from "./runtime.ts";
 

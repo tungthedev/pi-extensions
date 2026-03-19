@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { AgentProfileConfig } from "./profiles-types.ts";
+
 import {
   discoverCodexRoleFiles,
   parseCodexRoleDeclarations,
@@ -37,12 +38,12 @@ function escapeRegExp(text: string): string {
 }
 
 function matchTomlTripleQuotedString(contents: string, key: string): string | undefined {
-  const match = contents.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*\"\"\"([\\s\\S]*?)\"\"\"`, "m"));
+  const match = contents.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*"""([\\s\\S]*?)"""`, "m"));
   return match?.[1]?.trim();
 }
 
 function matchTomlString(contents: string, key: string): string | undefined {
-  const match = contents.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*\"([^\"]*)\"`, "m"));
+  const match = contents.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*"([^"]*)"`, "m"));
   return match?.[1]?.trim();
 }
 
@@ -72,7 +73,9 @@ function insertWithWarning(
   profile: AgentProfileConfig,
 ): void {
   if (profiles.has(profile.name)) {
-    warnings.push(`duplicate custom agent role '${profile.name}' encountered; later definition won`);
+    warnings.push(
+      `duplicate custom agent role '${profile.name}' encountered; later definition won`,
+    );
     profiles.delete(profile.name);
   }
   profiles.set(profile.name, profile);
@@ -190,7 +193,9 @@ function loadDeclaredRoles(configPath: string, warnings: string[]): LoadedCustom
   return { profiles, warnings };
 }
 
-export function loadCustomAgentProfiles(env: NodeJS.ProcessEnv = process.env): LoadedCustomAgentProfiles {
+export function loadCustomAgentProfiles(
+  env: NodeJS.ProcessEnv = process.env,
+): LoadedCustomAgentProfiles {
   const configPath = resolveCodexConfigPath(env);
   if (!configPath || !fs.existsSync(configPath)) {
     return { profiles: new Map(), warnings: [] };
@@ -200,7 +205,9 @@ export function loadCustomAgentProfiles(env: NodeJS.ProcessEnv = process.env): L
   try {
     return loadDeclaredRoles(configPath, warnings);
   } catch (error) {
-    warnings.push(`failed to load codex config '${configPath}': ${error instanceof Error ? error.message : String(error)}`);
+    warnings.push(
+      `failed to load codex config '${configPath}': ${error instanceof Error ? error.message : String(error)}`,
+    );
     return { profiles: new Map(), warnings };
   }
 }

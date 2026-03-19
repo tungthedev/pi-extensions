@@ -1,7 +1,6 @@
 import type { AgentSnapshot } from "./types.ts";
 
-export const CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE =
-  "codex-subagent-notification";
+export const CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE = "codex-subagent-notification";
 
 const SUBAGENT_NOTIFICATION_OPEN_TAG = "<subagent_notification>";
 const SUBAGENT_NOTIFICATION_CLOSE_TAG = "</subagent_notification>";
@@ -18,12 +17,7 @@ type NotificationPayload = {
 export function formatSubagentNotificationMessage(
   snapshot: Pick<
     AgentSnapshot,
-    | "agent_id"
-    | "status"
-    | "durable_status"
-    | "name"
-    | "last_assistant_text"
-    | "last_error"
+    "agent_id" | "status" | "durable_status" | "name" | "last_assistant_text" | "last_error"
   >,
 ): string {
   const payload: NotificationPayload = {
@@ -31,9 +25,7 @@ export function formatSubagentNotificationMessage(
     status: snapshot.status,
     durable_status: snapshot.durable_status,
     ...(snapshot.name ? { name: snapshot.name } : {}),
-    ...(snapshot.last_assistant_text
-      ? { last_assistant_text: snapshot.last_assistant_text }
-      : {}),
+    ...(snapshot.last_assistant_text ? { last_assistant_text: snapshot.last_assistant_text } : {}),
     ...(snapshot.last_error ? { last_error: snapshot.last_error } : {}),
   };
 
@@ -57,20 +49,17 @@ export function parseSubagentNotificationMessage(
   }
 
   try {
-    return JSON.parse(trimmed.slice(prefix.length, trimmed.length - suffix.length)) as NotificationPayload;
+    return JSON.parse(
+      trimmed.slice(prefix.length, trimmed.length - suffix.length),
+    ) as NotificationPayload;
   } catch {
     return undefined;
   }
 }
 
-export function buildWaitAgentContent(
-  snapshots: AgentSnapshot[],
-  timedOut: boolean,
-): string {
+export function buildWaitAgentContent(snapshots: AgentSnapshot[], timedOut: boolean): string {
   return JSON.stringify({
-    status: Object.fromEntries(
-      snapshots.map((snapshot) => [snapshot.agent_id, snapshot.status]),
-    ),
+    status: Object.fromEntries(snapshots.map((snapshot) => [snapshot.agent_id, snapshot.status])),
     timed_out: timedOut,
     agents: snapshots,
   });

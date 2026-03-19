@@ -1,6 +1,6 @@
-import path from "node:path";
-
 import type { AgentToolResult } from "@mariozechner/pi-coding-agent";
+
+import path from "node:path";
 
 export function shortenPath(value?: string): string {
   if (!value) return ".";
@@ -37,7 +37,7 @@ export function isErrorText(text: string): boolean {
 }
 
 export function parseExitCode(text: string): number | undefined {
-  const match = text.match(/exit code:?\s*(-?\d+)/i);
+  const match = text.match(/(?:exit code:?|exited with code)\s*(-?\d+)/i);
   if (!match) return undefined;
   const value = Number(match[1]);
   return Number.isFinite(value) ? value : undefined;

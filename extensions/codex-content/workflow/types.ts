@@ -9,7 +9,9 @@ export const CUSTOM_INPUT_OPTION = "Other (type a custom answer)";
 export const RequestOptionObjectSchema = Type.Object({
   label: Type.String({ description: "User-facing label (1-5 words)." }),
   value: Type.Optional(Type.String({ description: "Structured value returned when selected." })),
-  description: Type.String({ description: "One short sentence explaining impact/tradeoff if selected." }),
+  description: Type.String({
+    description: "One short sentence explaining impact/tradeoff if selected.",
+  }),
 });
 
 export const RequestOptionSchema = Type.Union([Type.String(), RequestOptionObjectSchema]);

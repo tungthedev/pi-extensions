@@ -1,5 +1,6 @@
 import type { ExtensionManagerController } from "../controller/index.ts";
 import type { PaletteItem, PaletteView } from "../types.ts";
+
 import { buildLocalScopeView } from "./local-scope.ts";
 import { buildPackagesView } from "./packages.ts";
 

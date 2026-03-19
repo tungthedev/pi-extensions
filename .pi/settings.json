@@ -2,9 +2,7 @@
   "packages": [
     {
       "source": "..",
-      "extensions": [
-        "+extensions/codex-content/index.ts"
-      ]
+      "extensions": ["+extensions/codex-content/index.ts"]
     }
   ]
 }

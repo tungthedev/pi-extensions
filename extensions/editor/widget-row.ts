@@ -73,7 +73,8 @@ function layoutLine(segments: InlineSegment[], width: number, gap: string): stri
     grouped[segment.align].push(segment);
   }
 
-  const renderGroup = (align: Align, budget: number): string => joinGroup(grouped[align], budget, gap);
+  const renderGroup = (align: Align, budget: number): string =>
+    joinGroup(grouped[align], budget, gap);
 
   let left = renderGroup("left", width);
   let center = renderGroup("center", width);

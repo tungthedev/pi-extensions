@@ -1,6 +1,5 @@
-import { open } from "node:fs/promises";
-
 import { fileTypeFromBuffer } from "file-type";
+import { open } from "node:fs/promises";
 
 import { getExifOrientation } from "./exif.ts";
 import { loadPhoton, type PhotonImageModule } from "./photon.ts";

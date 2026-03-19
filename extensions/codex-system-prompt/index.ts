@@ -1,6 +1,6 @@
-import fs from "node:fs";
-
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
+import fs from "node:fs";
 
 import { CODEX_AGENT_PROFILE_JSON_ENV } from "../codex-subagents/subagents/types.ts";
 
@@ -9,13 +9,6 @@ const DEFAULT_COLLABORATION_MODE_TEMPLATE_PATH = new URL(
   "./assets/collaboration-mode-default.md",
   import.meta.url,
 );
-const APPLY_PATCH_PI_OVERRIDE = [
-  "## Pi harness apply_patch note",
-  "",
-  "In this harness, `apply_patch` is a structured tool with a single string parameter named `input`.",
-  "Pass the full patch text as `input`; do not invoke `apply_patch` through `shell_command`.",
-  "Raw patch text, a heredoc body, or a simple `apply_patch <<'EOF' ... EOF` wrapper are accepted inside `input`.",
-].join("\n");
 const COLLABORATION_MODE_OPEN_TAG = "<collaboration_mode>";
 const COLLABORATION_MODE_CLOSE_TAG = "</collaboration_mode>";
 const KNOWN_MODE_NAMES_PLACEHOLDER = "{{KNOWN_MODE_NAMES}}";
@@ -35,7 +28,7 @@ function readPromptBody(): string {
 }
 
 export function buildCodexPrompt(promptBody: string): string {
-  return [promptBody.trim(), APPLY_PATCH_PI_OVERRIDE].filter(Boolean).join("\n\n").trim();
+  return promptBody.trim();
 }
 
 export function injectCodexPrompt(systemPrompt: string | undefined, codexPrompt: string): string {
@@ -45,10 +38,12 @@ export function injectCodexPrompt(systemPrompt: string | undefined, codexPrompt:
   return [basePrompt, codexPrompt].filter(Boolean).join("\n\n").trim();
 }
 
-export function buildDefaultCollaborationModeInstructions(options: {
-  knownModeNames?: string;
-  requestUserInputAvailable?: boolean;
-} = {}): string {
+export function buildDefaultCollaborationModeInstructions(
+  options: {
+    knownModeNames?: string;
+    requestUserInputAvailable?: boolean;
+  } = {},
+): string {
   const template = readPromptAsset(DEFAULT_COLLABORATION_MODE_TEMPLATE_PATH);
   if (!template) return "";
 
@@ -96,7 +91,9 @@ export function readAgentProfilePromptPayload(
   }
 }
 
-export function buildAgentProfilePromptBlock(payload: AgentProfilePromptPayload | undefined): string {
+export function buildAgentProfilePromptBlock(
+  payload: AgentProfilePromptPayload | undefined,
+): string {
   const developerInstructions = payload?.developerInstructions?.trim();
   if (!developerInstructions) return "";
   return developerInstructions;

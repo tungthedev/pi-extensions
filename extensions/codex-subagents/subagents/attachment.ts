@@ -3,7 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 
+import type { ChildProfileBootstrap } from "./profiles-apply.ts";
 import type { LiveChildAttachment } from "./types.ts";
+
 import {
   CODEX_AGENT_PROFILE_JSON_ENV,
   CODEX_AGENT_PROFILE_NAME_ENV,
@@ -11,7 +13,6 @@ import {
   EXTENSION_ENTRY,
   PROJECT_ROOT,
 } from "./types.ts";
-import type { ChildProfileBootstrap } from "./profiles-apply.ts";
 
 function resolveChildSessionDir(): string {
   const sessionDir = path.join(PROJECT_ROOT, ".pi", "subagents", "sessions");

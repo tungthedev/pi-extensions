@@ -1,10 +1,11 @@
-import { normalizeReconstructedStatus } from "./state.ts";
 import type {
   DurableChildRecord,
   RegistryEntryPayload,
   SessionEntryLike,
   SubagentEntryType,
 } from "./types.ts";
+
+import { normalizeReconstructedStatus } from "./state.ts";
 import { SUBAGENT_ENTRY_TYPES } from "./types.ts";
 
 function isRegistryEntryType(value: unknown): value is SubagentEntryType {
@@ -28,7 +29,9 @@ function isRegistryEntryPayload(value: unknown): value is RegistryEntryPayload {
   return isDurableChildRecord((value as { record?: unknown }).record);
 }
 
-export function rebuildDurableRegistry(entries: SessionEntryLike[]): Map<string, DurableChildRecord> {
+export function rebuildDurableRegistry(
+  entries: SessionEntryLike[],
+): Map<string, DurableChildRecord> {
   const records = new Map<string, DurableChildRecord>();
 
   for (const entry of entries) {

@@ -65,7 +65,10 @@ export function getPackageFilterState(filters: string[] | undefined, extensionPa
     includePatterns.length === 0 ||
     includePatterns.some((pattern) => matchesFilterPattern(normalizedTarget, pattern));
 
-  if (enabled && excludePatterns.some((pattern) => matchesFilterPattern(normalizedTarget, pattern))) {
+  if (
+    enabled &&
+    excludePatterns.some((pattern) => matchesFilterPattern(normalizedTarget, pattern))
+  ) {
     enabled = false;
   }
 

@@ -4,6 +4,7 @@ import test from "node:test";
 import { renderEditResult } from "./edit.ts";
 
 function stripAnsi(value: string): string {
+  // eslint-disable-next-line no-control-regex
   return value.replace(/\x1B\[[0-9;]*m/g, "");
 }
 
@@ -25,8 +26,8 @@ test("renderEditResult shows hidden diff line counts in collapsed output", () =>
     false,
   );
 
-  assert.deepEqual(component.render(200).map((line) => stripAnsi(line).trimEnd()), [
-    "• Edited /tmp/demo.txt (+2 -1)",
-    "  └ ... +3 more lines (Ctrl+O to expand)",
-  ]);
+  assert.deepEqual(
+    component.render(200).map((line) => stripAnsi(line).trimEnd()),
+    ["• Edited /tmp/demo.txt (+2 -1)", "  ... +3 more lines (Ctrl+O to expand)"],
+  );
 });

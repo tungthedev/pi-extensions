@@ -1,13 +1,10 @@
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
+import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
-
-import {
-  MAX_LIST_DIR_SCAN_ENTRIES,
-  resolveAbsolutePath,
-} from "./runtime.ts";
+import { MAX_LIST_DIR_SCAN_ENTRIES, resolveAbsolutePath } from "./runtime.ts";
 
 export type ListDirectoryEntry = {
   sortKey: string;

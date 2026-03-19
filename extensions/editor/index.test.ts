@@ -6,8 +6,8 @@ import {
   formatRightStatus,
   formatUsageSummary,
   normalizeCodexEditorInput,
-} from "./editor/index.ts";
-import { HorizontalLineWidget } from "./editor/widget-row.ts";
+} from "./index.ts";
+import { HorizontalLineWidget } from "./widget-row.ts";
 
 test("formatUsageSummary renders percent and compact window size", () => {
   assert.equal(

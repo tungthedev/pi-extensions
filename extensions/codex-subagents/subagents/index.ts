@@ -1,7 +1,3 @@
-import { randomUUID } from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
-
 import {
   buildSessionContext,
   getMarkdownTheme,
@@ -11,6 +7,18 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+
+import type {
+  AgentSnapshot,
+  DurableChildRecord,
+  LiveChildAttachment,
+  RpcResponse,
+  SessionEntryLike,
+  SubagentEntryType,
+} from "./types.ts";
 
 import { appendBounded, createLiveAttachment } from "./attachment.ts";
 import { generateUniqueSubagentName, resolveSubagentName } from "./naming.ts";
@@ -20,7 +28,15 @@ import {
   formatSubagentNotificationMessage,
   parseSubagentNotificationMessage,
 } from "./notifications.ts";
-import { buildSendInputContent, buildSpawnAgentContent } from "./results.ts";
+import { rebuildDurableRegistry } from "./persistence.ts";
+import { applySpawnAgentProfile, resolveRequestedAgentType } from "./profiles-apply.ts";
+import {
+  buildSpawnAgentTypeDescription,
+  clearResolvedAgentProfilesCache,
+  resolveAgentProfiles,
+} from "./profiles.ts";
+import { childSnapshot } from "./registry.ts";
+import { conciseResult, shorten } from "./render.ts";
 import {
   getSubagentCompletionLabel,
   getSubagentDisplayName,
@@ -30,22 +46,15 @@ import {
   summarizeSubagentReply,
   truncateSubagentReply,
 } from "./rendering.ts";
-import { rebuildDurableRegistry } from "./persistence.ts";
-import { applySpawnAgentProfile, resolveRequestedAgentType } from "./profiles-apply.ts";
-import { buildSpawnAgentTypeDescription, clearResolvedAgentProfilesCache, resolveAgentProfiles } from "./profiles.ts";
-import { conciseResult, shorten } from "./render.ts";
-import { childSnapshot } from "./registry.ts";
-import { parseJsonLines, rejectPendingResponses, respondToUiRequest, sendRpcCommand } from "./rpc.ts";
+import { buildSendInputContent, buildSpawnAgentContent } from "./results.ts";
+import {
+  parseJsonLines,
+  rejectPendingResponses,
+  respondToUiRequest,
+  sendRpcCommand,
+} from "./rpc.ts";
 import { extractLastAssistantText, isResumable } from "./session.ts";
 import { deriveDurableStatusFromState } from "./state.ts";
-import type {
-  AgentSnapshot,
-  DurableChildRecord,
-  LiveChildAttachment,
-  RpcResponse,
-  SessionEntryLike,
-  SubagentEntryType,
-} from "./types.ts";
 import {
   CHILD_EXIT_GRACE_MS,
   CODEX_SUBAGENT_CHILD_ENV,
@@ -100,7 +109,9 @@ type CollabInputItem = {
 
 const CollabInputItemSchema = Type.Object({
   type: Type.Optional(
-    Type.String({ description: "Input item type: text, image, local_image, skill, or mention." }),
+    Type.String({
+      description: "Input item type: text, image, local_image, skill, or mention.",
+    }),
   ),
   text: Type.Optional(Type.String({ description: "Text content when type is text." })),
   image_url: Type.Optional(Type.String({ description: "Image URL when type is image." })),
@@ -142,8 +153,10 @@ function flattenCollabItems(items: CollabInputItem[] | undefined): string | unde
     .map((item) => {
       if (item.type === "text" && item.text?.trim()) return item.text.trim();
       if (item.type === "image" && item.image_url?.trim()) return `image: ${item.image_url.trim()}`;
-      if (item.type === "local_image" && item.path?.trim()) return `local_image: ${item.path.trim()}`;
-      if (item.type === "skill") return `skill: ${item.name?.trim() || item.path?.trim() || "skill"}`;
+      if (item.type === "local_image" && item.path?.trim())
+        return `local_image: ${item.path.trim()}`;
+      if (item.type === "skill")
+        return `skill: ${item.name?.trim() || item.path?.trim() || "skill"}`;
       if (item.type === "mention") {
         return `mention: ${item.name?.trim() || item.path?.trim() || "mention"}`;
       }
@@ -412,8 +425,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     (message, { expanded }, theme) => {
       const messageContent = typeof message.content === "string" ? message.content : undefined;
       const snapshot =
-        extractSnapshotDetails(message.details as AgentSnapshot | { status?: AgentSnapshot } | undefined) ??
-        parseSubagentNotificationMessage(messageContent);
+        extractSnapshotDetails(
+          message.details as AgentSnapshot | { status?: AgentSnapshot } | undefined,
+        ) ?? parseSubagentNotificationMessage(messageContent);
       if (!snapshot) {
         return new Text(messageContent ?? "", 0, 0);
       }
@@ -481,7 +495,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   const maybeReadLastAssistantText = async (
     attachment: LiveChildAttachment,
   ): Promise<string | undefined> => {
-    const response = await sendRpcCommand(attachment, { type: "get_last_assistant_text" });
+    const response = await sendRpcCommand(attachment, {
+      type: "get_last_assistant_text",
+    });
     if (!response.success) {
       return undefined;
     }
@@ -628,32 +644,32 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       attachment.stderr = appendBounded(attachment.stderr, chunk.toString());
     });
 
-      attachment.process.on("error", (error) => {
+    attachment.process.on("error", (error) => {
       attachment.lastLiveAt = Date.now();
       rejectPendingResponses(attachment, error);
-        if (attachment.closingDisposition !== "discard") {
-          const nextRecord = updateDurableChild(
-            attachment.agentId,
-            {
-              status:
-                attachment.closingDisposition === "close"
+      if (attachment.closingDisposition !== "discard") {
+        const nextRecord = updateDurableChild(
+          attachment.agentId,
+          {
+            status:
+              attachment.closingDisposition === "close"
                 ? "closed"
                 : attachment.closingDisposition === "detach"
                   ? "detached"
                   : "failed",
-              lastError: error.message,
-            },
-            {
-              persistAs:
-                attachment.closingDisposition === "close"
-                  ? SUBAGENT_ENTRY_TYPES.close
-                  : SUBAGENT_ENTRY_TYPES.update,
-            },
-          );
-          notifyParentOfChildStatus(nextRecord);
-        }
-        liveAttachmentsById.delete(attachment.agentId);
-        notifyStateChange(attachment);
+            lastError: error.message,
+          },
+          {
+            persistAs:
+              attachment.closingDisposition === "close"
+                ? SUBAGENT_ENTRY_TYPES.close
+                : SUBAGENT_ENTRY_TYPES.update,
+          },
+        );
+        notifyParentOfChildStatus(nextRecord);
+      }
+      liveAttachmentsById.delete(attachment.agentId);
+      notifyStateChange(attachment);
     });
 
     attachment.process.on("exit", (code, signal) => {
@@ -696,7 +712,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
                 code === 0 && !record.lastError
                   ? record.lastError
                   : (record.lastError ?? `Child agent exited with ${reason}`),
-              },
+            },
             { persistAs: SUBAGENT_ENTRY_TYPES.update },
           );
           notifyParentOfChildStatus(nextRecord);
@@ -710,7 +726,10 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   const attachChild = async (
     record: DurableChildRecord,
     mode: "fresh" | "resume" | "fork",
-  ): Promise<{ attachment: LiveChildAttachment; record: DurableChildRecord }> => {
+  ): Promise<{
+    attachment: LiveChildAttachment;
+    record: DurableChildRecord;
+  }> => {
     const resolvedProfiles = resolveAgentProfiles({ includeHidden: true });
     const profile = record.agentType ? resolvedProfiles.profiles.get(record.agentType) : undefined;
     const attachment = createLiveAttachment({
@@ -738,12 +757,12 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         throw new Error(`Agent ${record.agentId} did not expose a durable session file`);
       }
 
-        const nextRecord = durableChildrenById.has(record.agentId)
-          ? updateFromGetState(
-              record.agentId,
-              state,
-              mode === "resume" ? SUBAGENT_ENTRY_TYPES.attach : SUBAGENT_ENTRY_TYPES.update,
-            )
+      const nextRecord = durableChildrenById.has(record.agentId)
+        ? updateFromGetState(
+            record.agentId,
+            state,
+            mode === "resume" ? SUBAGENT_ENTRY_TYPES.attach : SUBAGENT_ENTRY_TYPES.update,
+          )
         : {
             ...record,
             status: deriveDurableStatusFromState(state),
@@ -899,15 +918,20 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         }),
       ),
       message: Type.Optional(
-        Type.String({ description: "Initial plain-text task for the new agent. Use either message or items." }),
+        Type.String({
+          description: "Initial plain-text task for the new agent. Use either message or items.",
+        }),
       ),
       items: Type.Optional(
         Type.Array(CollabInputItemSchema, {
-          description: "Structured input items. Use this to pass explicit mentions or local-image references.",
+          description:
+            "Structured input items. Use this to pass explicit mentions or local-image references.",
         }),
       ),
       agent_type: Type.Optional(
-        Type.String({ description: buildSpawnAgentTypeDescription(resolveAgentProfiles()) }),
+        Type.String({
+          description: buildSpawnAgentTypeDescription(resolveAgentProfiles()),
+        }),
       ),
       fork_context: Type.Optional(
         Type.Boolean({
@@ -922,13 +946,19 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         }),
       ),
       model: Type.Optional(
-        Type.String({ description: "Optional model override for the child agent." }),
+        Type.String({
+          description: "Optional model override for the child agent.",
+        }),
       ),
       reasoning_effort: Type.Optional(
-        Type.String({ description: "Optional reasoning effort override for the child agent." }),
+        Type.String({
+          description: "Optional reasoning effort override for the child agent.",
+        }),
       ),
       name: Type.Optional(
-        Type.String({ description: "Optional descriptive label for the child agent." }),
+        Type.String({
+          description: "Optional descriptive label for the child agent.",
+        }),
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -947,7 +977,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           ? params.reasoning_effort
           : inheritedDefaults.reasoningEffort,
       });
-      const thinkingLevel = normalizeReasoningEffortToThinkingLevel(appliedProfile.effectiveReasoningEffort);
+      const thinkingLevel = normalizeReasoningEffortToThinkingLevel(
+        appliedProfile.effectiveReasoningEffort,
+      );
       const forkedSessionFile = params.fork_context
         ? resolveForkContextSessionFile({
             sessionFile: ctx.sessionManager.getSessionFile(),
@@ -1021,7 +1053,12 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         persistRegistryEvent(SUBAGENT_ENTRY_TYPES.attach, durableRecord);
 
         return {
-          content: [{ type: "text", text: buildSpawnAgentContent(agentId, durableRecord.name) }],
+          content: [
+            {
+              type: "text",
+              text: buildSpawnAgentContent(agentId, durableRecord.name),
+            },
+          ],
           details: {
             ...childSnapshot(durableRecord, attachment),
             nickname: durableRecord.name ?? null,
@@ -1045,7 +1082,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         };
         durableChildrenById.set(agentId, closedRecord);
         persistRegistryEvent(SUBAGENT_ENTRY_TYPES.create, closedRecord);
-        persistRegistryEvent(SUBAGENT_ENTRY_TYPES.close, closedRecord, { reason: "spawn_failed" });
+        persistRegistryEvent(SUBAGENT_ENTRY_TYPES.close, closedRecord, {
+          reason: "spawn_failed",
+        });
         await closeLiveAttachment(attachment, "discard").catch(() => undefined);
         liveAttachmentsById.delete(agentId);
         durableChildrenById.delete(agentId);
@@ -1056,7 +1095,11 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       }
     },
     renderCall(args, theme) {
-      const predictedName = resolveSubagentName(durableChildrenById.values(), args.name, spawnNameSeed(args));
+      const predictedName = resolveSubagentName(
+        durableChildrenById.values(),
+        args.name,
+        spawnNameSeed(args),
+      );
       const agentType = resolveRequestedAgentType(args.agent_type);
       const roleLabel = agentType !== "default" ? ` [${agentType}]` : "";
       const modelLabel = formatSubagentModelLabel(args.model, args.reasoning_effort);
@@ -1071,7 +1114,11 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       if (!details?.prompt) {
         return undefined;
       }
-      return new Text(`  ${theme.fg("muted", "└ ")}${theme.fg("dim", shorten(details.prompt, 140))}`, 0, 0);
+      return new Text(
+        `  ${theme.fg("muted", "└ ")}${theme.fg("dim", shorten(details.prompt, 140))}`,
+        0,
+        0,
+      );
     },
   });
 
@@ -1174,17 +1221,26 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     parameters: Type.Object({
       id: Type.Optional(Type.String({ description: "Agent id to message (from spawn_agent)." })),
       agent_id: Type.Optional(Type.String({ description: "Identifier returned by spawn_agent." })),
-      input: Type.Optional(Type.String({ description: "Legacy instruction field for the child agent." })),
+      input: Type.Optional(
+        Type.String({
+          description: "Legacy instruction field for the child agent.",
+        }),
+      ),
       message: Type.Optional(
-        Type.String({ description: "Plain-text message to send to the agent. Use either message or items." }),
+        Type.String({
+          description: "Plain-text message to send to the agent. Use either message or items.",
+        }),
       ),
       items: Type.Optional(
         Type.Array(CollabInputItemSchema, {
-          description: "Structured input items. Use this to pass explicit mentions or local-image references.",
+          description:
+            "Structured input items. Use this to pass explicit mentions or local-image references.",
         }),
       ),
       interrupt: Type.Optional(
-        Type.Boolean({ description: "Use steering semantics when the child is already running." }),
+        Type.Boolean({
+          description: "Use steering semantics when the child is already running.",
+        }),
       ),
     }),
     async execute(_toolCallId, params) {
@@ -1246,7 +1302,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       );
     },
     renderResult(result, _options, theme) {
-      const details = (result.details ?? {}) as AgentSnapshot & { command?: string };
+      const details = (result.details ?? {}) as AgentSnapshot & {
+        command?: string;
+      };
       const command = details.command ? `${details.command} ` : "";
       const displayName = details.agent_id ? getSubagentDisplayName(details) : "";
       return new Text(
@@ -1264,11 +1322,16 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     parameters: Type.Object({
       id: Type.Optional(Type.String({ description: "Single child agent id to wait on." })),
       ids: Type.Optional(
-        Type.Array(Type.String(), { description: "Agent ids to wait on. Pass multiple ids to wait for whichever finishes first." }),
+        Type.Array(Type.String(), {
+          description:
+            "Agent ids to wait on. Pass multiple ids to wait for whichever finishes first.",
+        }),
       ),
       agent_id: Type.Optional(Type.String({ description: "Single child agent id to wait on." })),
       agent_ids: Type.Optional(
-        Type.Array(Type.String(), { description: "Multiple child agent ids to wait on." }),
+        Type.Array(Type.String(), {
+          description: "Multiple child agent ids to wait on.",
+        }),
       ),
       timeout_ms: Type.Optional(
         Type.Number({ description: "Maximum time to wait before returning." }),
@@ -1293,8 +1356,11 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           );
         }),
       );
-      const status = Object.fromEntries(snapshots.map((snapshot) => [snapshot.agent_id, snapshot.status]));
-      const timedOut = snapshots.length > 0 && snapshots.every((snapshot) => snapshot.status === "timeout");
+      const status = Object.fromEntries(
+        snapshots.map((snapshot) => [snapshot.agent_id, snapshot.status]),
+      );
+      const timedOut =
+        snapshots.length > 0 && snapshots.every((snapshot) => snapshot.status === "timeout");
 
       return {
         content: [{ type: "text", text: buildWaitAgentContent(snapshots, timedOut) }],
@@ -1312,13 +1378,14 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         return record ? getSubagentDisplayName(childSnapshot(record)) : id;
       });
       const title =
-        names.length === 1
-          ? `Waiting for ${names[0]}`
-          : `Waiting for ${names.length} agents`;
+        names.length === 1 ? `Waiting for ${names[0]}` : `Waiting for ${names.length} agents`;
       return new Text(`${theme.fg("muted", "• ")}${theme.fg("toolTitle", title)}`, 0, 0);
     },
     renderResult(result, { expanded }, theme) {
-      const details = (result.details ?? {}) as { agents?: AgentSnapshot[]; timed_out?: boolean };
+      const details = (result.details ?? {}) as {
+        agents?: AgentSnapshot[];
+        timed_out?: boolean;
+      };
       const agentsList = details.agents ?? [];
       if (agentsList.length === 0) {
         return new Text(
@@ -1339,33 +1406,39 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
               : status === "closed"
                 ? "muted"
                 : "accent";
-      const getStatusIcon = (status: AgentSnapshot["status"]) =>
-        status === "idle"
-          ? "✓"
-          : status === "timeout"
-            ? "⏱"
-            : status === "failed"
-              ? "✗"
-              : status === "closed"
-                ? "•"
-                : status === "detached"
-                  ? "◌"
-                  : "⏳";
+      // const getStatusIcon = (status: AgentSnapshot["status"]) =>
+      //   status === "idle"
+      //     ? "✓"
+      //     : status === "timeout"
+      //       ? "⏱"
+      //       : status === "failed"
+      //         ? "✗"
+      //         : status === "closed"
+      //           ? "•"
+      //           : status === "detached"
+      //             ? "◌"
+      //             : "⏳";
 
       const container = new Container();
-      container.addChild(new Text(`${theme.fg("muted", "• ")}${theme.fg("toolTitle", "Finished waiting")}`, 0, 0));
+      container.addChild(
+        new Text(`${theme.fg("muted", "• ")}${theme.fg("toolTitle", "Finished waiting")}`, 0, 0),
+      );
 
       for (const [index, agent] of agentsList.entries()) {
         if (index > 0) container.addChild(new Spacer(1));
 
         const displayName = getSubagentDisplayName(agent);
         const statusColor = getStatusColor(agent.status);
-        const summary = agent.last_error ?? summarizeSubagentReply(agent.last_assistant_text, expanded ? 600 : 220);
+        const summary =
+          agent.last_error ??
+          summarizeSubagentReply(agent.last_assistant_text, expanded ? 600 : 220);
         let detail = `${theme.fg("accent", displayName)}${theme.fg("muted", ": ")}${theme.fg(statusColor, getSubagentCompletionLabel(agent.status))}`;
         if (summary) {
           detail += `${theme.fg("muted", " - ")}${theme.fg("toolOutput", summary)}`;
         }
-        container.addChild(new Text(`  ${theme.fg("muted", index === 0 ? "└ " : "  ")}${detail}`, 0, 0));
+        container.addChild(
+          new Text(`  ${theme.fg("muted", index === 0 ? "└ " : "  ")}${detail}`, 0, 0),
+        );
 
         const reply = agent.last_assistant_text?.trim();
         if (expanded && reply) {
@@ -1466,11 +1539,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       const details = result.details as { status?: AgentSnapshot } | AgentSnapshot | undefined;
       const snapshot = extractSnapshotDetails(details);
       const displayName = snapshot ? getSubagentDisplayName(snapshot) : "";
-      return new Text(
-        `${theme.fg("muted", "closed ")}${theme.fg("accent", displayName)}`,
-        0,
-        0,
-      );
+      return new Text(`${theme.fg("muted", "closed ")}${theme.fg("accent", displayName)}`, 0, 0);
     },
   });
 

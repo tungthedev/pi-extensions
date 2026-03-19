@@ -4,10 +4,13 @@ import test from "node:test";
 import { normalizeRequestOptions, normalizeRequestQuestions } from "./request-user-input.ts";
 
 test("normalizeRequestOptions preserves label/value and descriptions", () => {
-  assert.deepEqual(normalizeRequestOptions(["Yes", { label: "No", description: "Decline the change." }]), [
-    { label: "Yes", value: "Yes" },
-    { label: "No", value: "No", description: "Decline the change." },
-  ]);
+  assert.deepEqual(
+    normalizeRequestOptions(["Yes", { label: "No", description: "Decline the change." }]),
+    [
+      { label: "Yes", value: "Yes" },
+      { label: "No", value: "No", description: "Decline the change." },
+    ],
+  );
 });
 
 test("normalizeRequestQuestions converts Codex-style questions into internal form", () => {

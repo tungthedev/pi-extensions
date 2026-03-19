@@ -1,5 +1,5 @@
-import type { PaletteItem, PaletteView } from "../types.ts";
 import type { ExtensionManagerController } from "../controller/index.ts";
+import type { PaletteItem, PaletteView } from "../types.ts";
 
 export async function buildPackageView(
   packageId: string,

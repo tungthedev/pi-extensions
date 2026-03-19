@@ -402,11 +402,7 @@ Where `PI_CODEX_AGENT_PROFILE_JSON` contains a compact serialized subset:
 
 ```ts
 {
-  name,
-  developerInstructions,
-  model,
-  reasoningEffort,
-  source
+  (name, developerInstructions, model, reasoningEffort, source);
 }
 ```
 

@@ -71,12 +71,12 @@ function escapeRegExp(text: string): string {
 }
 
 function matchTomlTripleQuotedString(contents: string, key: string): string | undefined {
-  const match = contents.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*\"\"\"([\\s\\S]*?)\"\"\"`, "m"));
+  const match = contents.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*"""([\\s\\S]*?)"""`, "m"));
   return match?.[1]?.trim();
 }
 
 function matchTomlSingleQuotedString(contents: string, key: string): string | undefined {
-  const match = contents.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*\"([^\"]*)\"`, "m"));
+  const match = contents.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*"([^"]*)"`, "m"));
   return match?.[1]?.trim();
 }
 
@@ -104,7 +104,9 @@ export function parseBundledRoleAsset(contents: string): ParsedRoleAsset {
 }
 
 function toBuiltInProfile(declaration: BuiltInProfileDeclaration): AgentProfileConfig {
-  const parsed = declaration.assetFile ? parseBundledRoleAsset(readBundledRoleAsset(declaration.assetFile)) : {};
+  const parsed = declaration.assetFile
+    ? parseBundledRoleAsset(readBundledRoleAsset(declaration.assetFile))
+    : {};
   return {
     name: declaration.name,
     description: declaration.description,
@@ -121,7 +123,9 @@ function toBuiltInProfile(declaration: BuiltInProfileDeclaration): AgentProfileC
   };
 }
 
-export function resolveBuiltInAgentProfiles(options: { includeHidden?: boolean } = {}): ResolvedAgentProfiles {
+export function resolveBuiltInAgentProfiles(
+  options: { includeHidden?: boolean } = {},
+): ResolvedAgentProfiles {
   const includeHidden = options.includeHidden === true;
   const profiles = new Map<string, AgentProfileConfig>();
 

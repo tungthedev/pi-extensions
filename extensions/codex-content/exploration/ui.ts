@@ -1,9 +1,10 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import type { RemoveStatusSegmentPayload, SetStatusSegmentPayload } from "../editor/types.ts";
+import type { RemoveStatusSegmentPayload, SetStatusSegmentPayload } from "../../editor/types.ts";
+import type { ExplorationTracker } from "./state.ts";
+
 import { combinedExplorationSummaryLines, liveExplorationSummary } from "./state.ts";
 import { EXPLORATION_WIDGET_KEY, LIVE_EXPLORATION_SEGMENT_KEY } from "./types.ts";
-import type { ExplorationTracker } from "./state.ts";
 
 const LEGACY_LIVE_EXPLORATION_WIDGET_KEY = "codex-live-explore";
 const LEGACY_FINAL_EXPLORATION_WIDGET_KEY = "codex-final-explore";
@@ -12,10 +13,7 @@ export function clearWorkingMessage(ctx: Pick<ExtensionContext, "ui">): void {
   ctx.ui.setWorkingMessage();
 }
 
-export function setLiveExplorationStatus(
-  pi: ExtensionAPI,
-  tracker: ExplorationTracker,
-): void {
+export function setLiveExplorationStatus(pi: ExtensionAPI, tracker: ExplorationTracker): void {
   const latestGroup = tracker.latestActiveExplorationGroup();
   if (!latestGroup || latestGroup.items.length === 0) {
     pi.events.emit("editor:remove-status-segment", {
@@ -75,10 +73,7 @@ export function clearExplorationWidget(ctx: Pick<ExtensionContext, "ui">): void 
   ctx.ui.setWidget(LEGACY_FINAL_EXPLORATION_WIDGET_KEY, undefined, { placement: "belowEditor" });
 }
 
-export function clearLiveExplorationUI(
-  pi: ExtensionAPI,
-  ctx: Pick<ExtensionContext, "ui">,
-): void {
+export function clearLiveExplorationUI(pi: ExtensionAPI, ctx: Pick<ExtensionContext, "ui">): void {
   pi.events.emit("editor:remove-status-segment", {
     key: LIVE_EXPLORATION_SEGMENT_KEY,
   } as RemoveStatusSegmentPayload);

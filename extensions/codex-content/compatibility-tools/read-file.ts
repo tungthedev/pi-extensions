@@ -1,9 +1,9 @@
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
+import { Type } from "@sinclair/typebox";
 import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import readline from "node:readline";
-
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
 
 import { detectSupportedImageMimeTypeFromFile } from "../image-utils.ts";
 import {
@@ -68,7 +68,11 @@ function trimEmptyEdges(records: LineRecord[]): LineRecord[] {
   return records.slice(start, end);
 }
 
-async function readSliceFromFile(absolutePath: string, offset: number, limit: number): Promise<string> {
+async function readSliceFromFile(
+  absolutePath: string,
+  offset: number,
+  limit: number,
+): Promise<string> {
   if (offset < 1) throw new Error("offset must be a 1-indexed line number");
   if (limit < 1) throw new Error("limit must be greater than zero");
 

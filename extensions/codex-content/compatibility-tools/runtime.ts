@@ -1,8 +1,7 @@
-import { accessSync, constants as fsConstants } from "node:fs";
-import { spawn } from "node:child_process";
-import path from "node:path";
-
 import { Text } from "@mariozechner/pi-tui";
+import { spawn } from "node:child_process";
+import { accessSync, constants as fsConstants } from "node:fs";
+import path from "node:path";
 
 export const DEFAULT_MAX_BYTES = 50 * 1024;
 export const DEFAULT_MAX_LINES = 2000;
@@ -102,7 +101,10 @@ function shellPathExists(shellPath: string): boolean {
   }
 }
 
-function detectShellFlavor(shellPath: string | undefined, shellExists = shellPathExists): ShellFlavor {
+function detectShellFlavor(
+  shellPath: string | undefined,
+  shellExists = shellPathExists,
+): ShellFlavor {
   if (!shellPath || !shellExists(shellPath)) {
     return "unknown";
   }

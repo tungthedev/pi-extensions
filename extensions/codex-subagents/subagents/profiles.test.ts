@@ -251,11 +251,9 @@ test("loadCustomAgentProfiles loads config-declared and discovered roles", () =>
   );
   writeFileSync(
     discoveredRolePath,
-    [
-      'description = "Review changes"',
-      'developer_instructions = """Review carefully."""',
-      "",
-    ].join("\n"),
+    ['description = "Review changes"', 'developer_instructions = """Review carefully."""', ""].join(
+      "\n",
+    ),
   );
 
   const loaded = loadCustomAgentProfiles({ PI_CODEX_CONFIG_PATH: configPath } as NodeJS.ProcessEnv);
@@ -276,14 +274,7 @@ test("loadCustomAgentProfiles reports malformed custom role files as warnings", 
   mkdirSync(codexHome, { recursive: true });
 
   const configPath = path.join(codexHome, "config.toml");
-  writeFileSync(
-    configPath,
-    [
-      "[agents.broken]",
-      'config_file = "missing.toml"',
-      "",
-    ].join("\n"),
-  );
+  writeFileSync(configPath, ["[agents.broken]", 'config_file = "missing.toml"', ""].join("\n"));
 
   const loaded = loadCustomAgentProfiles({ PI_CODEX_CONFIG_PATH: configPath } as NodeJS.ProcessEnv);
 
@@ -303,11 +294,7 @@ test("resolveAgentProfiles merges custom roles before built-ins", () => {
   const configPath = path.join(codexHome, "config.toml");
   writeFileSync(
     configPath,
-    [
-      "[agents.researcher]",
-      'description = "Research carefully"',
-      "",
-    ].join("\n"),
+    ["[agents.researcher]", 'description = "Research carefully"', ""].join("\n"),
   );
 
   const previousConfigPath = process.env.PI_CODEX_CONFIG_PATH;
@@ -335,14 +322,7 @@ test("broken custom role shadows built-in role as unavailable", () => {
   mkdirSync(codexHome, { recursive: true });
 
   const configPath = path.join(codexHome, "config.toml");
-  writeFileSync(
-    configPath,
-    [
-      "[agents.explorer]",
-      'config_file = "missing.toml"',
-      "",
-    ].join("\n"),
-  );
+  writeFileSync(configPath, ["[agents.explorer]", 'config_file = "missing.toml"', ""].join("\n"));
 
   const previousConfigPath = process.env.PI_CODEX_CONFIG_PATH;
   process.env.PI_CODEX_CONFIG_PATH = configPath;

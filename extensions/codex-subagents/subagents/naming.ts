@@ -72,9 +72,7 @@ export function generateUniqueSubagentName(
   usedNames: Iterable<string>,
   pickIndex: (maxExclusive: number) => number = randomInt,
 ): string {
-  const used = new Set(
-    [...usedNames].map((name) => name.trim().toLowerCase()).filter(Boolean),
-  );
+  const used = new Set([...usedNames].map((name) => name.trim().toLowerCase()).filter(Boolean));
 
   const start = SUBAGENT_NAME_POOL.length > 0 ? pickIndex(SUBAGENT_NAME_POOL.length) : 0;
 

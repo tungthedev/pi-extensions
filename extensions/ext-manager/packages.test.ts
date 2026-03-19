@@ -1,5 +1,5 @@
-import assert from "node:assert/strict";
 import { test } from "bun:test";
+import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -56,10 +56,16 @@ test("getPackageFilterState applies include patterns, excludes, and explicit mar
     "disabled",
   );
   assert.equal(
-    getPackageFilterState(["extensions/**", "!extensions/private/**", "+extensions/private/a.ts"], "extensions/private/a.ts"),
+    getPackageFilterState(
+      ["extensions/**", "!extensions/private/**", "+extensions/private/a.ts"],
+      "extensions/private/a.ts",
+    ),
     "enabled",
   );
-  assert.equal(getPackageFilterState(["extensions/**", "-extensions/a.ts"], "extensions/a.ts"), "disabled");
+  assert.equal(
+    getPackageFilterState(["extensions/**", "-extensions/a.ts"], "extensions/a.ts"),
+    "disabled",
+  );
 });
 
 test("updateExtensionMarkers preserves non-marker tokens and replaces only changed markers", () => {

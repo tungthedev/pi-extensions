@@ -1,8 +1,10 @@
-import { readFile, readdir } from "node:fs/promises";
 import type { Dirent } from "node:fs";
+
+import { readFile, readdir } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
 import type { InstalledPackage, PackageExtensionEntry } from "../types.ts";
+
 import { fileExists } from "../shared/fs.ts";
 import { readSummary } from "../shared/summary.ts";
 import {
@@ -74,7 +76,10 @@ function selectDirectoryFiles(allFiles: string[], directoryPath: string): string
   return allFiles.filter((file) => file.startsWith(prefix));
 }
 
-async function resolveManifestExtensionEntries(packageRoot: string, entries: string[]): Promise<string[]> {
+async function resolveManifestExtensionEntries(
+  packageRoot: string,
+  entries: string[],
+): Promise<string[]> {
   const selected = new Set<string>();
   const allFiles = await collectExtensionFilesFromDir(packageRoot, packageRoot);
 
@@ -112,7 +117,9 @@ export async function discoverPackageExtensionEntrypoints(packageRoot: string): 
   const manifestExtensions = manifest?.pi?.extensions;
 
   if (Array.isArray(manifestExtensions)) {
-    const entries = manifestExtensions.filter((value): value is string => typeof value === "string");
+    const entries = manifestExtensions.filter(
+      (value): value is string => typeof value === "string",
+    );
     return resolveManifestExtensionEntries(packageRoot, entries);
   }
 
@@ -144,7 +151,12 @@ export async function discoverPackageExtensions(
     const absolutePath = resolve(pkg.resolvedPath, extensionPath);
     const available = await fileExists(absolutePath);
     const summary = available ? await readSummary(absolutePath) : "package extension";
-    const originalState = await getPackageExtensionState(pkg.source, normalizedPath, pkg.scope, cwd);
+    const originalState = await getPackageExtensionState(
+      pkg.source,
+      normalizedPath,
+      pkg.scope,
+      cwd,
+    );
 
     entries.push({
       id: `${pkg.id}:${normalizedPath}`,

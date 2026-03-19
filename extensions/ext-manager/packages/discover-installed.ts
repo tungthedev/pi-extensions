@@ -1,16 +1,22 @@
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import type { InstalledPackage, Scope } from "../types.ts";
 
 export function normalizeSource(source: string): string {
-  return source.trim().replace(/\s+\((filtered|pinned)\)$/i, "").trim();
+  return source
+    .trim()
+    .replace(/\s+\((filtered|pinned)\)$/i, "")
+    .trim();
 }
 
 function displayNameFromSource(source: string): string {
-  const trimmed = source.replace(/[@#].*$/, "").replace(/\/+$/g, "").replace(/\\+$/g, "");
+  const trimmed = source
+    .replace(/[@#].*$/, "")
+    .replace(/\/+$/g, "")
+    .replace(/\\+$/g, "");
   const parts = trimmed.split(/[/:]/).filter(Boolean);
   return parts[parts.length - 1] ?? source;
 }

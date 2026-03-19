@@ -1,7 +1,6 @@
 import type { AgentToolResult, Theme } from "@mariozechner/pi-coding-agent";
 import type { Text } from "@mariozechner/pi-tui";
 
-import { detailLine, expandHintLine, renderLines, titleLine } from "./common.ts";
 import {
   firstLine,
   firstText,
@@ -11,6 +10,13 @@ import {
   stripExitCodeLines,
   summarizeCommand,
 } from "../shared/text.ts";
+import { detailLine, expandHintLine, renderLines, titleLine } from "./common.ts";
+
+export function isFailedBashResult(result: AgentToolResult<unknown>): boolean {
+  const text = firstText(result);
+  const exitCode = parseExitCode(text);
+  return isErrorText(text) || (exitCode !== undefined && exitCode !== 0);
+}
 
 export function renderBashResult(
   theme: Theme,
@@ -20,9 +26,9 @@ export function renderBashResult(
 ): Text {
   const text = firstText(result);
   const exitCode = parseExitCode(text);
-  const failed = isErrorText(text) || (exitCode !== undefined && exitCode !== 0);
+  const failed = isFailedBashResult(result);
   const command = summarizeCommand(args.command);
-  const suffix = `${theme.fg("accent", command)}${
+  const suffix = `${theme.fg(failed ? "error" : "accent", command)}${
     exitCode !== undefined ? theme.fg("dim", ` (exit ${exitCode})`) : ""
   }`;
 

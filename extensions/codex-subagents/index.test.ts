@@ -1,10 +1,9 @@
+import { SessionManager } from "@mariozechner/pi-coding-agent";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-
-import { SessionManager } from "@mariozechner/pi-coding-agent";
 
 import {
   applySpawnAgentProfile,
@@ -130,7 +129,13 @@ test("deriveDurableStatusFromState distinguishes running and idle child states",
   assert.equal(deriveDurableStatusFromState(undefined), "live_running");
   assert.equal(deriveDurableStatusFromState({ isStreaming: true }), "live_running");
   assert.equal(deriveDurableStatusFromState({ pendingMessageCount: 1 }), "live_running");
-  assert.equal(deriveDurableStatusFromState({ isStreaming: false, pendingMessageCount: 0 }), "live_idle");
+  assert.equal(
+    deriveDurableStatusFromState({
+      isStreaming: false,
+      pendingMessageCount: 0,
+    }),
+    "live_idle",
+  );
 });
 
 test("rebuildDurableRegistry reconstructs the latest durable record and normalizes live states", () => {
@@ -179,7 +184,11 @@ test("resolveAgentIdAlias and resolveAgentIdsAlias accept Codex and legacy field
   assert.equal(resolveAgentIdAlias({ id: "agent-a" }), "agent-a");
   assert.equal(resolveAgentIdAlias({ agent_id: "agent-b" }), "agent-b");
   assert.deepEqual(
-    resolveAgentIdsAlias({ id: "agent-a", ids: ["agent-b"], agent_ids: ["agent-b", "agent-c"] }),
+    resolveAgentIdsAlias({
+      id: "agent-a",
+      ids: ["agent-b"],
+      agent_ids: ["agent-b", "agent-c"],
+    }),
     ["agent-a", "agent-b", "agent-c"],
   );
 });
@@ -268,7 +277,10 @@ test("resolveParentSpawnDefaults prefers the live parent model over session hist
     leafId: fixture.manager.getLeafId(),
   });
 
-  assert.deepEqual(resolved, { model: "gpt-5-mini", reasoningEffort: "medium" });
+  assert.deepEqual(resolved, {
+    model: "gpt-5-mini",
+    reasoningEffort: "medium",
+  });
 
   fixture.cleanup();
 });
@@ -312,14 +324,12 @@ test("resolveSubagentName uses explicit names and otherwise generates a unique a
 });
 
 test("truncateSubagentReply limits previews to 50 lines and reports hidden rows", () => {
-  const source = new Array(MAX_SUBAGENT_REPLY_PREVIEW_LINES + 3)
-    .fill(0)
+  const source = Array.from({ length: MAX_SUBAGENT_REPLY_PREVIEW_LINES + 3 }, () => 0)
     .map((_, index) => `line ${index + 1}`)
     .join("\n");
 
   assert.deepEqual(truncateSubagentReply(source), {
-    text: new Array(MAX_SUBAGENT_REPLY_PREVIEW_LINES)
-      .fill(0)
+    text: Array.from({ length: MAX_SUBAGENT_REPLY_PREVIEW_LINES + 3 }, () => 0)
       .map((_, index) => `line ${index + 1}`)
       .join("\n"),
     hiddenLineCount: 3,
@@ -327,13 +337,20 @@ test("truncateSubagentReply limits previews to 50 lines and reports hidden rows"
 });
 
 test("getSubagentDisplayName prefers alias over agent id", () => {
-  assert.equal(getSubagentDisplayName({ agent_id: "agent-1", name: "amber-badger" }), "amber-badger");
+  assert.equal(
+    getSubagentDisplayName({ agent_id: "agent-1", name: "amber-badger" }),
+    "amber-badger",
+  );
   assert.equal(getSubagentDisplayName({ agent_id: "agent-2" }), "agent-2");
 });
 
 test("getSubagentDisplayName includes role when available", () => {
   assert.equal(
-    getSubagentDisplayName({ agent_id: "agent-1", name: "amber-badger", agent_type: "explorer" }),
+    getSubagentDisplayName({
+      agent_id: "agent-1",
+      name: "amber-badger",
+      agent_type: "explorer",
+    }),
     "amber-badger [explorer]",
   );
   assert.equal(getSubagentDisplayName({ agent_id: "agent-2", agent_type: "worker" }), "[worker]");

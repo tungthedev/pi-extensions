@@ -1,7 +1,7 @@
-import fs from "node:fs/promises";
-
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
 import { Type } from "@sinclair/typebox";
+import fs from "node:fs/promises";
 
 import {
   detectSupportedImageMimeTypeFromFile,

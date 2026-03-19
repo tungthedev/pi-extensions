@@ -1,7 +1,11 @@
+import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+
 import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-} from "@mariozechner/pi-coding-agent";
+  InstalledPackage,
+  LocalExtensionEntry,
+  PackageExtensionEntry,
+  State,
+} from "../types.ts";
 
 import { discoverLocalExtensions, setLocalExtensionState } from "../local.ts";
 import {
@@ -9,12 +13,6 @@ import {
   discoverInstalledPackages,
   discoverPackageExtensions,
 } from "../packages.ts";
-import type {
-  InstalledPackage,
-  LocalExtensionEntry,
-  PackageExtensionEntry,
-  State,
-} from "../types.ts";
 
 export class ExtensionManagerController {
   localEntries: LocalExtensionEntry[] = [];

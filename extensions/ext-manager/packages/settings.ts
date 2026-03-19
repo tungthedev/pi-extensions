@@ -1,11 +1,11 @@
+import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { getAgentDir } from "@mariozechner/pi-coding-agent";
-
 import type { Scope, State } from "../types.ts";
-import { getPackageFilterState, normalizeRelativePath, updateExtensionMarkers } from "./filters.ts";
+
 import { normalizeSource } from "./discover-installed.ts";
+import { getPackageFilterState, normalizeRelativePath, updateExtensionMarkers } from "./filters.ts";
 
 interface PackageSettingsObject {
   source: string;
@@ -17,7 +17,9 @@ interface SettingsFile {
 }
 
 function getSettingsPath(scope: Scope, cwd: string): string {
-  return scope === "project" ? join(cwd, ".pi", "settings.json") : join(getAgentDir(), "settings.json");
+  return scope === "project"
+    ? join(cwd, ".pi", "settings.json")
+    : join(getAgentDir(), "settings.json");
 }
 
 async function readSettingsFile(path: string, strict = false): Promise<SettingsFile> {

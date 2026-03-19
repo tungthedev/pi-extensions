@@ -38,10 +38,10 @@ export function applySpawnAgentProfile(options: {
 
   const effectiveModel = profile.lockedModel
     ? profile.model
-    : (options.requestedModel?.trim() || profile.model);
+    : options.requestedModel?.trim() || profile.model;
   const effectiveReasoningEffort = profile.lockedReasoningEffort
     ? profile.reasoningEffort
-    : (options.requestedReasoningEffort?.trim() || profile.reasoningEffort);
+    : options.requestedReasoningEffort?.trim() || profile.reasoningEffort;
 
   return {
     agentType,

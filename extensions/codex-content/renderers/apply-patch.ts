@@ -1,8 +1,9 @@
-import { renderDiff, type AgentToolResult, type Theme } from "@mariozechner/pi-coding-agent";
 import type { Text } from "@mariozechner/pi-tui";
 
-import { detailLine, expandHintLine, renderLines, titleLine } from "./common.ts";
+import { renderDiff, type AgentToolResult, type Theme } from "@mariozechner/pi-coding-agent";
+
 import { countDiff, firstLine, firstText, previewLines, shortenPath } from "../shared/text.ts";
+import { detailLine, expandHintLine, renderLines, titleLine } from "./common.ts";
 
 type ApplyPatchAffected = {
   added?: string[];
@@ -21,7 +22,9 @@ type ApplyPatchDetails = {
   }>;
 };
 
-function applyPatchActionTitle(action: "added" | "modified" | "deleted" | "moved" | undefined): string {
+function applyPatchActionTitle(
+  action: "added" | "modified" | "deleted" | "moved" | undefined,
+): string {
   switch (action) {
     case "added":
       return "Added";
@@ -34,7 +37,9 @@ function applyPatchActionTitle(action: "added" | "modified" | "deleted" | "moved
   }
 }
 
-function applyPatchActionCode(action: "added" | "modified" | "deleted" | "moved" | undefined): string {
+function applyPatchActionCode(
+  action: "added" | "modified" | "deleted" | "moved" | undefined,
+): string {
   switch (action) {
     case "added":
       return "A";
@@ -96,7 +101,12 @@ function buildApplyPatchDetailLines(
         continue;
       }
 
-      lines.push(theme.fg("toolOutput", `${applyPatchActionCode(file.action)} ${describeApplyPatchFile(file)}`));
+      lines.push(
+        theme.fg(
+          "toolOutput",
+          `${applyPatchActionCode(file.action)} ${describeApplyPatchFile(file)}`,
+        ),
+      );
 
       if (file.diff) {
         lines.push(...renderDiff(file.diff, { filePath: file.path }).split("\n"));
@@ -117,7 +127,9 @@ function buildApplyPatchDetailLines(
 }
 
 function summarizeFiles(files: NonNullable<ApplyPatchDetails["files"]>): string {
-  const summarized = files.map((file) => `${describeApplyPatchFile(file)}${fileStatsSuffix(file.diff)}`);
+  const summarized = files.map(
+    (file) => `${describeApplyPatchFile(file)}${fileStatsSuffix(file.diff)}`,
+  );
   if (summarized.length <= 2) {
     return summarized.join(", ");
   }
@@ -179,9 +191,12 @@ export function renderApplyPatchResult(
     (typeof details.exitCode === "number" && details.exitCode !== 0);
   const summary = summarizeApplyPatchResult(details);
   const singleFileStats = singleFile?.diff ? countDiff(singleFile.diff) : undefined;
-  const singleFileStatsSuffix =
-    singleFileStats ? theme.fg("dim", ` (+${singleFileStats.added} -${singleFileStats.removed})`) : "";
-  const suffix = summary.suffix ? `${theme.fg("accent", summary.suffix)}${singleFileStatsSuffix}` : undefined;
+  const singleFileStatsSuffix = singleFileStats
+    ? theme.fg("dim", ` (+${singleFileStats.added} -${singleFileStats.removed})`)
+    : "";
+  const suffix = summary.suffix
+    ? `${theme.fg("accent", summary.suffix)}${singleFileStatsSuffix}`
+    : undefined;
   const lines = [
     titleLine(theme, failed ? "error" : "success", failed ? "Patch failed" : summary.title, suffix),
   ];

@@ -22,17 +22,19 @@ async function withTempDir(run: (dir: string) => Promise<void>) {
 }
 
 test("readIndentationBlock keeps header comments and excludes sibling blocks by default", () => {
-  const records = buildLineRecords([
-    "function outer() {",
-    "    if (cond) {",
-    "        // header comment",
-    "        if (inner) {",
-    "            work();",
-    "        }",
-    "        const sibling = 1;",
-    "    }",
-    "}",
-  ].join("\n"));
+  const records = buildLineRecords(
+    [
+      "function outer() {",
+      "    if (cond) {",
+      "        // header comment",
+      "        if (inner) {",
+      "            work();",
+      "        }",
+      "        const sibling = 1;",
+      "    }",
+      "}",
+    ].join("\n"),
+  );
 
   const block = readIndentationBlock(records, 5, 10, {
     anchor_line: 5,

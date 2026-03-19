@@ -1,4 +1,5 @@
 import type { ApplyPatchArgs, PatchHunk, UpdateFileChunk } from "./types.ts";
+
 import { invalidHunk, invalidPatch } from "./types.ts";
 
 const BEGIN_PATCH_MARKER = "*** Begin Patch";

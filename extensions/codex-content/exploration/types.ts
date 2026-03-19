@@ -1,12 +1,5 @@
 export type ExplorationItem = {
-  toolName:
-    | "read"
-    | "grep"
-    | "find"
-    | "ls"
-    | "read_file"
-    | "grep_files"
-    | "list_dir";
+  toolName: "read" | "grep" | "find" | "ls" | "read_file" | "grep_files" | "list_dir";
   detail: string;
   failed?: boolean;
   errorPreview?: string[];

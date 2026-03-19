@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
 
-import { shortenPath } from "./text.ts";
+import { parseExitCode, shortenPath } from "./text.ts";
 
 test("shortenPath renders cwd files relative to the root cwd", () => {
   const cwd = process.cwd();
@@ -17,4 +17,10 @@ test("shortenPath keeps files outside cwd as absolute paths", () => {
 
   assert.equal(shortenPath(outsidePath), outsidePath);
   assert.equal(shortenPath("../external.txt"), outsidePath);
+});
+
+test("parseExitCode recognizes both legacy and builtin bash failure strings", () => {
+  assert.equal(parseExitCode("exit code: 7"), 7);
+  assert.equal(parseExitCode("Command exited with code 7"), 7);
+  assert.equal(parseExitCode("no exit code here"), undefined);
 });

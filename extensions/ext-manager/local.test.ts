@@ -1,5 +1,5 @@
-import assert from "node:assert/strict";
 import { test } from "bun:test";
+import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -48,7 +48,10 @@ test("discoverLocalExtensions ignores missing configured files", async () => {
     );
 
     const entries = await discoverLocalExtensions(cwd);
-    assert.equal(entries.some((entry) => entry.activePath === missingPath), false);
+    assert.equal(
+      entries.some((entry) => entry.activePath === missingPath),
+      false,
+    );
   });
 });
 

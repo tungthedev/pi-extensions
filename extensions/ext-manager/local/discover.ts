@@ -1,9 +1,11 @@
-import { readdir, readFile, stat } from "node:fs/promises";
 import type { Dirent } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+
+import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import type { LocalExtensionEntry, Scope, State } from "../types.ts";
+
 import { fileExists } from "../shared/fs.ts";
 import { readSummary } from "../shared/summary.ts";
 
@@ -30,9 +32,7 @@ async function parseTopLevelFile(
   if (!isEnabledTsJs && !isDisabledTsJs) return undefined;
 
   const currentPath = join(root, fileName);
-  const activePath = isDisabledTsJs
-    ? currentPath.slice(0, -DISABLED_SUFFIX.length)
-    : currentPath;
+  const activePath = isDisabledTsJs ? currentPath.slice(0, -DISABLED_SUFFIX.length) : currentPath;
   const disabledPath = `${activePath}${DISABLED_SUFFIX}`;
   const state: State = isDisabledTsJs ? "disabled" : "enabled";
   const summary = await readSummary(state === "enabled" ? activePath : disabledPath);
@@ -268,8 +268,14 @@ export async function discoverLocalExtensions(cwd: string): Promise<LocalExtensi
   ];
 
   const discoveredRoots = await Promise.all(roots.map((root) => discoverInRoot(root)));
-  const configuredGlobal = await discoverConfiguredExtensions(join(agentDir, "settings.json"), "global");
-  const configuredProject = await discoverConfiguredExtensions(join(cwd, ".pi", "settings.json"), "project");
+  const configuredGlobal = await discoverConfiguredExtensions(
+    join(agentDir, "settings.json"),
+    "global",
+  );
+  const configuredProject = await discoverConfiguredExtensions(
+    join(cwd, ".pi", "settings.json"),
+    "project",
+  );
 
   const deduped = new Map<string, LocalExtensionEntry>();
   for (const entry of [...discoveredRoots.flat(), ...configuredGlobal, ...configuredProject]) {

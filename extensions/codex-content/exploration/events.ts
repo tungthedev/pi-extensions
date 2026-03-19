@@ -44,7 +44,11 @@ export function installExplorationEventHandlers(pi: ExtensionAPI): void {
     setFinalExplorationWidget(ctx, tracker);
   };
 
-  const handleReset = (_event: unknown, ctx: ExtensionContext, options: { clearWidget?: boolean } = {}) => {
+  const handleReset = (
+    _event: unknown,
+    ctx: ExtensionContext,
+    options: { clearWidget?: boolean } = {},
+  ) => {
     resetExplorationState();
     clearWorkingMessage(ctx);
     clearLiveUi(ctx);
@@ -66,7 +70,13 @@ export function installExplorationEventHandlers(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_execution_start", async (event, ctx) => {
-    if (tracker.onToolExecutionStart(event.toolCallId, event.toolName, event.args as Record<string, unknown>)) {
+    if (
+      tracker.onToolExecutionStart(
+        event.toolCallId,
+        event.toolName,
+        event.args as Record<string, unknown>,
+      )
+    ) {
       syncLiveExplorationStatus(pi, tracker, ctx);
     }
   });

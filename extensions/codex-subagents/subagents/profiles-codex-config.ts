@@ -23,7 +23,7 @@ function escapeRegExp(text: string): string {
 }
 
 function matchTomlString(section: string, key: string): string | undefined {
-  const match = section.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*\"([^\"]*)\"`, "m"));
+  const match = section.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*"([^"]*)"`, "m"));
   return match?.[1]?.trim();
 }
 
@@ -53,13 +53,14 @@ export function parseCodexRoleDeclarations(contents: string): CodexDeclaredRole[
   const allHeaders = [...contents.matchAll(anyHeaderRegex)];
   const declarations: CodexDeclaredRole[] = [];
 
-  for (const [index, match] of matches.entries()) {
+  for (const [_, match] of matches.entries()) {
     const declaredName = match[1]?.trim();
     if (!declaredName) continue;
 
     const sectionStart = (match.index ?? 0) + match[0].length;
     const sectionEnd =
-      allHeaders.find((header) => (header.index ?? 0) > (match.index ?? 0))?.index ?? contents.length;
+      allHeaders.find((header) => (header.index ?? 0) > (match.index ?? 0))?.index ??
+      contents.length;
     const section = contents.slice(sectionStart, sectionEnd);
 
     declarations.push({

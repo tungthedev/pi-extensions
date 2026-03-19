@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
 import { Type } from "@sinclair/typebox";
 
 import { renderBashResult } from "../renderers/bash.ts";
@@ -18,20 +19,30 @@ export function registerShellCommandTool(pi: ExtensionAPI): void {
     description:
       "Runs a shell command and returns its output. Always set the workdir param when possible.",
     parameters: Type.Object({
-      command: Type.String({ description: "The shell script to execute in the user's shell." }),
+      command: Type.String({
+        description: "The shell script to execute in the user's shell.",
+      }),
       workdir: Type.Optional(
-        Type.String({ description: "The working directory to execute the command in." }),
+        Type.String({
+          description: "The working directory to execute the command in.",
+        }),
       ),
       timeout_ms: Type.Optional(
-        Type.Number({ description: "The timeout for the command in milliseconds." }),
+        Type.Number({
+          description: "The timeout for the command in milliseconds.",
+        }),
       ),
       login: Type.Optional(
-        Type.Boolean({ description: "Whether to run the shell with login shell semantics." }),
+        Type.Boolean({
+          description: "Whether to run the shell with login shell semantics.",
+        }),
       ),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const workdir = resolveAbsolutePath(ctx.cwd, params.workdir ?? ".");
-      const invocation = resolveShellInvocation(params.command, { login: params.login });
+      const invocation = resolveShellInvocation(params.command, {
+        login: params.login,
+      });
       const result = await execCommand(invocation.shell, invocation.shellArgs, workdir, {
         timeoutMs: params.timeout_ms,
         signal,

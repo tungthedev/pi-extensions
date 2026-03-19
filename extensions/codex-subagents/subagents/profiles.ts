@@ -1,12 +1,18 @@
-import { applySpawnAgentProfile, resolveRequestedAgentType } from "./profiles-apply.ts";
 import type { AgentProfileConfig, ResolvedAgentProfiles } from "./profiles-types.ts";
+
+import { applySpawnAgentProfile, resolveRequestedAgentType } from "./profiles-apply.ts";
 import { parseBundledRoleAsset, resolveBuiltInAgentProfiles } from "./profiles-builtins.ts";
 import { loadCustomAgentProfiles } from "./profiles-loader.ts";
 
 let cachedAllProfiles: ResolvedAgentProfiles | undefined;
 
 function buildLockedSettingsNote(profile: AgentProfileConfig): string {
-  if (profile.lockedModel && profile.model && profile.lockedReasoningEffort && profile.reasoningEffort) {
+  if (
+    profile.lockedModel &&
+    profile.model &&
+    profile.lockedReasoningEffort &&
+    profile.reasoningEffort
+  ) {
     return `- This role's model is set to \`${profile.model}\` and its reasoning effort is set to \`${profile.reasoningEffort}\`. These settings cannot be changed.`;
   }
   if (profile.lockedModel && profile.model) {
@@ -23,7 +29,9 @@ function formatProfile(profile: AgentProfileConfig): string {
     return `${profile.name}: no description`;
   }
   const lockedSettingsNote = buildLockedSettingsNote(profile);
-  const body = lockedSettingsNote ? `${profile.description}\n${lockedSettingsNote}` : profile.description;
+  const body = lockedSettingsNote
+    ? `${profile.description}\n${lockedSettingsNote}`
+    : profile.description;
   return `${profile.name}: {\n${body}\n}`;
 }
 
@@ -61,7 +69,9 @@ function buildResolvedAgentProfiles(env: NodeJS.ProcessEnv = process.env): Resol
   };
 }
 
-export function resolveAgentProfiles(options: { includeHidden?: boolean } = {}): ResolvedAgentProfiles {
+export function resolveAgentProfiles(
+  options: { includeHidden?: boolean } = {},
+): ResolvedAgentProfiles {
   cachedAllProfiles ??= buildResolvedAgentProfiles();
   if (options.includeHidden === true) {
     return {
@@ -85,5 +95,9 @@ export function resolveAgentProfiles(options: { includeHidden?: boolean } = {}):
 export type { AgentProfileConfig, ResolvedAgentProfiles } from "./profiles-types.ts";
 export { parseBundledRoleAsset, resolveBuiltInAgentProfiles };
 export { applySpawnAgentProfile, resolveRequestedAgentType };
-export { discoverCodexRoleFiles, parseCodexRoleDeclarations, resolveCodexConfigPath } from "./profiles-codex-config.ts";
+export {
+  discoverCodexRoleFiles,
+  parseCodexRoleDeclarations,
+  resolveCodexConfigPath,
+} from "./profiles-codex-config.ts";
 export { loadCustomAgentProfiles, parseCodexRoleFile } from "./profiles-loader.ts";

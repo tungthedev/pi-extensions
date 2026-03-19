@@ -1,8 +1,8 @@
 import type { AgentToolResult, Theme } from "@mariozechner/pi-coding-agent";
 import type { Text } from "@mariozechner/pi-tui";
 
-import { detailLine, renderLines, titleLine } from "./common.ts";
 import { firstLine, firstText, isErrorText, shortenPath } from "../shared/text.ts";
+import { detailLine, renderLines, titleLine } from "./common.ts";
 
 export function renderWriteResult(
   theme: Theme,

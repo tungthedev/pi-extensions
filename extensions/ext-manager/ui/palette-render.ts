@@ -1,4 +1,5 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
+
 import { visibleWidth } from "@mariozechner/pi-tui";
 
 export function pad(text: string, width: number): string {

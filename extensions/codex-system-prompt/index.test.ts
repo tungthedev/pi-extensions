@@ -14,7 +14,10 @@ test("buildCodexPrompt appends the Pi-specific apply_patch override", () => {
   const prompt = buildCodexPrompt("Base Codex prompt");
 
   assert.match(prompt, /^Base Codex prompt\n\n## Pi harness apply_patch note/m);
-  assert.match(prompt, /`apply_patch` is a structured tool with a single string parameter named `input`/);
+  assert.match(
+    prompt,
+    /`apply_patch` is a structured tool with a single string parameter named `input`/,
+  );
   assert.match(prompt, /do not invoke `apply_patch` through `shell_command`/);
 });
 
@@ -69,7 +72,10 @@ test("readAgentProfilePromptPayload returns parsed profile bootstrap data", () =
 
 test("buildAgentProfilePromptBlock returns developer instructions only when present", () => {
   assert.equal(
-    buildAgentProfilePromptBlock({ name: "explorer", developerInstructions: "You are an explorer." }),
+    buildAgentProfilePromptBlock({
+      name: "explorer",
+      developerInstructions: "You are an explorer.",
+    }),
     "You are an explorer.",
   );
   assert.equal(buildAgentProfilePromptBlock({ name: "explorer" }), "");
