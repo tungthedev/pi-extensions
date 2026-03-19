@@ -21,6 +21,7 @@ import {
   MAX_SUBAGENT_NOTIFICATION_PREVIEW_CHARS,
   MAX_SUBAGENT_REPLY_PREVIEW_LINES,
   normalizeReasoningEffortToThinkingLevel,
+  normalizeWaitAgentTimeoutMs,
   normalizeThinkingLevelToReasoningEffort,
   parseSubagentNotificationMessage,
   parseJsonLines,
@@ -249,6 +250,17 @@ test("normalizeThinkingLevelToReasoningEffort keeps supported inherited values",
   assert.equal(normalizeThinkingLevelToReasoningEffort("weird"), undefined);
 });
 
+test("normalizeWaitAgentTimeoutMs applies wait_agent default, clamp, and validation", () => {
+  assert.equal(normalizeWaitAgentTimeoutMs(undefined), 30_000);
+  assert.equal(normalizeWaitAgentTimeoutMs(10_000), 10_000);
+  assert.equal(normalizeWaitAgentTimeoutMs(5_000), 10_000);
+  assert.equal(normalizeWaitAgentTimeoutMs(45_000), 30_000);
+  assert.throws(
+    () => normalizeWaitAgentTimeoutMs(0),
+    /timeout_ms must be greater than zero/,
+  );
+});
+
 test("resolveParentSpawnDefaults inherits parent model and thinking level from session context", () => {
   const fixture = createPersistedSessionFixture();
 
@@ -426,6 +438,16 @@ test("buildWaitAgentContent exposes child assistant text in tool content", () =>
         last_error: "boom",
       },
     ],
+  });
+});
+
+test("buildWaitAgentContent returns empty status when wait_agent times out", () => {
+  const content = buildWaitAgentContent([], true);
+
+  assert.deepEqual(JSON.parse(content), {
+    status: {},
+    timed_out: true,
+    agents: [],
   });
 });
 

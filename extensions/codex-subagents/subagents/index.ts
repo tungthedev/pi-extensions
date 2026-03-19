@@ -100,6 +100,52 @@ function waitForStateChange(attachment: LiveChildAttachment, timeoutMs: number):
   });
 }
 
+function waitForAnyStateChange(
+  attachments: LiveChildAttachment[],
+  timeoutMs: number,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (attachments.length === 0) {
+      setTimeout(() => resolve(false), Math.max(1, timeoutMs));
+      return;
+    }
+
+    let settled = false;
+    const listeners: Array<{ attachment: LiveChildAttachment; waiter: () => void }> = [];
+    const cleanup = () => {
+      for (const { attachment, waiter } of listeners) {
+        attachment.stateWaiters = attachment.stateWaiters.filter((entry) => entry !== waiter);
+      }
+    };
+    const finish = (changed: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      cleanup();
+      resolve(changed);
+    };
+    const timer = setTimeout(() => finish(false), Math.max(1, timeoutMs));
+
+    for (const attachment of attachments) {
+      const waiter = () => finish(true);
+      listeners.push({ attachment, waiter });
+      attachment.stateWaiters.push(waiter);
+    }
+  });
+}
+
+const MIN_WAIT_AGENT_TIMEOUT_MS = 10_000;
+const DEFAULT_WAIT_AGENT_TIMEOUT_MS = 30_000;
+const MAX_WAIT_AGENT_TIMEOUT_MS = 30_000;
+
+export function normalizeWaitAgentTimeoutMs(timeoutMs: number | undefined): number {
+  const rawTimeoutMs = timeoutMs ?? DEFAULT_WAIT_AGENT_TIMEOUT_MS;
+  if (rawTimeoutMs <= 0) {
+    throw new Error("timeout_ms must be greater than zero");
+  }
+  return Math.min(MAX_WAIT_AGENT_TIMEOUT_MS, Math.max(MIN_WAIT_AGENT_TIMEOUT_MS, rawTimeoutMs));
+}
+
 type CollabInputItem = {
   type?: string;
   text?: string;
@@ -342,8 +388,51 @@ export function resolveForkContextSessionFile(options: {
 export function registerCodexSubagentTools(pi: ExtensionAPI) {
   const durableChildrenById = new Map<string, DurableChildRecord>();
   const liveAttachmentsById = new Map<string, LiveChildAttachment>();
+  const activeWaitsByAgentId = new Map<string, number>();
+  const completionVersionByAgentId = new Map<string, number>();
+  const completionSignatureByAgentId = new Map<string, string>();
+  const consumedCompletionVersionByAgentId = new Map<string, number>();
+  const suppressedCompletionVersionByAgentId = new Map<string, number>();
   let parentIsStreaming = false;
   let activeSessionFile: string | undefined;
+
+  const incrementActiveWaits = (ids: string[]) => {
+    for (const id of ids) {
+      activeWaitsByAgentId.set(id, (activeWaitsByAgentId.get(id) ?? 0) + 1);
+    }
+  };
+
+  const decrementActiveWaits = (ids: string[]) => {
+    for (const id of ids) {
+      const nextCount = (activeWaitsByAgentId.get(id) ?? 0) - 1;
+      if (nextCount > 0) {
+        activeWaitsByAgentId.set(id, nextCount);
+      } else {
+        activeWaitsByAgentId.delete(id);
+      }
+    }
+  };
+
+  const resetCompletionTracking = (agentId: string) => {
+    completionSignatureByAgentId.delete(agentId);
+    suppressedCompletionVersionByAgentId.delete(agentId);
+  };
+
+  const completionSignature = (record: DurableChildRecord): string =>
+    JSON.stringify({
+      status: record.status,
+      lastError: record.lastError ?? null,
+      lastAssistantText: record.lastAssistantText ?? null,
+    });
+
+  const getCompletionVersion = (record: DurableChildRecord): number => {
+    const signature = completionSignature(record);
+    if (completionSignatureByAgentId.get(record.agentId) !== signature) {
+      completionSignatureByAgentId.set(record.agentId, signature);
+      completionVersionByAgentId.set(record.agentId, (completionVersionByAgentId.get(record.agentId) ?? 0) + 1);
+    }
+    return completionVersionByAgentId.get(record.agentId) ?? 0;
+  };
 
   const persistRegistryEvent = (
     eventType: SubagentEntryType,
@@ -409,7 +498,18 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   const notifyParentOfChildStatus = (record: DurableChildRecord): void => {
     if (!shouldNotifyParent(record)) return;
 
+    const completionVersion = getCompletionVersion(record);
+    if ((activeWaitsByAgentId.get(record.agentId) ?? 0) > 0) {
+      suppressedCompletionVersionByAgentId.set(record.agentId, completionVersion);
+      return;
+    }
+    if ((consumedCompletionVersionByAgentId.get(record.agentId) ?? 0) >= completionVersion) {
+      suppressedCompletionVersionByAgentId.delete(record.agentId);
+      return;
+    }
+
     const snapshot = childSnapshot(record);
+    suppressedCompletionVersionByAgentId.delete(record.agentId);
     pi.sendMessage(
       {
         customType: CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
@@ -417,8 +517,31 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         display: true,
         details: snapshot,
       },
-      parentIsStreaming ? { deliverAs: "nextTurn" } : undefined,
+      parentIsStreaming ? { deliverAs: "followUp" } : undefined,
     );
+  };
+
+  const consumeCompletionNotification = (agentId: string) => {
+    const record = durableChildrenById.get(agentId);
+    if (!record || !shouldNotifyParent(record)) return;
+    const completionVersion = getCompletionVersion(record);
+    consumedCompletionVersionByAgentId.set(agentId, completionVersion);
+    suppressedCompletionVersionByAgentId.delete(agentId);
+  };
+
+  const flushSuppressedNotifications = (ids: string[]) => {
+    for (const id of ids) {
+      if ((activeWaitsByAgentId.get(id) ?? 0) > 0) continue;
+      const record = durableChildrenById.get(id);
+      const suppressedVersion = suppressedCompletionVersionByAgentId.get(id);
+      if (!record || suppressedVersion === undefined || !shouldNotifyParent(record)) continue;
+      if ((consumedCompletionVersionByAgentId.get(id) ?? 0) >= suppressedVersion) {
+        suppressedCompletionVersionByAgentId.delete(id);
+        continue;
+      }
+      if (getCompletionVersion(record) !== suppressedVersion) continue;
+      notifyParentOfChildStatus(record);
+    }
   };
 
   pi.registerMessageRenderer<AgentSnapshot>(
@@ -477,6 +600,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       updatedAt: patch.updatedAt ?? new Date().toISOString(),
     };
     durableChildrenById.set(agentId, next);
+    if (next.status === "live_running") {
+      resetCompletionTracking(agentId);
+    }
     if (options.persistAs) {
       persistRegistryEvent(options.persistAs, next, { reason: options.reason });
     }
@@ -818,65 +944,6 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           updatedAt: new Date().toISOString(),
         });
       }
-    }
-  };
-
-  const waitForAgentIdle = async (
-    record: DurableChildRecord,
-    attachment: LiveChildAttachment,
-    timeoutMs: number,
-  ): Promise<AgentSnapshot> => {
-    const deadline = Date.now() + Math.max(0, timeoutMs);
-
-    while (true) {
-      const latestRecord = requireDurableChild(record.agentId);
-      if (latestRecord.status === "closed" || latestRecord.status === "failed") {
-        return childSnapshot(latestRecord, attachment);
-      }
-
-      const remainingBeforePoll = deadline - Date.now();
-      if (remainingBeforePoll <= 0) {
-        return childSnapshot(latestRecord, attachment, "timeout");
-      }
-
-      let response: RpcResponse;
-      try {
-        response = await sendRpcCommand(
-          attachment,
-          { type: "get_state" },
-          Math.min(5_000, Math.max(1, remainingBeforePoll)),
-        );
-      } catch {
-        if (Date.now() >= deadline) {
-          return childSnapshot(requireDurableChild(record.agentId), attachment, "timeout");
-        }
-
-        const maybeLiveRecord = durableChildrenById.get(record.agentId);
-        if (
-          !maybeLiveRecord ||
-          maybeLiveRecord.status === "closed" ||
-          maybeLiveRecord.status === "failed"
-        ) {
-          return childSnapshot(maybeLiveRecord ?? record, attachment);
-        }
-
-        await waitForStateChange(attachment, Math.min(300, Math.max(1, deadline - Date.now())));
-        continue;
-      }
-
-      if (response.success && response.data) {
-        const nextRecord = updateFromGetState(record.agentId, response.data);
-        if (nextRecord.status === "live_idle") {
-          return childSnapshot(nextRecord, attachment);
-        }
-      }
-
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) {
-        return childSnapshot(requireDurableChild(record.agentId), attachment, "timeout");
-      }
-
-      await waitForStateChange(attachment, Math.min(300, remaining));
     }
   };
 
@@ -1314,49 +1381,69 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   pi.registerTool({
     name: "wait_agent",
     label: "wait_agent",
-    description: "Wait for one or more child agents to go idle, fail, close, or hit a timeout.",
+    description:
+      "Wait for agents to reach a final status. Returns empty status when timed out.",
     parameters: Type.Object({
-      id: Type.Optional(Type.String({ description: "Single child agent id to wait on." })),
-      ids: Type.Optional(
-        Type.Array(Type.String(), {
-          description:
-            "Agent ids to wait on. Pass multiple ids to wait for whichever finishes first.",
-        }),
-      ),
-      agent_id: Type.Optional(Type.String({ description: "Single child agent id to wait on." })),
-      agent_ids: Type.Optional(
-        Type.Array(Type.String(), {
-          description: "Multiple child agent ids to wait on.",
-        }),
-      ),
+      ids: Type.Array(Type.String(), {
+        description: "Agent ids to wait on. Pass multiple ids to wait for whichever finishes first.",
+      }),
       timeout_ms: Type.Optional(
-        Type.Number({ description: "Maximum time to wait before returning." }),
+        Type.Number({
+          description:
+            "Maximum time to wait before returning. Defaults to 30000, min 10000, max 30000.",
+        }),
       ),
     }),
     async execute(_toolCallId, params) {
-      const ids = resolveAgentIdsAlias(params);
+      const ids = [...new Set((params.ids ?? []).map((id) => id.trim()).filter(Boolean))];
       if (ids.length === 0) {
-        throw new Error("id, ids, agent_id, or agent_ids is required");
+        throw new Error("ids must be non-empty");
       }
 
-      const timeoutMs = params.timeout_ms ?? 30_000;
-      const snapshots = await Promise.all(
-        ids.map(async (id) => {
-          const record = requireDurableChild(id);
-          const attachment = liveAttachmentsById.get(id);
-          if (!attachment) {
-            return childSnapshot(record);
+      const timeoutMs = normalizeWaitAgentTimeoutMs(params.timeout_ms);
+      incrementActiveWaits(ids);
+
+      let snapshots: AgentSnapshot[] = [];
+      try {
+        const collectReadySnapshots = (): AgentSnapshot[] =>
+          ids.flatMap((id) => {
+            const record = requireDurableChild(id);
+            const attachment = liveAttachmentsById.get(id);
+            if (!attachment || record.status !== "live_running") {
+              return [childSnapshot(record, attachment)];
+            }
+            return [];
+          });
+
+        const deadline = Date.now() + timeoutMs;
+        snapshots = collectReadySnapshots();
+        while (snapshots.length === 0) {
+          const remaining = deadline - Date.now();
+          if (remaining <= 0) break;
+
+          const liveAttachments = ids.flatMap((id) => {
+            const attachment = liveAttachmentsById.get(id);
+            return attachment ? [attachment] : [];
+          });
+          const changed = await waitForAnyStateChange(liveAttachments, remaining);
+          if (!changed && Date.now() >= deadline) {
+            break;
           }
-          return await queueAgentOperation(attachment, async () =>
-            waitForAgentIdle(requireDurableChild(id), attachment, timeoutMs),
-          );
-        }),
-      );
+          snapshots = collectReadySnapshots();
+        }
+
+        for (const snapshot of snapshots) {
+          consumeCompletionNotification(snapshot.agent_id);
+        }
+      } finally {
+        decrementActiveWaits(ids);
+        flushSuppressedNotifications(ids);
+      }
+
       const status = Object.fromEntries(
         snapshots.map((snapshot) => [snapshot.agent_id, snapshot.status]),
       );
-      const timedOut =
-        snapshots.length > 0 && snapshots.every((snapshot) => snapshot.status === "timeout");
+      const timedOut = snapshots.length === 0;
 
       return {
         content: [{ type: "text", text: buildWaitAgentContent(snapshots, timedOut) }],
@@ -1368,7 +1455,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       };
     },
     renderCall(args, theme) {
-      const ids = resolveAgentIdsAlias(args);
+      const ids = [...new Set((args.ids ?? []).map((id) => id.trim()).filter(Boolean))];
       const names = ids.map((id) => {
         const record = durableChildrenById.get(id);
         return record ? getSubagentDisplayName(childSnapshot(record)) : id;

@@ -45,6 +45,7 @@ export {
   resolveForkContextSessionFile,
   resolveSubagentName,
   normalizeReasoningEffortToThinkingLevel,
+  normalizeWaitAgentTimeoutMs,
   normalizeThinkingLevelToReasoningEffort,
   resolveSpawnPrompt,
   summarizeSubagentReply,
