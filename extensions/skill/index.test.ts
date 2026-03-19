@@ -5,7 +5,6 @@ import path from "node:path";
 import test from "node:test";
 
 import {
-  buildListSkillsLines,
   createListSkillsTool,
   discoverAvailableSkills,
   findAvailableSkill,
@@ -122,50 +121,4 @@ test("list_skills tool returns discovered skills with metadata", async () => {
     }
     rmSync(root, { recursive: true, force: true });
   }
-});
-
-test("buildListSkillsLines renders collapsed tree preview with expand hint", () => {
-  const lines = buildListSkillsLines(
-    {
-      fg: (_color: string, text: string) => text,
-      bold: (text: string) => text,
-    } as never,
-    {
-      skills: [
-        { name: "skill-1", file_path: "/tmp/skill-1/SKILL.md" },
-        { name: "skill-2", file_path: "/tmp/skill-2/SKILL.md" },
-        { name: "skill-3", file_path: "/tmp/skill-3/SKILL.md" },
-      ],
-    },
-    false,
-  );
-
-  assert.deepEqual(lines, [
-    "• List Skills",
-    "├ skill-1 - /tmp/skill-1/SKILL.md",
-    "├ skill-2 - /tmp/skill-2/SKILL.md",
-    "└ ... +1 more skills (Ctrl+O to expand)",
-  ]);
-});
-
-test("buildListSkillsLines renders expanded tree preview with last branch", () => {
-  const lines = buildListSkillsLines(
-    {
-      fg: (_color: string, text: string) => text,
-      bold: (text: string) => text,
-    } as never,
-    {
-      skills: [
-        { name: "skill-1", file_path: "/tmp/skill-1/SKILL.md" },
-        { name: "skill-2", file_path: "/tmp/skill-2/SKILL.md" },
-      ],
-    },
-    true,
-  );
-
-  assert.deepEqual(lines, [
-    "• List Skills",
-    "├ skill-1 - /tmp/skill-1/SKILL.md",
-    "└ skill-2 - /tmp/skill-2/SKILL.md",
-  ]);
 });

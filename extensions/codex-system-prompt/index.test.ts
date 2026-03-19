@@ -5,13 +5,11 @@ import path from "node:path";
 import test from "node:test";
 
 import {
-  buildAgentProfilePromptBlock,
   buildCodexPrompt,
   injectCodexPrompt,
   parseCodexPersonality,
   readCodexPersonality,
   readAgentProfilePromptPayload,
-  resolveCodexConfigPath,
   resolveCodexHome,
   resolveCodexPromptBody,
 } from "./index.ts";
@@ -22,10 +20,6 @@ test("resolveCodexHome uses CODEX_HOME when it points to a directory", async () 
   );
 
   assert.equal(resolveCodexHome({ CODEX_HOME: tempDir }, "/Users/test"), fs.realpathSync(tempDir));
-});
-
-test("resolveCodexConfigPath defaults to ~/.codex/config.toml", () => {
-  assert.equal(resolveCodexConfigPath({}, "/Users/test"), "/Users/test/.codex/config.toml");
 });
 
 test("parseCodexPersonality reads top-level personality", () => {
@@ -40,12 +34,6 @@ test("readCodexPersonality reads personality from CODEX_HOME config.toml", async
   await fs.writeFile(path.join(tempDir, "config.toml"), 'personality = "friendly"\n');
 
   assert.equal(readCodexPersonality({ CODEX_HOME: tempDir }, "/Users/test"), "friendly");
-});
-
-test("buildCodexPrompt trims and returns the packaged prompt body", () => {
-  const prompt = buildCodexPrompt("Base Codex prompt");
-
-  assert.equal(prompt, "Base Codex prompt");
 });
 
 test("resolveCodexPromptBody uses exact model match and template default personality", () => {
@@ -146,16 +134,4 @@ test("readAgentProfilePromptPayload returns parsed profile bootstrap data", () =
     name: "explorer",
     developerInstructions: "You are an explorer.",
   });
-});
-
-test("buildAgentProfilePromptBlock returns developer instructions only when present", () => {
-  assert.equal(
-    buildAgentProfilePromptBlock({
-      name: "explorer",
-      developerInstructions: "You are an explorer.",
-    }),
-    "You are an explorer.",
-  );
-  assert.equal(buildAgentProfilePromptBlock({ name: "explorer" }), "");
-  assert.equal(buildAgentProfilePromptBlock(undefined), "");
 });

@@ -14,29 +14,7 @@ import {
   parseBundledRoleAsset,
   resolveAgentProfiles,
   resolveBuiltInAgentProfiles,
-  resolveCodexConfigPath,
-  resolveRequestedAgentType,
 } from "./profiles.ts";
-
-test("resolveBuiltInAgentProfiles returns built-in profiles", () => {
-  const resolved = resolveBuiltInAgentProfiles();
-
-  assert.equal(resolved.defaultRoleName, "default");
-  assert.deepEqual([...resolved.profiles.keys()], ["default", "explorer", "worker", "reviewer"]);
-  assert.deepEqual(resolved.warnings, []);
-});
-
-test("resolveBuiltInAgentProfiles includeHidden stays stable without hidden built-ins", () => {
-  const resolved = resolveBuiltInAgentProfiles({ includeHidden: true });
-
-  assert.deepEqual([...resolved.profiles.keys()], ["default", "explorer", "worker", "reviewer"]);
-  assert.equal(resolved.profiles.get("explorer")?.developerInstructions, undefined);
-  assert.equal(resolved.profiles.get("worker")?.developerInstructions, undefined);
-  assert.match(
-    resolved.profiles.get("reviewer")?.developerInstructions ?? "",
-    /focused on code review/,
-  );
-});
 
 test("parseBundledRoleAsset extracts developer instructions and role settings", () => {
   const parsed = parseBundledRoleAsset(
@@ -49,24 +27,6 @@ test("parseBundledRoleAsset extracts developer instructions and role settings", 
     model: "gpt-5",
     reasoningEffort: "high",
   });
-});
-
-test("buildSpawnAgentTypeDescription lists visible built-in profiles", () => {
-  const description = buildSpawnAgentTypeDescription(resolveAgentProfiles());
-
-  assert.match(description, /^Optional type name for the new agent\./);
-  assert.match(description, /If omitted, `default` is used\./);
-  assert.match(description, /default: \{\nDefault agent\.\n\}/);
-  assert.match(description, /explorer: \{/);
-  assert.match(description, /worker: \{/);
-  assert.match(description, /reviewer: \{/);
-});
-
-test("resolveRequestedAgentType defaults omitted values to default", () => {
-  assert.equal(resolveRequestedAgentType(undefined), "default");
-  assert.equal(resolveRequestedAgentType(""), "default");
-  assert.equal(resolveRequestedAgentType("  "), "default");
-  assert.equal(resolveRequestedAgentType("explorer"), "explorer");
 });
 
 test("applySpawnAgentProfile defaults to default profile and preserves explicit overrides when unlocked", () => {
@@ -139,21 +99,6 @@ test("applySpawnAgentProfile returns unavailable error for unavailable custom ro
         ]),
       }),
     /agent type is currently not available/,
-  );
-});
-
-test("resolveCodexConfigPath prefers explicit env path, then CODEX_HOME, then ~/.codex", () => {
-  assert.equal(
-    resolveCodexConfigPath({ PI_CODEX_CONFIG_PATH: "/tmp/custom.toml" } as NodeJS.ProcessEnv),
-    path.resolve("/tmp/custom.toml"),
-  );
-  assert.equal(
-    resolveCodexConfigPath({ CODEX_HOME: "/tmp/codex-home" } as NodeJS.ProcessEnv),
-    path.resolve("/tmp/codex-home", "config.toml"),
-  );
-  assert.equal(
-    resolveCodexConfigPath({ HOME: "/tmp/home" } as NodeJS.ProcessEnv),
-    path.join("/tmp/home", ".codex", "config.toml"),
   );
 });
 

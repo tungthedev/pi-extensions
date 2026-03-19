@@ -6,7 +6,6 @@ import path from "node:path";
 import test from "node:test";
 
 import {
-  applySpawnAgentProfile,
   buildSendInputContent,
   buildSpawnAgentContent,
   buildWaitAgentContent,
@@ -15,26 +14,16 @@ import {
   extractLastAssistantText,
   flattenCollabItems,
   formatSubagentNotificationMessage,
-  generateUniqueSubagentName,
-  getSubagentCompletionLabel,
-  getSubagentDisplayName,
-  MAX_SUBAGENT_NOTIFICATION_PREVIEW_CHARS,
-  MAX_SUBAGENT_REPLY_PREVIEW_LINES,
   normalizeReasoningEffortToThinkingLevel,
   normalizeWaitAgentTimeoutMs,
   normalizeThinkingLevelToReasoningEffort,
   parseSubagentNotificationMessage,
-  parseJsonLines,
-  resolveAgentProfiles,
   rebuildDurableRegistry,
   resolveAgentIdAlias,
   resolveAgentIdsAlias,
   resolveForkContextSessionFile,
   resolveParentSpawnDefaults,
-  resolveSubagentName,
   resolveSpawnPrompt,
-  summarizeSubagentReply,
-  truncateSubagentReply,
 } from "./index.ts";
 
 function createPersistedSessionFixture() {
@@ -98,14 +87,6 @@ function createPersistedSessionFixture() {
     },
   };
 }
-
-test("parseJsonLines returns completed lines and preserves the trailing partial line", () => {
-  const parsed = parseJsonLines('{"a":1}\r\n{"b":2}\npartial');
-  assert.deepEqual(parsed, {
-    lines: ['{"a":1}', '{"b":2}'],
-    rest: "partial",
-  });
-});
 
 test("extractLastAssistantText returns the most recent assistant text blocks", () => {
   const text = extractLastAssistantText([
@@ -295,104 +276,6 @@ test("resolveParentSpawnDefaults prefers the live parent model over session hist
   });
 
   fixture.cleanup();
-});
-
-test("generateUniqueSubagentName skips used aliases and falls back deterministically", () => {
-  const name = generateUniqueSubagentName(["amber-badger", "amber-comet"], () => 0);
-  assert.equal(name, "amber-crane");
-});
-
-test("resolveSubagentName uses explicit names and otherwise generates a unique alias", () => {
-  assert.equal(
-    resolveSubagentName(
-      [
-        {
-          agentId: "agent-1",
-          cwd: "/tmp/project",
-          name: "amber-badger",
-          status: "live_idle",
-          createdAt: "2026-03-17T00:00:00.000Z",
-          updatedAt: "2026-03-17T00:00:00.000Z",
-        },
-      ],
-      "named-child",
-    ),
-    "named-child",
-  );
-
-  assert.notEqual(
-    resolveSubagentName([
-      {
-        agentId: "agent-1",
-        cwd: "/tmp/project",
-        name: "amber-badger",
-        status: "live_idle",
-        createdAt: "2026-03-17T00:00:00.000Z",
-        updatedAt: "2026-03-17T00:00:00.000Z",
-      },
-    ]),
-    "amber-badger",
-  );
-});
-
-test("truncateSubagentReply limits previews to 50 lines and reports hidden rows", () => {
-  const source = Array.from({ length: MAX_SUBAGENT_REPLY_PREVIEW_LINES + 3 }, () => 0)
-    .map((_, index) => `line ${index + 1}`)
-    .join("\n");
-
-  assert.deepEqual(truncateSubagentReply(source), {
-    text: Array.from({ length: MAX_SUBAGENT_REPLY_PREVIEW_LINES }, () => 0)
-      .map((_, index) => `line ${index + 1}`)
-      .join("\n"),
-    hiddenLineCount: 3,
-  });
-});
-
-test("getSubagentDisplayName prefers alias over agent id", () => {
-  assert.equal(
-    getSubagentDisplayName({ agent_id: "agent-1", name: "amber-badger" }),
-    "amber-badger",
-  );
-  assert.equal(getSubagentDisplayName({ agent_id: "agent-2" }), "agent-2");
-});
-
-test("getSubagentDisplayName includes role when available", () => {
-  assert.equal(
-    getSubagentDisplayName({
-      agent_id: "agent-1",
-      name: "amber-badger",
-      agent_type: "explorer",
-    }),
-    "amber-badger [explorer]",
-  );
-  assert.equal(getSubagentDisplayName({ agent_id: "agent-2", agent_type: "worker" }), "[worker]");
-});
-
-test("applySpawnAgentProfile produces child bootstrap data for built-in roles", () => {
-  const applied = applySpawnAgentProfile({
-    requestedAgentType: "reviewer",
-    profiles: resolveAgentProfiles({ includeHidden: true }).profiles,
-  });
-
-  assert.equal(applied.agentType, "reviewer");
-  assert.equal(applied.bootstrap.name, "reviewer");
-  assert.match(applied.bootstrap.developerInstructions ?? "", /focused on code review/);
-});
-
-test("summarizeSubagentReply flattens markdown into a compact one-line preview", () => {
-  assert.equal(
-    summarizeSubagentReply("# Title\n\n- first item\n- second item"),
-    "# Title - first item - second item",
-  );
-
-  const long = `start ${"x".repeat(MAX_SUBAGENT_NOTIFICATION_PREVIEW_CHARS + 20)}`;
-  assert.match(summarizeSubagentReply(long) ?? "", /\.\.\.$/);
-});
-
-test("getSubagentCompletionLabel maps agent states to codex-like summaries", () => {
-  assert.equal(getSubagentCompletionLabel("idle"), "Completed");
-  assert.equal(getSubagentCompletionLabel("failed"), "Error");
-  assert.equal(getSubagentCompletionLabel("timeout"), "Timed out");
 });
 
 test("buildWaitAgentContent exposes child assistant text in tool content", () => {

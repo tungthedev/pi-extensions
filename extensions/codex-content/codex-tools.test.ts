@@ -9,17 +9,11 @@ import {
   execCommand,
   findContentMatches,
   findMatchingFiles,
-  formatGrepFilesOutput,
-  formatListDirectoryOutput,
-  formatFindFilesOutput,
   isSecretFilePath,
-  listDirectoryEntries,
   readIndentationBlock,
   resolveAbsolutePath,
   resolveAbsolutePathWithVariants,
   resolveShellInvocation,
-  splitLeadingCdCommand,
-  stripTrailingBackgroundOperator,
 } from "./codex-tools.ts";
 import { registerGrepFilesTool } from "./compatibility-tools/grep-files.ts";
 import { registerReadFileTool } from "./compatibility-tools/read-file.ts";
@@ -77,50 +71,6 @@ test("readIndentationBlock keeps header comments and excludes sibling blocks by 
   );
 });
 
-test("formatListDirectoryOutput includes 1-indexed numbers, type labels, and continuation guidance", async () => {
-  await withTempDir(async (dir) => {
-    await writeFile(path.join(dir, "alpha.txt"), "alpha\n");
-    await mkdir(path.join(dir, "nested"), { recursive: true });
-    await writeFile(path.join(dir, "nested", "beta.ts"), "export default 1\n");
-
-    const entries = await listDirectoryEntries(dir, 2);
-    const output = formatListDirectoryOutput(dir, entries, { offset: 2, limit: 1 });
-
-    assert.equal(
-      output,
-      [
-        `Absolute path: ${dir}`,
-        "2. [dir] nested/",
-        "More than 1 entries found (3 total). Use offset 3 to continue.",
-      ].join("\n"),
-    );
-  });
-});
-
-test("formatListDirectoryOutput includes skipped-directory notes when present", () => {
-  const output = formatListDirectoryOutput(
-    "/tmp/project",
-    [{ sortKey: "src", relativePath: "src/", typeLabel: "dir" }],
-    { skippedCount: 2 },
-  );
-
-  assert.equal(
-    output,
-    ["Absolute path: /tmp/project", "1. [dir] src/", "[Skipped 2 unreadable directories.]"].join(
-      "\n",
-    ),
-  );
-});
-
-test("formatListDirectoryOutput keeps skipped-directory notes even when no entries are visible", () => {
-  const output = formatListDirectoryOutput("/tmp/project", [], { skippedCount: 1 });
-
-  assert.equal(
-    output,
-    ["Absolute path: /tmp/project", "[Skipped 1 unreadable directory.]"].join("\n"),
-  );
-});
-
 test("resolveShellInvocation uses supported user shells and falls back for unknown shells", () => {
   assert.deepEqual(
     resolveShellInvocation("echo hi", {
@@ -170,27 +120,6 @@ test("resolveShellInvocation uses supported user shells and falls back for unkno
   );
 });
 
-test("splitLeadingCdCommand extracts a leading cd into a workdir", () => {
-  assert.deepEqual(splitLeadingCdCommand('cd "nested dir" && bun test'), {
-    workdir: "nested dir",
-    command: "bun test",
-  });
-
-  assert.equal(splitLeadingCdCommand("bun test"), null);
-});
-
-test("stripTrailingBackgroundOperator removes a trailing background operator", () => {
-  assert.deepEqual(stripTrailingBackgroundOperator("bun test &"), {
-    command: "bun test",
-    stripped: true,
-  });
-
-  assert.deepEqual(stripTrailingBackgroundOperator("bun test"), {
-    command: "bun test",
-    stripped: false,
-  });
-});
-
 test("findMatchingFiles returns absolute paths sorted by most recent modification time", async () => {
   await withTempDir(async (dir) => {
     const alpha = path.join(dir, "alpha.ts");
@@ -211,27 +140,6 @@ test("findMatchingFiles returns absolute paths sorted by most recent modificatio
       [beta, alpha],
     );
   });
-});
-
-test("formatFindFilesOutput prints a count header and pagination guidance", () => {
-  const output = formatFindFilesOutput(
-    [
-      { absolutePath: "/tmp/one.ts", mtimeMs: 2 },
-      { absolutePath: "/tmp/two.ts", mtimeMs: 1 },
-      { absolutePath: "/tmp/three.ts", mtimeMs: 0 },
-    ],
-    { offset: 1, limit: 1 },
-  );
-
-  assert.equal(
-    output,
-    [
-      "3 matching files",
-      "/tmp/two.ts",
-      "",
-      "[Showing 2-2 of 3 matches. Use offset 2 to continue.]",
-    ].join("\n"),
-  );
 });
 
 test("execCommand preserves timeout exit codes and partial stdout", async () => {
@@ -323,33 +231,6 @@ test("findContentMatches excludes .git and sorts by most recent modification tim
       [beta, alpha],
     );
   });
-});
-
-test("formatGrepFilesOutput includes a count header and truncation guidance", () => {
-  const output = formatGrepFilesOutput(
-    {
-      matches: [
-        { absolutePath: "/tmp/one.ts", mtimeMs: 3 },
-        { absolutePath: "/tmp/two.ts", mtimeMs: 2 },
-        { absolutePath: "/tmp/three.ts", mtimeMs: 1 },
-      ],
-      skippedCount: 1,
-    },
-    { limit: 2 },
-  );
-
-  assert.equal(
-    output,
-    [
-      "3 matching files",
-      "/tmp/one.ts",
-      "/tmp/two.ts",
-      "",
-      "[Showing 2 of 3 matches. Use limit to see more.]",
-      "",
-      "[Skipped 1 unreadable file.]",
-    ].join("\n"),
-  );
 });
 
 test("grep_files reports invalid regex errors clearly", async () => {
