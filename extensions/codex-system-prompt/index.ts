@@ -1,5 +1,5 @@
 /**
- * Injects Codex prompts and collaboration-mode guidance into Pi sessions.
+ * Injects Codex prompts into Pi sessions.
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
@@ -10,16 +10,7 @@ import path from "node:path";
 import { CODEX_AGENT_PROFILE_JSON_ENV } from "../codex-subagents/subagents/types.ts";
 
 const MODELS_CATALOG_PATH = new URL("./assets/models.json", import.meta.url);
-const DEFAULT_COLLABORATION_MODE_TEMPLATE_PATH = new URL(
-  "./assets/collaboration-mode-default.md",
-  import.meta.url,
-);
 const DEFAULT_GPT_PROMPT_MODEL = "gpt-5.4";
-const COLLABORATION_MODE_OPEN_TAG = "<collaboration_mode>";
-const COLLABORATION_MODE_CLOSE_TAG = "</collaboration_mode>";
-const KNOWN_MODE_NAMES_PLACEHOLDER = "{{KNOWN_MODE_NAMES}}";
-const REQUEST_USER_INPUT_AVAILABILITY_PLACEHOLDER = "{{REQUEST_USER_INPUT_AVAILABILITY}}";
-const ASKING_QUESTIONS_GUIDANCE_PLACEHOLDER = "{{ASKING_QUESTIONS_GUIDANCE}}";
 const PERSONALITY_PLACEHOLDER = "{{ personality }}";
 const CODEX_HOME_ENV = "CODEX_HOME";
 const CODEX_CONFIG_FILE = "config.toml";
@@ -44,14 +35,6 @@ type ModelInstructionsVariables = {
   personality_friendly?: string;
   personality_pragmatic?: string;
 };
-
-function readPromptAsset(assetPath: URL): string {
-  try {
-    return fs.readFileSync(assetPath, "utf-8").trim();
-  } catch {
-    return "";
-  }
-}
 
 function readModelsCatalog(assetPath = MODELS_CATALOG_PATH): ModelsCatalog | undefined {
   try {
@@ -175,40 +158,6 @@ export function injectCodexPrompt(systemPrompt: string | undefined, codexPrompt:
   return [basePrompt, codexPrompt].filter(Boolean).join("\n\n").trim();
 }
 
-export function buildDefaultCollaborationModeInstructions(
-  options: {
-    knownModeNames?: string;
-    requestUserInputAvailable?: boolean;
-  } = {},
-): string {
-  const template = readPromptAsset(DEFAULT_COLLABORATION_MODE_TEMPLATE_PATH);
-  if (!template) return "";
-
-  const knownModeNames = options.knownModeNames?.trim() || "Default";
-  const requestUserInputAvailable = options.requestUserInputAvailable !== false;
-  const requestUserInputAvailability = requestUserInputAvailable
-    ? "The `request_user_input` tool is available in Default mode."
-    : "The `request_user_input` tool is unavailable in Default mode. If you call it while in Default mode, it will return an error.";
-  const askingQuestionsGuidance = requestUserInputAvailable
-    ? "In Default mode, strongly prefer making reasonable assumptions and executing the user's request rather than stopping to ask questions. If you absolutely must ask a question because the answer cannot be discovered from local context and a reasonable assumption would be risky, prefer using the `request_user_input` tool rather than writing a multiple choice question as a textual assistant message. Never write a multiple choice question as a textual assistant message."
-    : "In Default mode, strongly prefer making reasonable assumptions and executing the user's request rather than stopping to ask questions. If you absolutely must ask a question because the answer cannot be discovered from local context and a reasonable assumption would be risky, ask the user directly with a concise plain-text question. Never write a multiple choice question as a textual assistant message.";
-
-  return template
-    .replaceAll(KNOWN_MODE_NAMES_PLACEHOLDER, knownModeNames)
-    .replaceAll(REQUEST_USER_INPUT_AVAILABILITY_PLACEHOLDER, requestUserInputAvailability)
-    .replaceAll(ASKING_QUESTIONS_GUIDANCE_PLACEHOLDER, askingQuestionsGuidance)
-    .trim();
-}
-
-export function buildDefaultCollaborationModePrompt(options?: {
-  knownModeNames?: string;
-  requestUserInputAvailable?: boolean;
-}): string {
-  const instructions = buildDefaultCollaborationModeInstructions(options);
-  if (!instructions) return "";
-  return `${COLLABORATION_MODE_OPEN_TAG}${instructions}${COLLABORATION_MODE_CLOSE_TAG}`;
-}
-
 type AgentProfilePromptPayload = {
   name?: string;
   developerInstructions?: string;
@@ -238,19 +187,16 @@ export function buildAgentProfilePromptBlock(
 
 export function registerCodexPrompt(pi: ExtensionAPI) {
   const modelsCatalog = readModelsCatalog();
-  const defaultModePrompt = buildDefaultCollaborationModePrompt();
   const profilePrompt = buildAgentProfilePromptBlock(readAgentProfilePromptPayload());
-  if (!modelsCatalog && !defaultModePrompt && !profilePrompt) return;
+  if (!modelsCatalog && !profilePrompt) return;
 
   pi.on("before_agent_start", async (event, ctx) => {
     const codexPersonality = readCodexPersonality();
     const codexPrompt = buildCodexPrompt(
       resolveCodexPromptBody(ctx.model?.id, modelsCatalog, codexPersonality),
     );
-    const systemPrompt = injectCodexPrompt(event.systemPrompt, codexPrompt);
-    const modePrompt = injectCodexPrompt(systemPrompt, defaultModePrompt);
     return {
-      systemPrompt: injectCodexPrompt(modePrompt, profilePrompt),
+      systemPrompt: injectCodexPrompt(injectCodexPrompt(event.systemPrompt, codexPrompt), profilePrompt),
     };
   });
 }
