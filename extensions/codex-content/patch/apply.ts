@@ -14,10 +14,73 @@ import { seekSequence } from "./matching.ts";
 import { parsePatch } from "./parser.ts";
 import { applyFailed } from "./types.ts";
 
+const REDACTION_PATTERNS = [
+  /\[REDACTED\]/i,
+  /\[\.\.\.\s*omitted.*?\]/i,
+  /\[rest of .{1,40} unchanged\]/i,
+  /\[remaining .{1,40} unchanged\]/i,
+  /rest of (the )?(file|code|content|implementation) unchanged/i,
+  /remaining (the )?(file|code|content|implementation) unchanged/i,
+];
+
 type DiffRow = {
   kind: "context" | "removed" | "added";
   text: string;
 };
+
+function stripBom(content: string): { bom: string; text: string } {
+  return content.startsWith("\uFEFF")
+    ? { bom: "\uFEFF", text: content.slice(1) }
+    : { bom: "", text: content };
+}
+
+function detectLineEnding(content: string): "\r\n" | "\n" {
+  return content.includes("\r\n") ? "\r\n" : "\n";
+}
+
+function normalizeToLf(content: string): string {
+  return content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function restoreLineEndings(content: string, lineEnding: "\r\n" | "\n"): string {
+  return lineEnding === "\r\n" ? content.replace(/\n/g, "\r\n") : content;
+}
+
+function isLikelyBinary(buffer: Buffer): boolean {
+  return buffer.includes(0);
+}
+
+function findRedactionMarker(oldText: string, newText: string): string | null {
+  for (const pattern of REDACTION_PATTERNS) {
+    if (pattern.test(newText) && !pattern.test(oldText)) {
+      return newText.match(pattern)?.[0] ?? "redaction marker";
+    }
+  }
+  return null;
+}
+
+function validatePatchContentForRedaction(hunks: ReturnType<typeof parsePatch>["hunks"]): void {
+  for (const hunk of hunks) {
+    if (hunk.type === "add") {
+      const marker = findRedactionMarker("", hunk.contents);
+      if (marker) {
+        applyFailed(`Rejected patch: added content contains placeholder text (${marker}).`);
+      }
+      continue;
+    }
+
+    if (hunk.type === "update") {
+      for (const chunk of hunk.chunks) {
+        const marker = findRedactionMarker(chunk.oldLines.join("\n"), chunk.newLines.join("\n"));
+        if (marker) {
+          applyFailed(
+            `Rejected patch for ${hunk.path}: added content contains placeholder text (${marker}).`,
+          );
+        }
+      }
+    }
+  }
+}
 
 function splitContentLines(contents: string | undefined): string[] {
   if (!contents) return [];
@@ -195,6 +258,7 @@ function resolvePatchPath(cwd: string, targetPath: string): string {
 async function loadVirtualFile(
   files: Map<string, VirtualFileState>,
   absolutePath: string,
+  options: { allowBinary?: boolean } = {},
 ): Promise<VirtualFileState> {
   const existing = files.get(absolutePath);
   if (existing) {
@@ -202,13 +266,36 @@ async function loadVirtualFile(
   }
 
   try {
-    const content = await fs.readFile(absolutePath, "utf8");
+    const buffer = await fs.readFile(absolutePath);
+    if (isLikelyBinary(buffer)) {
+      if (!options.allowBinary) {
+        applyFailed(`Failed to read file ${absolutePath}: file appears to be binary`);
+      }
+      const state: VirtualFileState = {
+        path: absolutePath,
+        initialExists: true,
+        finalExists: true,
+        isBinary: true,
+        initialBinaryContent: buffer,
+        finalBinaryContent: buffer,
+        bom: "",
+        lineEnding: "\n",
+      };
+      files.set(absolutePath, state);
+      return state;
+    }
+    const rawContent = buffer.toString("utf8");
+    const { bom, text } = stripBom(rawContent);
+    const lineEnding = detectLineEnding(text);
+    const content = normalizeToLf(text);
     const state: VirtualFileState = {
       path: absolutePath,
       initialExists: true,
       initialContent: content,
       finalExists: true,
       finalContent: content,
+      bom,
+      lineEnding,
     };
     files.set(absolutePath, state);
     return state;
@@ -219,6 +306,8 @@ async function loadVirtualFile(
         path: absolutePath,
         initialExists: false,
         finalExists: false,
+        bom: "",
+        lineEnding: "\n",
       };
       files.set(absolutePath, state);
       return state;
@@ -236,7 +325,12 @@ function pushUnique(target: string[], value: string): void {
 async function commitVirtualFiles(files: Map<string, VirtualFileState>): Promise<void> {
   const touched = [...files.values()].filter(
     (entry) =>
-      entry.initialExists !== entry.finalExists || entry.initialContent !== entry.finalContent,
+      entry.initialExists !== entry.finalExists ||
+      entry.initialContent !== entry.finalContent ||
+      Buffer.compare(
+        entry.initialBinaryContent ?? Buffer.alloc(0),
+        entry.finalBinaryContent ?? Buffer.alloc(0),
+      ) !== 0,
   );
   const rollbackActions: Array<() => Promise<void>> = [];
 
@@ -247,11 +341,21 @@ async function commitVirtualFiles(files: Map<string, VirtualFileState>): Promise
         if (parentDir && parentDir !== ".") {
           await fs.mkdir(parentDir, { recursive: true });
         }
-        await fs.writeFile(entry.path, entry.finalContent ?? "", "utf8");
+        if (entry.isBinary) {
+          await fs.writeFile(entry.path, entry.finalBinaryContent ?? Buffer.alloc(0));
+        } else {
+          const nextContent = `${entry.bom ?? ""}${restoreLineEndings(entry.finalContent ?? "", entry.lineEnding ?? "\n")}`;
+          await fs.writeFile(entry.path, nextContent, "utf8");
+        }
         rollbackActions.push(async () => {
           if (entry.initialExists) {
             await fs.mkdir(path.dirname(entry.path), { recursive: true });
-            await fs.writeFile(entry.path, entry.initialContent ?? "", "utf8");
+            if (entry.isBinary) {
+              await fs.writeFile(entry.path, entry.initialBinaryContent ?? Buffer.alloc(0));
+            } else {
+              const initialContent = `${entry.bom ?? ""}${restoreLineEndings(entry.initialContent ?? "", entry.lineEnding ?? "\n")}`;
+              await fs.writeFile(entry.path, initialContent, "utf8");
+            }
           } else {
             await fs.rm(entry.path, { force: true });
           }
@@ -263,7 +367,12 @@ async function commitVirtualFiles(files: Map<string, VirtualFileState>): Promise
       rollbackActions.push(async () => {
         if (entry.initialExists) {
           await fs.mkdir(path.dirname(entry.path), { recursive: true });
-          await fs.writeFile(entry.path, entry.initialContent ?? "", "utf8");
+          if (entry.isBinary) {
+            await fs.writeFile(entry.path, entry.initialBinaryContent ?? Buffer.alloc(0));
+          } else {
+            const initialContent = `${entry.bom ?? ""}${restoreLineEndings(entry.initialContent ?? "", entry.lineEnding ?? "\n")}`;
+            await fs.writeFile(entry.path, initialContent, "utf8");
+          }
         }
       });
     }
@@ -287,6 +396,7 @@ export async function applyPatch(
   if (hunks.length === 0) {
     applyFailed("No files were modified.");
   }
+  validatePatchContentForRedaction(hunks);
 
   const virtualFiles = new Map<string, VirtualFileState>();
   const files: ApplyPatchFileChange[] = [];
@@ -316,7 +426,7 @@ export async function applyPatch(
 
     if (hunk.type === "delete") {
       const absolutePath = resolvePatchPath(cwd, hunk.path);
-      const fileState = await loadVirtualFile(virtualFiles, absolutePath);
+      const fileState = await loadVirtualFile(virtualFiles, absolutePath, { allowBinary: true });
       if (!fileState.finalExists) {
         applyFailed(`Failed to delete file ${absolutePath}: file does not exist`);
       }
@@ -351,6 +461,8 @@ export async function applyPatch(
       }
       destinationState.finalExists = true;
       destinationState.finalContent = newContents;
+      destinationState.bom = sourceState.bom;
+      destinationState.lineEnding = sourceState.lineEnding;
       sourceState.finalExists = false;
       sourceState.finalContent = undefined;
       pushUnique(touchedPaths.modified, hunk.movePath);

@@ -65,6 +65,11 @@ export type VirtualFileState = {
   initialContent?: string;
   finalExists: boolean;
   finalContent?: string;
+  bom?: string;
+  lineEnding?: "\n" | "\r\n";
+  isBinary?: boolean;
+  initialBinaryContent?: Buffer;
+  finalBinaryContent?: Buffer;
 };
 
 export type TouchedPaths = {

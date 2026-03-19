@@ -1,12 +1,15 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { Type } from "@sinclair/typebox";
+import fs from "node:fs/promises";
 
 import { renderBashResult } from "../renderers/bash.ts";
 import {
   execCommand,
   resolveAbsolutePath,
   resolveShellInvocation,
+  splitLeadingCdCommand,
+  stripTrailingBackgroundOperator,
   trimToBudget,
 } from "./runtime.ts";
 
@@ -39,32 +42,93 @@ export function registerShellCommandTool(pi: ExtensionAPI): void {
       ),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      const workdir = resolveAbsolutePath(ctx.cwd, params.workdir ?? ".");
-      const invocation = resolveShellInvocation(params.command, {
+      let workdir = resolveAbsolutePath(ctx.cwd, params.workdir ?? ".");
+      let command = String(params.command ?? "").trim();
+      const notes: string[] = [];
+
+      const splitCommand = splitLeadingCdCommand(command);
+      if (splitCommand) {
+        workdir = resolveAbsolutePath(workdir, splitCommand.workdir);
+        command = splitCommand.command;
+        notes.push(`Normalized leading cd into workdir: ${workdir}`);
+      }
+
+      const strippedBackground = stripTrailingBackgroundOperator(command);
+      command = strippedBackground.command;
+      if (strippedBackground.stripped) {
+        notes.push("Ignored trailing background operator `&`.");
+      }
+
+      if (!command) {
+        return {
+          content: [{ type: "text", text: "Error: shell command is empty after normalization." }],
+          details: {
+            command: params.command,
+            workdir,
+          },
+          isError: true,
+        };
+      }
+
+      let workdirStats;
+      try {
+        workdirStats = await fs.stat(workdir);
+      } catch {
+        return {
+          content: [{ type: "text", text: `Error: working directory does not exist: ${workdir}` }],
+          details: {
+            command: params.command,
+            workdir,
+          },
+          isError: true,
+        };
+      }
+      if (!workdirStats.isDirectory()) {
+        return {
+          content: [
+            { type: "text", text: `Error: working directory is not a directory: ${workdir}` },
+          ],
+          details: {
+            command: params.command,
+            workdir,
+          },
+          isError: true,
+        };
+      }
+
+      const invocation = resolveShellInvocation(command, {
         login: params.login,
       });
       const result = await execCommand(invocation.shell, invocation.shellArgs, workdir, {
         timeoutMs: params.timeout_ms,
         signal,
       });
-      const merged = [
-        `Exit code: ${result.exitCode}`,
-        "Output:",
-        result.stdout.trimEnd(),
-        result.stderr.trimEnd(),
-      ]
-        .filter(Boolean)
-        .join("\n");
+      const sections = [`Exit code: ${result.exitCode}`];
+      if (result.stdout.trim()) {
+        sections.push("Stdout:", result.stdout.trimEnd());
+      }
+      if (result.stderr.trim()) {
+        sections.push("Stderr:", result.stderr.trimEnd());
+      }
+      if (!result.stdout.trim() && !result.stderr.trim()) {
+        sections.push("(no output)");
+      }
+      if (notes.length > 0) {
+        sections.push("Notes:", ...notes);
+      }
+      const merged = sections.join("\n");
       const trimmed = trimToBudget(merged);
 
       return {
         content: [{ type: "text", text: trimmed.text }],
         details: {
           command: params.command,
+          normalizedCommand: command,
           workdir,
           exitCode: result.exitCode,
           shell: invocation.shell,
           shellArgs: invocation.shellArgs,
+          notes,
         },
         isError: result.exitCode !== 0,
       };

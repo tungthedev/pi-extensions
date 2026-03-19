@@ -4,7 +4,7 @@ import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { MAX_LIST_DIR_SCAN_ENTRIES, resolveAbsolutePath } from "./runtime.ts";
+import { MAX_LIST_DIR_SCAN_ENTRIES, resolveAbsolutePathWithVariants } from "./runtime.ts";
 
 export type ListDirectoryEntry = {
   sortKey: string;
@@ -12,20 +12,36 @@ export type ListDirectoryEntry = {
   typeLabel: "file" | "dir" | "symlink";
 };
 
-export async function listDirectoryEntries(
+export type ListDirectoryScan = {
+  entries: ListDirectoryEntry[];
+  skippedCount: number;
+};
+
+export async function scanDirectoryEntries(
   dirPath: string,
   depth: number,
-): Promise<ListDirectoryEntry[]> {
+): Promise<ListDirectoryScan> {
   const queue: Array<{ absolutePath: string; relativePrefix: string; remainingDepth: number }> = [
     { absolutePath: dirPath, relativePrefix: "", remainingDepth: depth },
   ];
   const entries: ListDirectoryEntry[] = [];
+  let skippedCount = 0;
 
   while (queue.length > 0) {
     const current = queue.shift();
     if (!current) continue;
 
-    const dirents = await fs.readdir(current.absolutePath, { withFileTypes: true });
+    let dirents;
+    try {
+      dirents = await fs.readdir(current.absolutePath, { withFileTypes: true });
+    } catch (error) {
+      if (current.relativePrefix.length === 0) {
+        throw error;
+      }
+      skippedCount += 1;
+      continue;
+    }
+
     const batch = dirents.map((dirent) => {
       const relativePath = current.relativePrefix
         ? path.posix.join(current.relativePrefix, dirent.name)
@@ -70,19 +86,33 @@ export async function listDirectoryEntries(
   }
 
   entries.sort((left, right) => left.sortKey.localeCompare(right.sortKey));
-  return entries;
+  return { entries, skippedCount };
+}
+
+export async function listDirectoryEntries(
+  dirPath: string,
+  depth: number,
+): Promise<ListDirectoryEntry[]> {
+  const scan = await scanDirectoryEntries(dirPath, depth);
+  return scan.entries;
 }
 
 export function formatListDirectoryOutput(
   absolutePath: string,
   entries: ListDirectoryEntry[],
-  options: { offset?: number; limit?: number } = {},
+  options: { offset?: number; limit?: number; skippedCount?: number } = {},
 ): string {
   const offset = options.offset ?? 1;
   const limit = options.limit ?? entries.length;
 
   if (entries.length === 0) {
-    return `Absolute path: ${absolutePath}`;
+    const lines = [`Absolute path: ${absolutePath}`];
+    if ((options.skippedCount ?? 0) > 0) {
+      lines.push(
+        `[Skipped ${options.skippedCount} unreadable director${options.skippedCount === 1 ? "y" : "ies"}.]`,
+      );
+    }
+    return lines.join("\n");
   }
 
   const start = offset - 1;
@@ -97,6 +127,12 @@ export function formatListDirectoryOutput(
   if (start + visible.length < entries.length) {
     lines.push(
       `More than ${visible.length} entries found (${entries.length} total). Use offset ${start + visible.length + 1} to continue.`,
+    );
+  }
+
+  if ((options.skippedCount ?? 0) > 0) {
+    lines.push(
+      `[Skipped ${options.skippedCount} unreadable director${options.skippedCount === 1 ? "y" : "ies"}.]`,
     );
   }
 
@@ -116,7 +152,7 @@ export function registerListDirTool(pi: ExtensionAPI): void {
       depth: Type.Optional(Type.Number({ description: "Maximum directory depth to traverse." })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const absolutePath = resolveAbsolutePath(ctx.cwd, params.dir_path);
+      const absolutePath = resolveAbsolutePathWithVariants(ctx.cwd, params.dir_path);
       const stats = await fs.stat(absolutePath);
       const offset = params.offset ?? 1;
       const limit = params.limit ?? 25;
@@ -126,11 +162,19 @@ export function registerListDirTool(pi: ExtensionAPI): void {
       if (limit < 1) throw new Error("limit must be greater than zero");
       if (depth < 1) throw new Error("depth must be greater than zero");
 
-      const allEntries = await listDirectoryEntries(absolutePath, depth);
+      const scan = await scanDirectoryEntries(absolutePath, depth);
+      const allEntries = scan.entries;
       if (allEntries.length === 0) {
         return {
-          content: [{ type: "text", text: `Absolute path: ${absolutePath}` }],
-          details: { dirPath: absolutePath, count: 0 },
+          content: [
+            {
+              type: "text",
+              text: formatListDirectoryOutput(absolutePath, allEntries, {
+                skippedCount: scan.skippedCount,
+              }),
+            },
+          ],
+          details: { dirPath: absolutePath, count: 0, skippedCount: scan.skippedCount },
         };
       }
       if (offset > allEntries.length) throw new Error("offset exceeds directory entry count");
@@ -139,10 +183,18 @@ export function registerListDirTool(pi: ExtensionAPI): void {
         content: [
           {
             type: "text",
-            text: formatListDirectoryOutput(absolutePath, allEntries, { offset, limit }),
+            text: formatListDirectoryOutput(absolutePath, allEntries, {
+              offset,
+              limit,
+              skippedCount: scan.skippedCount,
+            }),
           },
         ],
-        details: { dirPath: absolutePath, count: allEntries.length },
+        details: {
+          dirPath: absolutePath,
+          count: allEntries.length,
+          skippedCount: scan.skippedCount,
+        },
       };
     },
     renderCall() {

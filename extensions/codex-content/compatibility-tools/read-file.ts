@@ -10,11 +10,18 @@ import {
   COMMENT_PREFIXES,
   MAX_INDENTATION_FILE_BYTES,
   MAX_SLICE_FILE_BYTES,
-  resolveAbsolutePath,
+  resolveAbsolutePathWithVariants,
   TAB_WIDTH,
   trimToBudget,
   truncateLine,
 } from "./runtime.ts";
+
+const SECRET_PATTERNS = [/^\.env$/, /^\.env\..+$/];
+const SECRET_EXCEPTION_PATTERNS = [
+  /^\.env\.example(?:\..+)?$/,
+  /^\.env\.sample(?:\..+)?$/,
+  /^\.env\.template(?:\..+)?$/,
+];
 
 export type IndentationOptions = {
   anchor_line?: number;
@@ -56,6 +63,12 @@ export function buildLineRecords(content: string): LineRecord[] {
       display: truncateLine(raw),
       indent: measureIndent(raw),
     }));
+}
+
+export function isSecretFilePath(filePath: string): boolean {
+  const baseName = filePath.split(/[\\/]/).at(-1) ?? filePath;
+  if (SECRET_EXCEPTION_PATTERNS.some((pattern) => pattern.test(baseName))) return false;
+  return SECRET_PATTERNS.some((pattern) => pattern.test(baseName));
 }
 
 function trimEmptyEdges(records: LineRecord[]): LineRecord[] {
@@ -209,7 +222,7 @@ export function registerReadFileTool(pi: ExtensionAPI): void {
     name: "read_file",
     label: "read_file",
     description:
-      "Reads a local file with 1-indexed line numbers, supporting slice and indentation-aware block modes.",
+      "Reads a local file with 1-indexed line numbers, supporting slice and indentation-aware block modes. Accepts absolute paths, cwd-relative paths, `@`-prefixed paths, and `~` home-directory paths.",
     parameters: Type.Object({
       file_path: Type.String({ description: "Absolute path to the file" }),
       offset: Type.Optional(Type.Number({ description: "1-indexed line number to start from" })),
@@ -228,14 +241,37 @@ export function registerReadFileTool(pi: ExtensionAPI): void {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const absolutePath = resolveAbsolutePath(ctx.cwd, params.file_path);
-      const stats = await fs.stat(absolutePath);
+      const absolutePath = resolveAbsolutePathWithVariants(ctx.cwd, params.file_path);
       const offset = params.offset ?? 1;
       const limit = params.limit ?? 2000;
       const mode = params.mode === "indentation" ? "indentation" : "slice";
 
+      let stats;
+      try {
+        stats = await fs.stat(absolutePath);
+      } catch (error) {
+        const systemError = error as NodeJS.ErrnoException;
+        if (systemError?.code === "ENOENT") {
+          throw new Error(`file not found: ${absolutePath}`);
+        }
+        throw error;
+      }
+
+      if (isSecretFilePath(absolutePath)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Refused to read ${absolutePath}: file may contain secrets. Ask the user to share the relevant values instead.`,
+            },
+          ],
+          details: { filePath: absolutePath, mode: "secret_blocked", truncated: false },
+          isError: true,
+        };
+      }
+
       if (!stats.isFile()) {
-        throw new Error("read_file only supports regular files");
+        throw new Error(`read_file only supports regular files: ${absolutePath}`);
       }
 
       const imageMimeType = await detectSupportedImageMimeTypeFromFile(absolutePath);
@@ -277,9 +313,12 @@ export function registerReadFileTool(pi: ExtensionAPI): void {
             })()
           : readSliceFromFile(absolutePath, offset, limit);
       const trimmed = trimToBudget(await output);
+      const text = trimmed.truncated
+        ? `${trimmed.text}\n\n[Use offset/limit or indentation mode to narrow the read.]`
+        : trimmed.text;
 
       return {
-        content: [{ type: "text", text: trimmed.text }],
+        content: [{ type: "text", text }],
         details: { filePath: absolutePath, mode, truncated: trimmed.truncated },
       };
     },

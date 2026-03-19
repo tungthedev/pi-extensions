@@ -18,6 +18,12 @@ export function isFailedBashResult(result: AgentToolResult<unknown>): boolean {
   return isErrorText(text) || (exitCode !== undefined && exitCode !== 0);
 }
 
+function commandState(text: string): "ran" | "timed_out" | "aborted" {
+  if (/command timed out/i.test(text)) return "timed_out";
+  if (/command aborted/i.test(text)) return "aborted";
+  return "ran";
+}
+
 export function renderBashResult(
   theme: Theme,
   args: { command?: string },
@@ -27,12 +33,14 @@ export function renderBashResult(
   const text = firstText(result);
   const exitCode = parseExitCode(text);
   const failed = isFailedBashResult(result);
+  const state = commandState(text);
   const command = summarizeCommand(args.command);
   const suffix = `${theme.fg(failed ? "error" : "accent", command)}${
     exitCode !== undefined ? theme.fg("dim", ` (exit ${exitCode})`) : ""
   }`;
 
-  const lines = [titleLine(theme, failed ? "error" : "text", "Ran", suffix)];
+  const title = state === "timed_out" ? "Timed out" : state === "aborted" ? "Aborted" : "Ran";
+  const lines = [titleLine(theme, failed ? "error" : "text", title, suffix)];
   const allBodyLines = stripExitCodeLines(previewLines(text, Number.MAX_SAFE_INTEGER));
   const visibleBodyLines = allBodyLines.slice(0, expanded ? 12 : 5);
   for (const [index, line] of visibleBodyLines.entries()) {

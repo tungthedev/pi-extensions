@@ -309,6 +309,80 @@ test("applyPatch can match unicode punctuation with ASCII patch text", async () 
   });
 });
 
+test("applyPatch preserves BOM and CRLF line endings on update", async () => {
+  await withTempDir(async (dir) => {
+    const filePath = path.join(dir, "crlf.txt");
+    await writeFile(filePath, "\uFEFFfoo\r\nbar\r\n", "utf8");
+
+    await applyPatch(
+      `*** Begin Patch
+*** Update File: crlf.txt
+@@
+ foo
+-bar
++baz
+*** End Patch`,
+      dir,
+    );
+
+    assert.deepEqual(await readFile(filePath), Buffer.from("\uFEFFfoo\r\nbaz\r\n", "utf8"));
+  });
+});
+
+test("applyPatch rejects placeholder redaction content", async () => {
+  await withTempDir(async (dir) => {
+    await assert.rejects(
+      () =>
+        applyPatch(
+          `*** Begin Patch
+*** Add File: redacted.txt
++[REDACTED]
+*** End Patch`,
+          dir,
+        ),
+      /Rejected patch: added content contains placeholder text/i,
+    );
+  });
+});
+
+test("applyPatch rejects binary file updates", async () => {
+  await withTempDir(async (dir) => {
+    const filePath = path.join(dir, "binary.bin");
+    await writeFile(filePath, Buffer.from([0, 1, 2, 3]));
+
+    await assert.rejects(
+      () =>
+        applyPatch(
+          `*** Begin Patch
+*** Update File: binary.bin
+@@
+-ignored
++replacement
+*** End Patch`,
+          dir,
+        ),
+      /file appears to be binary/i,
+    );
+  });
+});
+
+test("applyPatch can delete binary files", async () => {
+  await withTempDir(async (dir) => {
+    const filePath = path.join(dir, "binary.bin");
+    await writeFile(filePath, Buffer.from([0, 1, 2, 3]));
+
+    const result = await applyPatch(
+      `*** Begin Patch
+*** Delete File: binary.bin
+*** End Patch`,
+      dir,
+    );
+
+    assert.equal(result.summary, "Success. Updated the following files:\nD binary.bin\n");
+    await assert.rejects(readFile(filePath));
+  });
+});
+
 test("applyPatch rejects adding over an existing file", async () => {
   await withTempDir(async (dir) => {
     const filePath = path.join(dir, "existing.txt");

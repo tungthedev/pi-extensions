@@ -1,6 +1,7 @@
 import { Text } from "@mariozechner/pi-tui";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants as fsConstants } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 export const DEFAULT_MAX_BYTES = 50 * 1024;
@@ -32,8 +33,19 @@ export type ShellInvocationOptions = {
   shellExists?: (shellPath: string) => boolean;
 };
 
+type WindowedCapture = {
+  head: string;
+  tail: string;
+  truncated: boolean;
+};
+
+const CAPTURE_SEGMENT_BYTES = Math.floor(MAX_CAPTURE_BYTES / 2);
+
 function normalizePath(input: string): string {
-  return input.startsWith("@") ? input.slice(1) : input;
+  const stripped = input.startsWith("@") ? input.slice(1) : input;
+  if (stripped === "~") return os.homedir();
+  if (stripped.startsWith("~/")) return path.join(os.homedir(), stripped.slice(2));
+  return stripped;
 }
 
 export function truncateLine(text: string): string {
@@ -71,25 +83,57 @@ export function trimToBudget(text: string): { text: string; truncated: boolean }
   return { text: output, truncated };
 }
 
-function appendBoundedCapture(
-  current: string,
-  chunk: string,
-): {
-  text: string;
-  truncated: boolean;
-} {
-  const combined = `${current}${chunk}`;
-  if (Buffer.byteLength(combined, "utf-8") <= MAX_CAPTURE_BYTES) {
-    return { text: combined, truncated: false };
-  }
-
-  const tail = Buffer.from(combined, "utf-8").subarray(-MAX_CAPTURE_BYTES).toString("utf-8");
-  return { text: tail, truncated: true };
-}
-
 export function resolveAbsolutePath(cwd: string, input: string): string {
   const normalized = normalizePath(input);
   return path.isAbsolute(normalized) ? normalized : path.resolve(cwd, normalized);
+}
+
+function pathExists(filePath: string): boolean {
+  try {
+    accessSync(filePath, fsConstants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function resolveAbsolutePathWithVariants(cwd: string, input: string): string {
+  const resolved = resolveAbsolutePath(cwd, input);
+  if (pathExists(resolved)) return resolved;
+
+  const withNarrowNoBreakSpace = resolved.replace(/ (AM|PM)\./g, "\u202F$1.");
+  if (withNarrowNoBreakSpace !== resolved && pathExists(withNarrowNoBreakSpace)) {
+    return withNarrowNoBreakSpace;
+  }
+
+  const normalizedNfd = resolved.normalize("NFD");
+  if (normalizedNfd !== resolved && pathExists(normalizedNfd)) {
+    return normalizedNfd;
+  }
+
+  return resolved;
+}
+
+export function splitLeadingCdCommand(
+  command: string,
+): { workdir: string; command: string } | null {
+  const match = command.match(/^\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*(?:&&|;)\s*(.+)$/s);
+  if (!match) return null;
+  const workdir = match[1] ?? match[2] ?? match[3];
+  const nextCommand = match[4]?.trim();
+  if (!workdir || !nextCommand) return null;
+  return { workdir, command: nextCommand };
+}
+
+export function stripTrailingBackgroundOperator(command: string): {
+  command: string;
+  stripped: boolean;
+} {
+  const strippedCommand = command.replace(/\s*&\s*$/, "").trimEnd();
+  return {
+    command: strippedCommand,
+    stripped: strippedCommand !== command,
+  };
 }
 
 function shellPathExists(shellPath: string): boolean {
@@ -130,7 +174,7 @@ export function resolveShellInvocation(
   command: string,
   options: ShellInvocationOptions = {},
 ): ShellInvocation {
-  const login = options.login !== false;
+  const login = options.login === true;
   const userShell = options.userShell ?? process.env.SHELL;
   const shellExists = options.shellExists ?? shellPathExists;
   const flavor = detectShellFlavor(userShell, shellExists);
@@ -160,6 +204,61 @@ export function resolveShellInvocation(
   };
 }
 
+function sliceUtf8Head(text: string, maxBytes: number): string {
+  return Buffer.from(text, "utf-8").subarray(0, maxBytes).toString("utf-8");
+}
+
+function sliceUtf8Tail(text: string, maxBytes: number): string {
+  return Buffer.from(text, "utf-8").subarray(-maxBytes).toString("utf-8");
+}
+
+function appendWindowedCapture(current: WindowedCapture, chunk: string): WindowedCapture {
+  if (!current.truncated) {
+    const combined = `${current.head}${chunk}`;
+    if (Buffer.byteLength(combined, "utf-8") <= MAX_CAPTURE_BYTES) {
+      return { head: combined, tail: "", truncated: false };
+    }
+
+    return {
+      head: sliceUtf8Head(combined, CAPTURE_SEGMENT_BYTES),
+      tail: sliceUtf8Tail(combined, CAPTURE_SEGMENT_BYTES),
+      truncated: true,
+    };
+  }
+
+  return {
+    head: current.head,
+    tail: sliceUtf8Tail(`${current.tail}${chunk}`, CAPTURE_SEGMENT_BYTES),
+    truncated: true,
+  };
+}
+
+function finalizeWindowedCapture(capture: WindowedCapture, streamLabel: string): string {
+  if (!capture.truncated) {
+    return capture.head;
+  }
+
+  const marker = `\n[${streamLabel} truncated to first and last ${Math.floor(CAPTURE_SEGMENT_BYTES / 1024)} KiB]\n`;
+  return `${capture.head}${marker}${capture.tail}`;
+}
+
+function killChildProcess(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (child.pid) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      // Fall back to killing the direct child below.
+    }
+  }
+
+  try {
+    child.kill(signal);
+  } catch {
+    // Best effort only.
+  }
+}
+
 export async function execCommand(
   command: string,
   args: string[],
@@ -175,14 +274,14 @@ export async function execCommand(
   return await new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
+      detached: true,
       stdio: [stdinText !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
     });
 
-    let stdout = "";
-    let stderr = "";
-    let stdoutTruncated = false;
-    let stderrTruncated = false;
+    let stdout: WindowedCapture = { head: "", tail: "", truncated: false };
+    let stderr: WindowedCapture = { head: "", tail: "", truncated: false };
     let settled = false;
+    let forcedExitCode: number | null = null;
     let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
     let forceKillTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -203,23 +302,21 @@ export async function execCommand(
       settled = true;
       cleanup();
 
-      if (stdoutTruncated) {
-        stdout += "\n[stdout truncated to last 256 KiB]";
-      }
-      if (stderrTruncated) {
-        stderr += "\n[stderr truncated to last 256 KiB]";
-      }
-
-      resolve({ stdout, stderr, exitCode });
+      resolve({
+        stdout: finalizeWindowedCapture(stdout, "stdout"),
+        stderr: finalizeWindowedCapture(stderr, "stderr"),
+        exitCode,
+      });
     };
 
     const terminate = (message: string, exitCode: number) => {
       if (settled) return;
-      stderr += message;
-      child.kill("SIGTERM");
+      forcedExitCode = exitCode;
+      stderr = appendWindowedCapture(stderr, message);
+      killChildProcess(child, "SIGTERM");
       forceKillTimer = setTimeout(() => {
         if (settled) return;
-        child.kill("SIGKILL");
+        killChildProcess(child, "SIGKILL");
         finish(exitCode);
       }, 1000);
     };
@@ -229,21 +326,17 @@ export async function execCommand(
     };
 
     child.stdout?.on("data", (chunk) => {
-      const next = appendBoundedCapture(stdout, chunk.toString());
-      stdout = next.text;
-      stdoutTruncated ||= next.truncated;
+      stdout = appendWindowedCapture(stdout, chunk.toString());
     });
     child.stderr?.on("data", (chunk) => {
-      const next = appendBoundedCapture(stderr, chunk.toString());
-      stderr = next.text;
-      stderrTruncated ||= next.truncated;
+      stderr = appendWindowedCapture(stderr, chunk.toString());
     });
     child.on("error", (error) => {
       if (settled) return;
       cleanup();
       reject(error);
     });
-    child.on("close", (code) => finish(code ?? 1));
+    child.on("close", (code) => finish(forcedExitCode ?? code ?? 1));
 
     if (stdinText !== undefined && child.stdin) {
       child.stdin.write(stdinText);
