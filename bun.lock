@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@tungnguyensipher/pi-extensions",
+      "name": "@tungthedev/pi-extensions",
       "dependencies": {
         "@google/genai": "^1.43.0",
         "@silvia-odwyer/photon-node": "^0.3.4",

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `@tungnguyensipher/pi-extensions` will be documented in this file.
+All notable changes to `@tungthedev/pi-extensions` will be documented in this file.
 
 ## [0.1.0] - 2026-03-19
 

@@ -1,4 +1,4 @@
-# @tungnguyensipher/pi-extensions
+# @tungthedev/pi-extensions
 
 A Pi package repo that bundles seven extensions from this repository:
 
@@ -15,7 +15,7 @@ A Pi package repo that bundles seven extensions from this repository:
 From npm (after publishing):
 
 ```bash
-pi install npm:@tungnguyensipher/pi-extensions
+pi install npm:@tungthedev/pi-extensions
 ```
 
 Or from a local checkout:
