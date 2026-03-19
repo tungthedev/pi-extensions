@@ -1,8 +1,10 @@
 # @tungnguyensipher/pi-extensions
 
-A Pi package repo that bundles five extensions from this repository:
+A Pi package repo that bundles seven extensions from this repository:
 
 - `editor`
+- `mermaid`
+- `web-search`
 - `codex-content`
 - `codex-system-prompt`
 - `codex-subagents`
@@ -37,6 +39,8 @@ From another project, add the package to `.pi/settings.json`:
 This package exposes these extension entrypoints:
 
 - `extensions/editor/index.ts`
+- `extensions/mermaid/index.ts`
+- `extensions/web-search/index.ts`
 - `extensions/codex-system-prompt/index.ts`
 - `extensions/codex-content/index.ts`
 - `extensions/codex-subagents/index.ts`
