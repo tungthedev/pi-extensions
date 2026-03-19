@@ -2,13 +2,13 @@
 
 A Pi package repo that bundles seven extensions from this repository:
 
-- `editor`
-- `mermaid`
-- `web-search`
-- `codex-content`
-- `codex-system-prompt`
-- `codex-subagents`
-- `ext-manager`
+- `editor` — Replaces Pi's default editor with a boxed composer and an extensible status row.
+- `mermaid` — Renders Mermaid code blocks inline in chat and opens a full diagram viewer on demand.
+- `web-search` — Adds Gemini-backed `web_search` and `web_fetch` tools for grounded web research. (Requires `GEMINI_API_KEY` env when start pi)
+- `codex-content` — Overrides default tools with Codex-style compatibility tools and TUI rendering.
+- `codex-system-prompt` — Injects Codex-specific system prompt and collaboration mode instructions before agent start.
+- `codex-subagents` — Adds Codex-style subagent tools for spawning, resuming, messaging, and waiting on child agents.
+- `ext-manager` — Adds an in-app extension manager for browsing and managing local and package-provided extensions. Trigger with `/extmgr`
 
 ## Install
 
@@ -34,18 +34,6 @@ From another project, add the package to `.pi/settings.json`:
 }
 ```
 
-## Contents
-
-This package exposes these extension entrypoints:
-
-- `extensions/editor/index.ts`
-- `extensions/mermaid/index.ts`
-- `extensions/web-search/index.ts`
-- `extensions/codex-system-prompt/index.ts`
-- `extensions/codex-content/index.ts`
-- `extensions/codex-subagents/index.ts`
-- `extensions/ext-manager/index.ts`
-
 ## Development
 
 Install dependencies and run checks:
@@ -57,11 +45,3 @@ bun run test
 bun run lint
 bun run typecheck
 ```
-
-Useful repo files:
-
-- `package.json` — Pi package manifest and Bun scripts
-- `tsconfig.json` — editor/type-checking config for the TypeScript sources
-- `.github/workflows/ci.yml` — CI for install, test, and lint
-- `CHANGELOG.md` — release notes
-- `LICENSE` — MIT license
