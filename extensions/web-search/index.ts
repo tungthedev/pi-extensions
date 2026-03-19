@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
+
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 
@@ -71,7 +72,8 @@ export function createWebSearchTool(): ToolDefinition {
       ),
       model: Type.Optional(
         Type.String({
-          description: "Optional Gemini model override. Defaults to GEMINI_WEB_MODEL or gemini-2.5-flash.",
+          description:
+            "Optional Gemini model override. Defaults to GEMINI_WEB_MODEL or gemini-2.5-flash.",
         }),
       ),
     }),
@@ -113,8 +115,7 @@ export function createWebSearchTool(): ToolDefinition {
       const args = rawArgs as SearchParams;
       const objective = args.objective || "...";
       const short = objective.length > 70 ? `${objective.slice(0, 70)}...` : objective;
-      let text =
-        theme.fg("toolTitle", theme.bold("web_search ")) + theme.fg("dim", short);
+      let text = theme.fg("toolTitle", theme.bold("web_search ")) + theme.fg("dim", short);
       if (args.search_queries?.length) {
         text += theme.fg("muted", ` [${args.search_queries.join(", ")}]`);
       }
@@ -162,7 +163,8 @@ export function createWebFetchTool(): ToolDefinition {
       ),
       model: Type.Optional(
         Type.String({
-          description: "Optional Gemini model override. Defaults to GEMINI_WEB_MODEL or gemini-2.5-flash.",
+          description:
+            "Optional Gemini model override. Defaults to GEMINI_WEB_MODEL or gemini-2.5-flash.",
         }),
       ),
     }),

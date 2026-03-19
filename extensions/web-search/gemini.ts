@@ -1,4 +1,10 @@
-import { GoogleGenAI, type GoogleGenAIOptions, type GroundingChunk, type GroundingSupport, type UrlMetadata } from "@google/genai";
+import {
+  GoogleGenAI,
+  type GoogleGenAIOptions,
+  type GroundingChunk,
+  type GroundingSupport,
+  type UrlMetadata,
+} from "@google/genai";
 
 export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 export const DEFAULT_MAX_RESULTS = 10;
@@ -60,7 +66,11 @@ export function clampMaxResults(value?: number): number {
   return Math.max(1, Math.min(MAX_RESULTS_CAP, Math.floor(value ?? DEFAULT_MAX_RESULTS)));
 }
 
-export function buildSearchPrompt(objective: string, searchQueries?: string[], maxResults?: number): string {
+export function buildSearchPrompt(
+  objective: string,
+  searchQueries?: string[],
+  maxResults?: number,
+): string {
   const lines = [
     "Search the web and answer the research objective using current web information.",
     "Prefer precise, primary, and recent sources when available.",
@@ -158,7 +168,9 @@ export function insertGroundingCitations(
   const insertions = supports
     .map((support) => {
       const endIndex = support.segment?.endIndex;
-      const indices = (support.groundingChunkIndices ?? []).filter((index) => Number.isInteger(index));
+      const indices = (support.groundingChunkIndices ?? []).filter((index) =>
+        Number.isInteger(index),
+      );
       if (typeof endIndex !== "number" || indices.length === 0) return undefined;
       return {
         index: endIndex,
@@ -242,14 +254,20 @@ export async function runGeminiSearch(
   });
 
   const candidate = response.candidates?.[0];
-  const groundedText = insertGroundingCitations(response.text?.trim() || "", candidate?.groundingMetadata?.groundingSupports);
+  const groundedText = insertGroundingCitations(
+    response.text?.trim() || "",
+    candidate?.groundingMetadata?.groundingSupports,
+  );
   if (!groundedText) {
     throw new Error("Gemini returned no grounded web search content.");
   }
 
   return {
     text: groundedText,
-    citations: citationsFromGrounding(candidate?.groundingMetadata?.groundingChunks, args.maxResults),
+    citations: citationsFromGrounding(
+      candidate?.groundingMetadata?.groundingChunks,
+      args.maxResults,
+    ),
     model,
   };
 }
@@ -280,15 +298,24 @@ export async function runGeminiFetch(
     throw new Error(`Gemini could not retrieve content from ${url}.`);
   }
 
-  const groundedText = insertGroundingCitations(response.text?.trim() || "", candidate?.groundingMetadata?.groundingSupports);
-  const citations = citationsFromGrounding(candidate?.groundingMetadata?.groundingChunks, DEFAULT_MAX_RESULTS);
+  const groundedText = insertGroundingCitations(
+    response.text?.trim() || "",
+    candidate?.groundingMetadata?.groundingSupports,
+  );
+  const citations = citationsFromGrounding(
+    candidate?.groundingMetadata?.groundingChunks,
+    DEFAULT_MAX_RESULTS,
+  );
 
   if (!groundedText && citations.length === 0) {
     throw new Error(`Gemini returned no content for ${url}.`);
   }
 
   return {
-    text: trimToMaxChars(groundedText || "(no extract returned)", args.maxChars ?? DEFAULT_FETCH_MAX_CHARS),
+    text: trimToMaxChars(
+      groundedText || "(no extract returned)",
+      args.maxChars ?? DEFAULT_FETCH_MAX_CHARS,
+    ),
     citations,
     model,
   };

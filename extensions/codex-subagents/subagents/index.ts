@@ -20,6 +20,7 @@ import type {
   SubagentEntryType,
 } from "./types.ts";
 
+import { titleLine } from "../../codex-content/renderers/common.ts";
 import { appendBounded, createLiveAttachment } from "./attachment.ts";
 import { generateUniqueSubagentName, resolveSubagentName } from "./naming.ts";
 import {
@@ -1115,7 +1116,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         return undefined;
       }
       return new Text(
-        `  ${theme.fg("muted", "└ ")}${theme.fg("dim", shorten(details.prompt, 140))}`,
+        `${theme.fg("muted", "└ ")}${theme.fg("dim", shorten(details.prompt, 140))}`,
         0,
         0,
       );
@@ -1221,14 +1222,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     parameters: Type.Object({
       id: Type.Optional(Type.String({ description: "Agent id to message (from spawn_agent)." })),
       agent_id: Type.Optional(Type.String({ description: "Identifier returned by spawn_agent." })),
-      input: Type.Optional(
-        Type.String({
-          description: "Legacy instruction field for the child agent.",
-        }),
-      ),
       message: Type.Optional(
         Type.String({
-          description: "Plain-text message to send to the agent. Use either message or items.",
+          description: "Plain-text message to send to the agent.",
         }),
       ),
       items: Type.Optional(
@@ -1245,7 +1241,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params) {
       const agentId = resolveAgentIdAlias(params);
-      const input = [params.input?.trim(), params.message?.trim(), flattenCollabItems(params.items)]
+      const input = [params.message?.trim(), flattenCollabItems(params.items)]
         .filter((value): value is string => Boolean(value))
         .join("\n\n")
         .trim();
@@ -1290,28 +1286,28 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           details: {
             submission_id: submissionId,
             ...childSnapshot(nextRecord, attachment),
+            input,
             command: commandType,
           },
         };
       });
     },
-    renderCall(args) {
-      return conciseResult(
-        "send_input",
-        shorten((args.message ?? args.input ?? flattenCollabItems(args.items) ?? "") as string),
-      );
+    renderCall() {
+      return undefined;
     },
     renderResult(result, _options, theme) {
-      const details = (result.details ?? {}) as AgentSnapshot & {
-        command?: string;
-      };
-      const command = details.command ? `${details.command} ` : "";
-      const displayName = details.agent_id ? getSubagentDisplayName(details) : "";
-      return new Text(
-        `${theme.fg("success", "✓ ")}${theme.fg("muted", command)}${theme.fg("accent", displayName)}`,
-        0,
-        0,
+      const details = (result.details ?? {}) as AgentSnapshot & { input: string };
+      const snapshot = extractSnapshotDetails(details);
+      const displayName = snapshot ? getSubagentDisplayName(snapshot) : "";
+
+      const container = new Container();
+      const title = titleLine(theme, "text", "Messaged", `${theme.fg("accent", `${displayName}`)}`);
+      container.addChild(new Text(title, 0, 0));
+      container.addChild(
+        new Text(`${theme.fg("muted", "└ ")}${details.input.split("\n").join("\n  ")}`, 0, 0),
       );
+
+      return container;
     },
   });
 
@@ -1377,9 +1373,17 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         const record = durableChildrenById.get(id);
         return record ? getSubagentDisplayName(childSnapshot(record)) : id;
       });
-      const title =
-        names.length === 1 ? `Waiting for ${names[0]}` : `Waiting for ${names.length} agents`;
-      return new Text(`${theme.fg("muted", "• ")}${theme.fg("toolTitle", title)}`, 0, 0);
+
+      return new Text(
+        titleLine(
+          theme,
+          "text",
+          "Waiting",
+          theme.fg("accent", names.length === 1 ? names[0] : `${names.length} agents`),
+        ),
+        0,
+        0,
+      );
     },
     renderResult(result, { expanded }, theme) {
       const details = (result.details ?? {}) as {
@@ -1388,11 +1392,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       };
       const agentsList = details.agents ?? [];
       if (agentsList.length === 0) {
-        return new Text(
-          `${theme.fg("muted", "• ")}${theme.fg("toolTitle", "Finished waiting")}`,
-          0,
-          0,
-        );
+        return new Text(titleLine(theme, "text", "Finished waiting"), 0, 0);
       }
 
       const markdownTheme = getMarkdownTheme();
@@ -1406,23 +1406,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
               : status === "closed"
                 ? "muted"
                 : "accent";
-      // const getStatusIcon = (status: AgentSnapshot["status"]) =>
-      //   status === "idle"
-      //     ? "✓"
-      //     : status === "timeout"
-      //       ? "⏱"
-      //       : status === "failed"
-      //         ? "✗"
-      //         : status === "closed"
-      //           ? "•"
-      //           : status === "detached"
-      //             ? "◌"
-      //             : "⏳";
 
       const container = new Container();
-      container.addChild(
-        new Text(`${theme.fg("muted", "• ")}${theme.fg("toolTitle", "Finished waiting")}`, 0, 0),
-      );
+      container.addChild(new Text(titleLine(theme, "text", "Finished waiting"), 0, 0));
 
       for (const [index, agent] of agentsList.entries()) {
         if (index > 0) container.addChild(new Spacer(1));
@@ -1437,7 +1423,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           detail += `${theme.fg("muted", " - ")}${theme.fg("toolOutput", summary)}`;
         }
         container.addChild(
-          new Text(`  ${theme.fg("muted", index === 0 ? "└ " : "  ")}${detail}`, 0, 0),
+          new Text(`${theme.fg("muted", index === 0 ? "└ " : "  ")}${detail}`, 0, 0),
         );
 
         const reply = agent.last_assistant_text?.trim();
@@ -1450,7 +1436,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           if (preview.hiddenLineCount > 0) {
             container.addChild(
               new Text(
-                theme.fg("muted", `... +${preview.hiddenLineCount} more rows (Ctrl+O to expand)`),
+                theme.fg("muted", `  ... +${preview.hiddenLineCount} more rows (Ctrl+O to expand)`),
                 0,
                 0,
               ),
@@ -1471,7 +1457,11 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         }, 0);
         container.addChild(new Spacer(1));
         container.addChild(
-          new Text(theme.fg("muted", `... +${hiddenReplyRows} more rows (Ctrl+O to expand)`), 0, 0),
+          new Text(
+            theme.fg("muted", `  ... +${hiddenReplyRows} more rows (Ctrl+O to expand)`),
+            0,
+            0,
+          ),
         );
       }
 
@@ -1532,14 +1522,16 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         },
       };
     },
-    renderCall(args) {
-      return conciseResult("close_agent", args.id ?? args.agent_id);
+    renderCall() {
+      return undefined;
     },
     renderResult(result, _options, theme) {
       const details = result.details as { status?: AgentSnapshot } | AgentSnapshot | undefined;
       const snapshot = extractSnapshotDetails(details);
       const displayName = snapshot ? getSubagentDisplayName(snapshot) : "";
-      return new Text(`${theme.fg("muted", "closed ")}${theme.fg("accent", displayName)}`, 0, 0);
+
+      const title = titleLine(theme, "text", "Closed", `${theme.fg("accent", `${displayName}`)}`);
+      return new Text(title, 0, 0);
     },
   });
 

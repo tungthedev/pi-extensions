@@ -17,10 +17,7 @@ const CLOSING_FENCE = /^\s*`{3,}\s*$/;
  * line-based scan for mermaid fenced blocks.
  * avoids global regex because agent output often has nested or malformed fences.
  */
-export function extractMermaidBlocks(
-  text: string,
-  maxBlocks = 10,
-): MermaidBlock[] {
+export function extractMermaidBlocks(text: string, maxBlocks = 10): MermaidBlock[] {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   const blocks: MermaidBlock[] = [];
   let i = 0;
@@ -57,10 +54,7 @@ export function captureContextSlice(
 ): MermaidContextSlice {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
 
-  const beforeLines = lines.slice(
-    Math.max(0, block.startLine - radius),
-    block.startLine,
-  );
+  const beforeLines = lines.slice(Math.max(0, block.startLine - radius), block.startLine);
   const afterLines = lines.slice(
     block.endLine + 1,
     Math.min(lines.length, block.endLine + 1 + radius),
@@ -82,10 +76,7 @@ export function extractText(content: unknown): string {
     return content
       .filter(
         (p): p is { text: string } =>
-          typeof p === "object" &&
-          p !== null &&
-          "text" in p &&
-          typeof p.text === "string",
+          typeof p === "object" && p !== null && "text" in p && typeof p.text === "string",
       )
       .map((p) => p.text)
       .join("\n");

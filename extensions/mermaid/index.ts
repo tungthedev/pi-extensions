@@ -1,15 +1,11 @@
-import type {
-  ExtensionAPI,
-  ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+
 import { Box, truncateToWidth } from "@mariozechner/pi-tui";
-import {
-  extractMermaidBlocks,
-  captureContextSlice,
-  extractText,
-} from "./extract.ts";
-import { createCache, pickBestPreset, hashCode } from "./render.ts";
+
 import type { RenderCache } from "./render.ts";
+
+import { extractMermaidBlocks, captureContextSlice, extractText } from "./extract.ts";
+import { createCache, pickBestPreset, hashCode } from "./render.ts";
 import { openMermaidViewer } from "./viewer.ts";
 
 export type DiagramEntry = {
@@ -47,11 +43,7 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
         }
 
         try {
-          const { preset, rendered, overflowed } = pickBestPreset(
-            cache,
-            entry.block.code,
-            width,
-          );
+          const { preset, rendered, overflowed } = pickBestPreset(cache, entry.block.code, width);
 
           const lines: string[] = [];
 
@@ -64,22 +56,14 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
           }
 
           if (overflowed) {
-            lines.push(
-              theme.fg(
-                "dim",
-                "diagram wider than terminal — ctrl+shift+m to view full",
-              ),
-            );
+            lines.push(theme.fg("dim", "diagram wider than terminal — ctrl+shift+m to view full"));
           }
 
           return lines.map((l) => truncateToWidth(l, width));
         } catch (err) {
           return [
             truncateToWidth(
-              theme.fg(
-                "dim",
-                `render error: ${err instanceof Error ? err.message : String(err)}`,
-              ),
+              theme.fg("dim", `render error: ${err instanceof Error ? err.message : String(err)}`),
               width,
             ),
           ];

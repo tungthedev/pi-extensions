@@ -1,9 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import {
-  CODEX_SUBAGENT_CHILD_ENV,
-  registerCodexSubagentTools,
-} from "./subagents/index.ts";
+import { CODEX_SUBAGENT_CHILD_ENV, registerCodexSubagentTools } from "./subagents/index.ts";
 
 export {
   applySpawnAgentProfile,

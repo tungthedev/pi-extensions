@@ -1,5 +1,5 @@
-import { renderMermaidASCII } from "beautiful-mermaid";
 import { visibleWidth } from "@mariozechner/pi-tui";
+import { renderMermaidASCII } from "beautiful-mermaid";
 import { createHash } from "node:crypto";
 
 export type MermaidPreset = {

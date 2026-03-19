@@ -1,7 +1,10 @@
 import type { ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
+
 import { Key, matchesKey, visibleWidth } from "@mariozechner/pi-tui";
+
 import type { MermaidContextSlice } from "./extract.ts";
 import type { RenderCache } from "./render.ts";
+
 import { pickBestPreset } from "./render.ts";
 
 type DiagramEntry = {
@@ -36,14 +39,7 @@ export async function openMermaidViewer(args: {
 
   await ctx.ui.custom<void>(
     (tui, theme, _kb, done) => {
-      const viewer = new MermaidViewer(
-        diagrams,
-        startIndex,
-        cache,
-        theme,
-        tui,
-        done,
-      );
+      const viewer = new MermaidViewer(diagrams, startIndex, cache, theme, tui, done);
       return {
         render: (w: number) => viewer.render(w),
         handleInput: (data: string) => {
@@ -113,25 +109,13 @@ class MermaidViewer {
       this.panY += 1;
     }
     // fast pan — shift or alt variants
-    else if (
-      matchesKey(data, Key.shift("left")) ||
-      matchesKey(data, Key.alt("left"))
-    ) {
+    else if (matchesKey(data, Key.shift("left")) || matchesKey(data, Key.alt("left"))) {
       this.panX -= 10;
-    } else if (
-      matchesKey(data, Key.shift("right")) ||
-      matchesKey(data, Key.alt("right"))
-    ) {
+    } else if (matchesKey(data, Key.shift("right")) || matchesKey(data, Key.alt("right"))) {
       this.panX += 10;
-    } else if (
-      matchesKey(data, Key.shift("up")) ||
-      matchesKey(data, Key.alt("up"))
-    ) {
+    } else if (matchesKey(data, Key.shift("up")) || matchesKey(data, Key.alt("up"))) {
       this.panY -= 5;
-    } else if (
-      matchesKey(data, Key.shift("down")) ||
-      matchesKey(data, Key.alt("down"))
-    ) {
+    } else if (matchesKey(data, Key.shift("down")) || matchesKey(data, Key.alt("down"))) {
       this.panY += 5;
     }
     // home/end for horizontal extremes
@@ -142,8 +126,7 @@ class MermaidViewer {
     } // clamped in render
     // diagram navigation
     else if (data === "[" || matchesKey(data, Key.shift("tab"))) {
-      this.activeIndex =
-        (this.activeIndex - 1 + this.diagrams.length) % this.diagrams.length;
+      this.activeIndex = (this.activeIndex - 1 + this.diagrams.length) % this.diagrams.length;
       this.panX = 0;
       this.panY = 0;
     } else if (data === "]" || matchesKey(data, Key.tab)) {
@@ -242,11 +225,7 @@ class MermaidViewer {
  * mermaid ASCII output (box-drawing + latin) but would break on CJK
  * or emoji. acceptable tradeoff — beautiful-mermaid doesn't emit those.
  */
-function sliceAnsiByColumns(
-  line: string,
-  startCol: number,
-  maxCols: number,
-): string {
+function sliceAnsiByColumns(line: string, startCol: number, maxCols: number): string {
   let col = 0;
   let out = "";
   let i = 0;
