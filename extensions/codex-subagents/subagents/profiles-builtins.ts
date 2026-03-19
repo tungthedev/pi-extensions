@@ -51,6 +51,22 @@ const BUILTIN_PROFILE_DECLARATIONS: BuiltInProfileDeclaration[] = [
     assetFile: "worker.toml",
     visible: true,
   },
+  {
+    name: "reviewer",
+    description: [
+      "Use `reviewer` for code review and change-risk assessment.",
+      "Typical tasks:",
+      "- Review diffs for correctness, regressions, and maintainability",
+      "- Call out missing tests, edge cases, and rollout risks",
+      "- Summarize actionable fixes in priority order",
+      "Rules:",
+      "- Focus on findings and concrete risks, not style nits unless they affect correctness or readability.",
+      "- Cite file paths and explain why each issue matters.",
+      "- If the change looks good, say so clearly and mention any residual risk.",
+    ].join("\n"),
+    assetFile: "reviewer.toml",
+    visible: true,
+  },
 ];
 
 function readBundledRoleAsset(assetFile: string): string {

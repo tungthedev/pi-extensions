@@ -358,13 +358,13 @@ test("getSubagentDisplayName includes role when available", () => {
 
 test("applySpawnAgentProfile produces child bootstrap data for built-in roles", () => {
   const applied = applySpawnAgentProfile({
-    requestedAgentType: "explorer",
+    requestedAgentType: "reviewer",
     profiles: resolveAgentProfiles({ includeHidden: true }).profiles,
   });
 
-  assert.equal(applied.agentType, "explorer");
-  assert.equal(applied.bootstrap.name, "explorer");
-  assert.equal(applied.bootstrap.developerInstructions, undefined);
+  assert.equal(applied.agentType, "reviewer");
+  assert.equal(applied.bootstrap.name, "reviewer");
+  assert.match(applied.bootstrap.developerInstructions ?? "", /focused on code review/);
 });
 
 test("summarizeSubagentReply flattens markdown into a compact one-line preview", () => {

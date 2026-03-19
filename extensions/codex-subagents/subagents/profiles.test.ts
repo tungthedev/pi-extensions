@@ -22,16 +22,20 @@ test("resolveBuiltInAgentProfiles returns built-in profiles", () => {
   const resolved = resolveBuiltInAgentProfiles();
 
   assert.equal(resolved.defaultRoleName, "default");
-  assert.deepEqual([...resolved.profiles.keys()], ["default", "explorer", "worker"]);
+  assert.deepEqual([...resolved.profiles.keys()], ["default", "explorer", "worker", "reviewer"]);
   assert.deepEqual(resolved.warnings, []);
 });
 
 test("resolveBuiltInAgentProfiles includeHidden stays stable without hidden built-ins", () => {
   const resolved = resolveBuiltInAgentProfiles({ includeHidden: true });
 
-  assert.deepEqual([...resolved.profiles.keys()], ["default", "explorer", "worker"]);
+  assert.deepEqual([...resolved.profiles.keys()], ["default", "explorer", "worker", "reviewer"]);
   assert.equal(resolved.profiles.get("explorer")?.developerInstructions, undefined);
   assert.equal(resolved.profiles.get("worker")?.developerInstructions, undefined);
+  assert.match(
+    resolved.profiles.get("reviewer")?.developerInstructions ?? "",
+    /focused on code review/,
+  );
 });
 
 test("parseBundledRoleAsset extracts developer instructions and role settings", () => {
@@ -55,7 +59,7 @@ test("buildSpawnAgentTypeDescription lists visible built-in profiles", () => {
   assert.match(description, /default: \{\nDefault agent\.\n\}/);
   assert.match(description, /explorer: \{/);
   assert.match(description, /worker: \{/);
-  assert.doesNotMatch(description, /reviewer:/);
+  assert.match(description, /reviewer: \{/);
 });
 
 test("resolveRequestedAgentType defaults omitted values to default", () => {
@@ -304,7 +308,13 @@ test("resolveAgentProfiles merges custom roles before built-ins", () => {
   const resolved = resolveAgentProfiles();
   const description = buildSpawnAgentTypeDescription(resolved);
 
-  assert.deepEqual([...resolved.profiles.keys()], ["researcher", "default", "explorer", "worker"]);
+  assert.deepEqual([...resolved.profiles.keys()], [
+    "researcher",
+    "default",
+    "explorer",
+    "worker",
+    "reviewer",
+  ]);
   assert.ok(description.indexOf("researcher: {") < description.indexOf("default: {"));
 
   clearResolvedAgentProfilesCache();
