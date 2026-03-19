@@ -329,7 +329,7 @@ test("truncateSubagentReply limits previews to 50 lines and reports hidden rows"
     .join("\n");
 
   assert.deepEqual(truncateSubagentReply(source), {
-    text: Array.from({ length: MAX_SUBAGENT_REPLY_PREVIEW_LINES + 3 }, () => 0)
+    text: Array.from({ length: MAX_SUBAGENT_REPLY_PREVIEW_LINES }, () => 0)
       .map((_, index) => `line ${index + 1}`)
       .join("\n"),
     hiddenLineCount: 3,

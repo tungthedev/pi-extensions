@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -7,18 +10,114 @@ import {
   buildDefaultCollaborationModeInstructions,
   buildDefaultCollaborationModePrompt,
   injectCodexPrompt,
+  parseCodexPersonality,
+  readCodexPersonality,
   readAgentProfilePromptPayload,
+  resolveCodexConfigPath,
+  resolveCodexHome,
+  resolveCodexPromptBody,
 } from "./index.ts";
 
-test("buildCodexPrompt appends the Pi-specific apply_patch override", () => {
+test("resolveCodexHome uses CODEX_HOME when it points to a directory", async () => {
+  const tempDir = await import("node:fs/promises").then((fs) =>
+    fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-home-")),
+  );
+
+  assert.equal(resolveCodexHome({ CODEX_HOME: tempDir }, "/Users/test"), fs.realpathSync(tempDir));
+});
+
+test("resolveCodexConfigPath defaults to ~/.codex/config.toml", () => {
+  assert.equal(resolveCodexConfigPath({}, "/Users/test"), "/Users/test/.codex/config.toml");
+});
+
+test("parseCodexPersonality reads top-level personality", () => {
+  assert.equal(parseCodexPersonality('model = "gpt-5.4"\npersonality = "friendly"\n'), "friendly");
+  assert.equal(parseCodexPersonality('personality = "pragmatic" # comment\n'), "pragmatic");
+  assert.equal(parseCodexPersonality('personality = "unknown"\n'), undefined);
+});
+
+test("readCodexPersonality reads personality from CODEX_HOME config.toml", async () => {
+  const fs = await import("node:fs/promises");
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-config-"));
+  await fs.writeFile(path.join(tempDir, "config.toml"), 'personality = "friendly"\n');
+
+  assert.equal(readCodexPersonality({ CODEX_HOME: tempDir }, "/Users/test"), "friendly");
+});
+
+test("buildCodexPrompt trims and returns the packaged prompt body", () => {
   const prompt = buildCodexPrompt("Base Codex prompt");
 
-  assert.match(prompt, /^Base Codex prompt\n\n## Pi harness apply_patch note/m);
-  assert.match(
-    prompt,
-    /`apply_patch` is a structured tool with a single string parameter named `input`/,
+  assert.equal(prompt, "Base Codex prompt");
+});
+
+test("resolveCodexPromptBody uses exact model match and template default personality", () => {
+  const prompt = resolveCodexPromptBody("gpt-5.4", {
+    models: [
+      {
+        slug: "gpt-5.4",
+        base_instructions: "fallback base",
+        model_messages: {
+          instructions_template: "Header\n\n{{ personality }}\n\nBody",
+          instructions_variables: {
+            personality_default: "Default personality",
+          },
+        },
+      },
+    ],
+  });
+
+  assert.equal(prompt, "Header\n\nDefault personality\n\nBody");
+});
+
+test("resolveCodexPromptBody uses configured personality variant when present", () => {
+  const prompt = resolveCodexPromptBody(
+    "gpt-5.4",
+    {
+      models: [
+        {
+          slug: "gpt-5.4",
+          base_instructions: "fallback base",
+          model_messages: {
+            instructions_template: "Header\n\n{{ personality }}\n\nBody",
+            instructions_variables: {
+              personality_default: "Default personality",
+              personality_friendly: "Friendly personality",
+              personality_pragmatic: "Pragmatic personality",
+            },
+          },
+        },
+      ],
+    },
+    "friendly",
   );
-  assert.match(prompt, /do not invoke `apply_patch` through `shell_command`/);
+
+  assert.equal(prompt, "Header\n\nFriendly personality\n\nBody");
+});
+
+test("resolveCodexPromptBody falls back unknown gpt models to gpt-5.4", () => {
+  const prompt = resolveCodexPromptBody("gpt-6-experimental", {
+    models: [
+      {
+        slug: "gpt-5.4",
+        base_instructions: "gpt-5.4 prompt",
+      },
+    ],
+  });
+
+  assert.equal(prompt, "gpt-5.4 prompt");
+});
+
+test("resolveCodexPromptBody skips codex prompt for non-gpt unknown models", () => {
+  const prompt = resolveCodexPromptBody("claude-sonnet", {
+    models: [
+      {
+        slug: "gpt-5.4",
+        base_instructions: "gpt-5.4 prompt",
+      },
+    ],
+  });
+
+  assert.equal(prompt, "");
 });
 
 test("injectCodexPrompt appends once and is idempotent", () => {
