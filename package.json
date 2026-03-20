@@ -69,6 +69,7 @@
       "./extensions/mermaid/index.ts",
       "./extensions/skill/index.ts",
       "./extensions/web-search/index.ts",
+      "./extensions/cloudflare-crawl/index.ts",
       "./extensions/codex-content/index.ts",
       "./extensions/codex-subagents/index.ts",
       "./extensions/ext-manager/index.ts"
