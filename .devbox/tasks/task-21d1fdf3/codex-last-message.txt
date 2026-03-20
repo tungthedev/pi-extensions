@@ -1,0 +1,9 @@
+Updated [`.gitignore`](/Volumes/Data/Projects/exp/pi-extensions/.gitignore) to include `.env`, so future changes to that file will be ignored once it is no longer tracked.
+
+I could not remove `.env` from the git index in this session because the sandbox blocks writes to `.git/index` (`index.lock: Operation not permitted`). Run this locally in the repo to finish it:
+
+```bash
+git rm --cached .env
+```
+
+Verification: `git diff -- .gitignore` shows the new `.env` ignore entry, and `git status -- .gitignore .env` now shows only the `.gitignore` modification.
