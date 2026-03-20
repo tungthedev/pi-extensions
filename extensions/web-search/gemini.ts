@@ -115,8 +115,11 @@ export function buildFetchPrompt(url: string, objective?: string, prompt?: strin
   ].join("\n\n");
 }
 
-export function wrapUntrustedWebContent(text: string, source: "web_search" | "web_fetch"): string {
-  const label = source === "web_search" ? "web search" : "web fetch";
+export function wrapUntrustedWebContent(
+  text: string,
+  source: "web_search" | "web_fetch" | "web_extract",
+): string {
+  const label = source === "web_search" ? "web search" : "web extract";
   return [
     `<untrusted-${label.replace(/\s+/g, "-")}-content>`,
     "The following content comes from external web sources.",
