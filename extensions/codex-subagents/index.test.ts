@@ -14,6 +14,7 @@ import {
   extractLastAssistantText,
   flattenCollabItems,
   formatSubagentNotificationMessage,
+  getWaitAgentResultTitle,
   normalizeReasoningEffortToThinkingLevel,
   normalizeWaitAgentTimeoutMs,
   normalizeThinkingLevelToReasoningEffort,
@@ -329,6 +330,12 @@ test("buildWaitAgentContent returns empty status when wait_agent times out", () 
     timed_out: true,
     agents: [],
   });
+});
+
+test("getWaitAgentResultTitle reports timeout when no agent completed", () => {
+  assert.equal(getWaitAgentResultTitle(true, 0), "Waiting timed out");
+  assert.equal(getWaitAgentResultTitle(false, 0), "Finished waiting");
+  assert.equal(getWaitAgentResultTitle(true, 1), "Finished waiting");
 });
 
 test("buildSpawnAgentContent matches Codex JSON shape and preserves null nickname", () => {

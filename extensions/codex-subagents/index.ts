@@ -22,6 +22,7 @@ export {
   generateUniqueSubagentName,
   getSubagentCompletionLabel,
   getSubagentDisplayName,
+  getWaitAgentResultTitle,
   extractLastAssistantText,
   formatSubagentNotificationMessage,
   isResumable,

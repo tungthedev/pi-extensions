@@ -147,6 +147,14 @@ export function normalizeWaitAgentTimeoutMs(timeoutMs: number | undefined): numb
   return Math.min(MAX_WAIT_AGENT_TIMEOUT_MS, Math.max(MIN_WAIT_AGENT_TIMEOUT_MS, rawTimeoutMs));
 }
 
+export function getWaitAgentResultTitle(timedOut: boolean, agentCount: number): string {
+  if (timedOut && agentCount === 0) {
+    return "Waiting timed out";
+  }
+
+  return "Finished waiting";
+}
+
 type CollabInputItem = {
   type?: string;
   text?: string;
@@ -1482,8 +1490,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         timed_out?: boolean;
       };
       const agentsList = details.agents ?? [];
+      const title = getWaitAgentResultTitle(Boolean(details.timed_out), agentsList.length);
       if (agentsList.length === 0) {
-        return new Text(titleLine(theme, "text", "Finished waiting"), 0, 0);
+        return new Text(titleLine(theme, "text", title), 0, 0);
       }
 
       const markdownTheme = getMarkdownTheme();
@@ -1499,7 +1508,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
                 : "accent";
 
       const container = new Container();
-      container.addChild(new Text(titleLine(theme, "text", "Finished waiting"), 0, 0));
+      container.addChild(new Text(titleLine(theme, "text", title), 0, 0));
 
       for (const [index, agent] of agentsList.entries()) {
         if (index > 0) container.addChild(new Spacer(1));
