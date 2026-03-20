@@ -2,6 +2,23 @@
 
 All notable changes to `@tungthedev/pi-extensions` will be documented in this file.
 
+## [0.3.0] - 2026-03-20
+
+### Added
+
+- Added a `cloudflare-crawl` extension with a `crawl_page` tool for fetching real page content through Cloudflare Browser Rendering, with foreground polling or background completion notifications.
+
+### Changed
+
+- Renamed the Gemini URL tool from `web_fetch` to `web_extract`.
+- Refined `web_search` and `web_extract` rendering with richer previews, expandable markdown output, clearer titles, and inline source lists.
+- Automatically remove `web_search`, `web_extract`, and `crawl_page` from the active tool list when their required provider credentials are missing so the model cannot call unavailable tools.
+
+### Fixed
+
+- Fixed background completion notifications for `codex-subagents` and `cloudflare-crawl` so they trigger a parent turn when the parent is idle and queue as follow-ups while the parent is streaming.
+- Expanded `.gitignore` coverage for local env files and common development artifacts to avoid accidental commits.
+
 ## [0.2.0] - 2026-03-20
 
 ### Added

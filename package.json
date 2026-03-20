@@ -1,6 +1,6 @@
 {
   "name": "@tungthedev/pi-extensions",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A Pi package containing the editor, mermaid, skill, web-search, codex-content, codex-system-prompt, codex-subagents, and ext-manager extensions.",
   "keywords": [
     "codex",
