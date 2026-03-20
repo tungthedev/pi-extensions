@@ -3,110 +3,138 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { ExplorationTracker } from "./state.ts";
 import {
   clearExplorationWidget,
-  clearLiveExplorationUI,
+  clearLiveExplorationStatus,
   clearWorkingMessage,
-  setFinalExplorationWidget,
+  setExplorationWidget,
   syncLiveExplorationStatus,
 } from "./ui.ts";
+
+const LIVE_EXPLORATION_CLEAR_DELAY_MS = 1200;
 
 export function installExplorationEventHandlers(pi: ExtensionAPI): void {
   const tracker = new ExplorationTracker();
   let liveExplorationClearTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const cancelLiveExplorationClearTimer = () => {
-    if (liveExplorationClearTimer) {
-      clearTimeout(liveExplorationClearTimer);
-      liveExplorationClearTimer = null;
+  function cancelLiveExplorationClearTimer(): void {
+    if (!liveExplorationClearTimer) {
+      return;
     }
-  };
 
-  const clearLiveUi = (ctx: Pick<ExtensionContext, "ui">) => {
+    clearTimeout(liveExplorationClearTimer);
+    liveExplorationClearTimer = null;
+  }
+
+  function clearLiveExploration(): void {
     cancelLiveExplorationClearTimer();
-    clearLiveExplorationUI(pi, ctx);
-  };
+    clearLiveExplorationStatus(pi);
+  }
 
-  const scheduleLiveExplorationClear = (ctx: Pick<ExtensionContext, "ui">, delayMs = 1200) => {
+  function scheduleLiveExplorationClear(
+    ctx: Pick<ExtensionContext, "ui">,
+    delayMs = LIVE_EXPLORATION_CLEAR_DELAY_MS,
+  ): void {
     cancelLiveExplorationClearTimer();
     liveExplorationClearTimer = setTimeout(() => {
       liveExplorationClearTimer = null;
-      clearLiveExplorationUI(pi, ctx);
+      clearLiveExploration();
+      setExplorationWidget(ctx, tracker);
     }, delayMs);
-  };
+  }
 
-  const resetExplorationState = () => {
+  function resetExploration(ctx: ExtensionContext, clearWidget: boolean): void {
     cancelLiveExplorationClearTimer();
     tracker.reset();
-  };
-
-  const finalizeExploration = (ctx: Pick<ExtensionContext, "ui">) => {
-    tracker.finalize();
-    clearLiveUi(ctx);
-    setFinalExplorationWidget(ctx, tracker);
-  };
-
-  const handleReset = (
-    _event: unknown,
-    ctx: ExtensionContext,
-    options: { clearWidget?: boolean } = {},
-  ) => {
-    resetExplorationState();
     clearWorkingMessage(ctx);
-    clearLiveUi(ctx);
-    if (options.clearWidget) {
+    clearLiveExplorationStatus(pi);
+
+    if (clearWidget) {
       clearExplorationWidget(ctx);
     }
-  };
+  }
 
-  pi.on("session_start", async (event, ctx) => {
-    handleReset(event, ctx, { clearWidget: true });
+  function finalizeExploration(ctx: Pick<ExtensionContext, "ui">): void {
+    tracker.finalize();
+    clearLiveExploration();
+    setExplorationWidget(ctx, tracker);
+  }
+
+  function handleToolExecutionEnd(
+    ctx: ExtensionContext,
+    event: {
+      toolCallId: string;
+      toolName: string;
+      result?: unknown;
+      isError: boolean;
+    },
+  ): void {
+    const tracked = tracker.onToolExecutionEnd(
+      event.toolCallId,
+      event.toolName,
+      event.result,
+      event.isError,
+    );
+
+    if (!tracked) {
+      clearWorkingMessage(ctx);
+      return;
+    }
+
+    if (tracker.hasActiveExploration()) {
+      syncLiveExplorationStatus(pi, tracker, ctx);
+    } else {
+      scheduleLiveExplorationClear(ctx);
+      setExplorationWidget(ctx, tracker);
+    }
+
+    clearWorkingMessage(ctx);
+  }
+
+  pi.on("session_start", async (_event, ctx) => {
+    resetExploration(ctx, true);
   });
 
-  pi.on("session_switch", async (event, ctx) => {
-    handleReset(event, ctx, { clearWidget: true });
+  pi.on("session_switch", async (_event, ctx) => {
+    resetExploration(ctx, true);
   });
 
   // Reset once per agent run, not once per internal model turn. Otherwise the
   // final exploration widget only flashes before the next tool-followup turn.
-  pi.on("agent_start", async (event, ctx) => {
-    handleReset(event, ctx, { clearWidget: true });
+  pi.on("agent_start", async (_event, ctx) => {
+    resetExploration(ctx, true);
   });
 
   pi.on("tool_execution_start", async (event, ctx) => {
-    if (
-      tracker.onToolExecutionStart(
-        event.toolCallId,
-        event.toolName,
-        event.args as Record<string, unknown>,
-      )
-    ) {
-      syncLiveExplorationStatus(pi, tracker, ctx);
+    const tracked = tracker.onToolExecutionStart(
+      event.toolCallId,
+      event.toolName,
+      event.args as Record<string, unknown>,
+    );
+    if (!tracked) {
+      return;
     }
+
+    syncLiveExplorationStatus(pi, tracker, ctx);
   });
 
   pi.on("tool_result", async (event, ctx) => {
-    if (tracker.onToolResult(event)) {
-      syncLiveExplorationStatus(pi, tracker, ctx);
+    if (!tracker.onToolResult(event)) {
+      return;
     }
+
+    syncLiveExplorationStatus(pi, tracker, ctx);
   });
 
   pi.on("tool_execution_end", async (event, ctx) => {
-    if (tracker.onToolExecutionEnd(event.toolCallId, event.toolName, event.result, event.isError)) {
-      if (tracker.hasActiveExploration()) {
-        syncLiveExplorationStatus(pi, tracker, ctx);
-      } else {
-        scheduleLiveExplorationClear(ctx);
-      }
-      setFinalExplorationWidget(ctx, tracker);
-    }
-
-    clearWorkingMessage(ctx);
+    handleToolExecutionEnd(ctx, event);
   });
 
   pi.on("message_start", async (event, ctx) => {
-    if ((event.message as { role?: string }).role === "assistant") {
-      scheduleLiveExplorationClear(ctx, 1200);
-      setFinalExplorationWidget(ctx, tracker);
+    if ((event.message as { role?: string }).role !== "assistant") {
+      return;
     }
+
+    scheduleLiveExplorationClear(ctx);
+    setExplorationWidget(ctx, tracker);
   });
 
   pi.on("turn_end", async (_event, ctx) => {

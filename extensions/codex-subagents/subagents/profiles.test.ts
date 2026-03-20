@@ -253,13 +253,10 @@ test("resolveAgentProfiles merges custom roles before built-ins", () => {
   const resolved = resolveAgentProfiles();
   const description = buildSpawnAgentTypeDescription(resolved);
 
-  assert.deepEqual([...resolved.profiles.keys()], [
-    "researcher",
-    "default",
-    "explorer",
-    "worker",
-    "reviewer",
-  ]);
+  assert.deepEqual(
+    [...resolved.profiles.keys()],
+    ["researcher", "default", "explorer", "worker", "reviewer"],
+  );
   assert.ok(description.indexOf("researcher: {") < description.indexOf("default: {"));
 
   clearResolvedAgentProfilesCache();

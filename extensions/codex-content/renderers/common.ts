@@ -2,6 +2,10 @@ import type { Theme } from "@mariozechner/pi-coding-agent";
 
 import { Text } from "@mariozechner/pi-tui";
 
+export function conciseResult(title: string, detail?: string): Text {
+  return new Text(detail ? `${title} ${detail}` : title, 0, 0);
+}
+
 export function titleLine(
   theme: Theme,
   bulletColor: "text" | "success" | "error" | "accent",
@@ -18,16 +22,26 @@ export function detailLine(theme: Theme, text: string, first = false): string {
   return `${theme.fg("dim", prefix)}${theme.fg("toolOutput", text)}`;
 }
 
+export function accentSuffix(theme: Theme, accentText: string, dimDetail?: string): string {
+  const primaryText = theme.fg("accent", accentText);
+  if (!dimDetail) return primaryText;
+  return `${primaryText}${theme.fg("dim", ` ${dimDetail}`)}`;
+}
+
 function pluralize(label: string, count: number): string {
   return count === 1 ? label : `${label}s`;
 }
 
+function expandHintText(hiddenCount?: number, hiddenLabel = "line"): string {
+  if (typeof hiddenCount === "number" && hiddenCount > 0) {
+    return `... +${hiddenCount} more ${pluralize(hiddenLabel, hiddenCount)} (Ctrl+O to expand)`;
+  }
+
+  return "(Ctrl+O to expand)";
+}
+
 export function expandHintLine(theme: Theme, hiddenCount?: number, hiddenLabel = "line"): string {
-  const text =
-    typeof hiddenCount === "number" && hiddenCount > 0
-      ? `... +${hiddenCount} more ${pluralize(hiddenLabel, hiddenCount)} (Ctrl+O to expand)`
-      : "(Ctrl+O to expand)";
-  return `${theme.fg("dim", "  ")}${theme.fg("muted", text)}`;
+  return `${theme.fg("dim", "  ")}${theme.fg("muted", expandHintText(hiddenCount, hiddenLabel))}`;
 }
 
 export function renderLines(lines: string[]): Text {

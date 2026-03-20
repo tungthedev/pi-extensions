@@ -1,13 +1,18 @@
+export const EXPLORATION_TOOL_NAME_LIST = [
+  "read",
+  "grep",
+  "find",
+  "ls",
+  "read_file",
+  "grep_files",
+  "find_files",
+  "list_dir",
+] as const;
+
+export type ExplorationToolName = (typeof EXPLORATION_TOOL_NAME_LIST)[number];
+
 export type ExplorationItem = {
-  toolName:
-    | "read"
-    | "grep"
-    | "find"
-    | "ls"
-    | "read_file"
-    | "grep_files"
-    | "find_files"
-    | "list_dir";
+  toolName: ExplorationToolName;
   detail: string;
   failed?: boolean;
   errorPreview?: string[];
@@ -16,6 +21,8 @@ export type ExplorationItem = {
 export type ExplorationGroup = {
   items: ExplorationItem[];
 };
+
+export type ExplorationSummaryItem = Pick<ExplorationItem, "detail" | "failed" | "errorPreview">;
 
 export type SetStatusSegmentPayload = {
   key: string;
@@ -30,13 +37,4 @@ export type RemoveStatusSegmentPayload = {
 
 export const LIVE_EXPLORATION_SEGMENT_KEY = "codex-content:exploration";
 export const EXPLORATION_WIDGET_KEY = "codex-content:exploration-widget";
-export const EXPLORATION_TOOL_NAMES = new Set([
-  "read",
-  "grep",
-  "find",
-  "ls",
-  "read_file",
-  "grep_files",
-  "find_files",
-  "list_dir",
-]);
+export const EXPLORATION_TOOL_NAMES = new Set<string>(EXPLORATION_TOOL_NAME_LIST);

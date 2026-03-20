@@ -58,6 +58,13 @@ export type RequestQuestion = {
   options: RequestOption[];
 };
 
+export type RequestAnswer = {
+  answers: string[];
+  label?: string;
+  wasCustom?: boolean;
+  cancelled?: boolean;
+};
+
 export type UpdatePlanDetails = {
   changeType?: "new" | "updated" | "cleared";
   explanation?: string;
@@ -66,14 +73,6 @@ export type UpdatePlanDetails = {
 
 export type RequestUserInputDetails = {
   questions: RequestQuestion[];
-  answers: Record<
-    string,
-    {
-      answers: string[];
-      label?: string;
-      wasCustom?: boolean;
-      cancelled?: boolean;
-    }
-  >;
+  answers: Record<string, RequestAnswer>;
   interrupted: boolean;
 };

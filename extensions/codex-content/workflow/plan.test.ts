@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { syncPlanUi } from "./plan.ts";
+import { buildUpdatePlanResultLines, normalizePlanItems, syncPlanUi } from "./plan.ts";
 
 test("syncPlanUi clears the status segment and keeps the widget", () => {
   const calls: Array<{ key: string; value: string | undefined }> = [];
@@ -30,4 +30,44 @@ test("syncPlanUi clears the status segment and keeps the widget", () => {
       lines: ["Plan 1/2 • Draw realistic ASCII layout"],
     },
   ]);
+});
+
+test("normalizePlanItems trims aliases and drops blank steps", () => {
+  assert.deepEqual(
+    normalizePlanItems([
+      { description: "  Inspect repo  ", status: "done" },
+      { step: "   " },
+      { step: "Keep going", status: "active", note: "  now  " },
+    ]),
+    [
+      { id: undefined, step: "Inspect repo", status: "completed", note: undefined },
+      { id: undefined, step: "Keep going", status: "in_progress", note: "now" },
+    ],
+  );
+});
+
+test("buildUpdatePlanResultLines collapses hidden tasks around the focus item", () => {
+  const theme = {
+    fg: (_color: string, text: string) => text,
+    bold: (text: string) => text,
+  } as any;
+
+  const lines = buildUpdatePlanResultLines(
+    theme,
+    {
+      changeType: "updated",
+      items: [
+        { step: "one", status: "completed" },
+        { step: "two", status: "completed" },
+        { step: "three", status: "in_progress" },
+        { step: "four", status: "pending" },
+        { step: "five", status: "pending" },
+        { step: "six", status: "pending" },
+      ],
+    },
+    false,
+  );
+
+  assert.equal(lines[0], "• Updated Plan");
+  assert.match(lines.at(-1) ?? "", /\+1 more task/);
 });

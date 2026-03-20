@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { Type } from "@sinclair/typebox";
 import { createReadStream } from "node:fs";
@@ -31,12 +31,40 @@ export type IndentationOptions = {
   max_lines?: number;
 };
 
+type ReadMode = "slice" | "indentation";
+
+type ReadFileToolResultMode = ReadMode | "secret_blocked" | "image_redirect";
+
 type LineRecord = {
   number: number;
   raw: string;
   display: string;
   indent: number;
 };
+
+type IndentationSelectionOptions = {
+  anchorIndex: number;
+  minIndent: number;
+  includeSiblings: boolean;
+  includeHeader: boolean;
+  finalLimit: number;
+};
+
+type Direction = "up" | "down";
+
+type DirectionState = {
+  index: number;
+  minIndentHits: number;
+};
+
+type DirectionSelection = {
+  selectedIndex?: number;
+  nextIndex: number;
+  minIndentHits: number;
+};
+
+type FileStats = Awaited<ReturnType<typeof fs.stat>>;
+type ToolResult<TDetails> = AgentToolResult<TDetails> & { isError?: boolean };
 
 function measureIndent(line: string): number {
   let indent = 0;
@@ -81,13 +109,286 @@ function trimEmptyEdges(records: LineRecord[]): LineRecord[] {
   return records.slice(start, end);
 }
 
+function normalizeReadMode(mode?: string): ReadMode {
+  return mode === "indentation" ? "indentation" : "slice";
+}
+
+function buildTextResult(
+  text: string,
+  details: Record<string, unknown>,
+  isError = false,
+): ToolResult<Record<string, unknown>> {
+  return {
+    content: [{ type: "text" as const, text }],
+    details,
+    ...(isError ? { isError: true } : {}),
+  };
+}
+
+function buildReadToolResult(
+  absolutePath: string,
+  mode: ReadFileToolResultMode,
+  options: { text: string; truncated: boolean; mimeType?: string; isError?: boolean },
+) {
+  return buildTextResult(
+    options.text,
+    {
+      filePath: absolutePath,
+      mode,
+      truncated: options.truncated,
+      ...(options.mimeType ? { mimeType: options.mimeType } : {}),
+    },
+    options.isError ?? false,
+  );
+}
+
+function buildSecretBlockedResult(absolutePath: string) {
+  return buildReadToolResult(absolutePath, "secret_blocked", {
+    text: `Refused to read ${absolutePath}: file may contain secrets. Ask the user to share the relevant values instead.`,
+    truncated: false,
+    isError: true,
+  });
+}
+
+function buildImageRedirectResult(absolutePath: string, mimeType: string) {
+  return buildReadToolResult(absolutePath, "image_redirect", {
+    text: `File is a supported image (${mimeType}). Use view_image with the same path instead.`,
+    mimeType,
+    truncated: false,
+  });
+}
+
+function buildReadSuccessResult(absolutePath: string, mode: ReadMode, output: string) {
+  const trimmed = trimToBudget(output);
+  const text = trimmed.truncated
+    ? `${trimmed.text}\n\n[Use offset/limit or indentation mode to narrow the read.]`
+    : trimmed.text;
+
+  return buildReadToolResult(absolutePath, mode, {
+    text,
+    truncated: trimmed.truncated,
+  });
+}
+
+async function statFileOrThrow(absolutePath: string): Promise<FileStats> {
+  try {
+    return await fs.stat(absolutePath);
+  } catch (error) {
+    const systemError = error as NodeJS.ErrnoException;
+    if (systemError?.code === "ENOENT") {
+      throw new Error(`file not found: ${absolutePath}`);
+    }
+    throw error;
+  }
+}
+
+function validateRegularFile(stats: FileStats, absolutePath: string): void {
+  if (stats.isFile()) {
+    return;
+  }
+
+  throw new Error(`read_file only supports regular files: ${absolutePath}`);
+}
+
+function validateReadModeSize(mode: ReadMode, fileSize: number): void {
+  if (mode === "indentation" && fileSize > MAX_INDENTATION_FILE_BYTES) {
+    throw new Error(
+      `File too large for indentation mode (${fileSize} bytes). Use slice mode instead.`,
+    );
+  }
+
+  if (mode === "slice" && fileSize > MAX_SLICE_FILE_BYTES) {
+    throw new Error(
+      `File too large for safe slice mode (${fileSize} bytes). Narrow the file or inspect it with another tool first.`,
+    );
+  }
+}
+
+function validateSliceRange(offset: number, limit: number): void {
+  if (offset < 1) throw new Error("offset must be a 1-indexed line number");
+  if (limit < 1) throw new Error("limit must be greater than zero");
+}
+
+function buildEffectiveIndents(records: LineRecord[]): number[] {
+  const effectiveIndents: number[] = [];
+  let previousIndent = 0;
+
+  for (const record of records) {
+    if (record.raw.trim().length === 0) {
+      effectiveIndents.push(previousIndent);
+      continue;
+    }
+
+    previousIndent = record.indent;
+    effectiveIndents.push(previousIndent);
+  }
+
+  return effectiveIndents;
+}
+
+function resolveIndentationSelectionOptions(
+  records: LineRecord[],
+  offset: number,
+  limit: number,
+  indentation: IndentationOptions,
+  effectiveIndents: number[],
+): IndentationSelectionOptions {
+  const anchorLine = indentation.anchor_line ?? offset;
+  const maxLevels = indentation.max_levels ?? 0;
+  const includeSiblings = indentation.include_siblings ?? false;
+  const includeHeader = indentation.include_header ?? true;
+  const maxLines = indentation.max_lines ?? limit;
+
+  if (anchorLine < 1) throw new Error("anchor_line must be a 1-indexed line number");
+  if (anchorLine > records.length) throw new Error("anchor_line exceeds file length");
+  if (limit < 1 || maxLines < 1) throw new Error("limit must be greater than zero");
+
+  const anchorIndex = anchorLine - 1;
+  const anchorIndent = effectiveIndents[anchorIndex];
+  const minIndent = maxLevels > 0 ? Math.max(0, anchorIndent - maxLevels * TAB_WIDTH) : 0;
+
+  return {
+    anchorIndex,
+    minIndent,
+    includeSiblings,
+    includeHeader,
+    finalLimit: Math.min(limit, maxLines, records.length),
+  };
+}
+
+function directionStep(direction: Direction): number {
+  return direction === "up" ? -1 : 1;
+}
+
+function directionStopIndex(direction: Direction, recordCount: number): number {
+  return direction === "up" ? -1 : recordCount;
+}
+
+function selectDirectionalIndex(
+  records: LineRecord[],
+  effectiveIndents: number[],
+  state: DirectionState,
+  options: Pick<IndentationSelectionOptions, "minIndent" | "includeSiblings" | "includeHeader">,
+  direction: Direction,
+): DirectionSelection {
+  const { index, minIndentHits } = state;
+  const stopIndex = directionStopIndex(direction, records.length);
+
+  if (index < 0 || index >= records.length) {
+    return { nextIndex: stopIndex, minIndentHits };
+  }
+
+  const indent = effectiveIndents[index];
+  if (indent < options.minIndent) {
+    return { nextIndex: stopIndex, minIndentHits };
+  }
+
+  const nextIndex = index + directionStep(direction);
+  if (indent !== options.minIndent || options.includeSiblings) {
+    return {
+      selectedIndex: index,
+      nextIndex,
+      minIndentHits,
+    };
+  }
+
+  const allowHeaderComment =
+    direction === "up" && options.includeHeader && isComment(records[index].raw);
+  if (allowHeaderComment || minIndentHits === 0) {
+    return {
+      selectedIndex: index,
+      nextIndex,
+      minIndentHits: minIndentHits + 1,
+    };
+  }
+
+  return {
+    nextIndex: stopIndex,
+    minIndentHits,
+  };
+}
+
+function selectIndentationIndexes(
+  records: LineRecord[],
+  effectiveIndents: number[],
+  options: IndentationSelectionOptions,
+): number[] {
+  const selected = new Set<number>([options.anchorIndex]);
+  let upState: DirectionState = { index: options.anchorIndex - 1, minIndentHits: 0 };
+  let downState: DirectionState = { index: options.anchorIndex + 1, minIndentHits: 0 };
+
+  while (selected.size < options.finalLimit) {
+    let progressed = false;
+
+    if (upState.index >= 0) {
+      const next = selectDirectionalIndex(records, effectiveIndents, upState, options, "up");
+      upState = { index: next.nextIndex, minIndentHits: next.minIndentHits };
+
+      if (next.selectedIndex !== undefined) {
+        selected.add(next.selectedIndex);
+        progressed = true;
+      }
+    }
+
+    if (selected.size >= options.finalLimit) {
+      break;
+    }
+
+    if (downState.index < records.length) {
+      const next = selectDirectionalIndex(records, effectiveIndents, downState, options, "down");
+      downState = { index: next.nextIndex, minIndentHits: next.minIndentHits };
+
+      if (next.selectedIndex !== undefined) {
+        selected.add(next.selectedIndex);
+        progressed = true;
+      }
+    }
+
+    if (!progressed) {
+      break;
+    }
+  }
+
+  return [...selected].sort((left, right) => left - right);
+}
+
+function formatSelectedRecords(records: LineRecord[], selectedIndexes: number[]): string {
+  return trimEmptyEdges(selectedIndexes.map((index) => records[index]))
+    .map((record) => `L${record.number}: ${record.display}`)
+    .join("\n");
+}
+
+async function readIndentationMode(
+  absolutePath: string,
+  offset: number,
+  limit: number,
+  indentation: IndentationOptions = {},
+): Promise<string> {
+  const content = await fs.readFile(absolutePath, "utf-8");
+  const records = buildLineRecords(content);
+  return readIndentationBlock(records, offset, limit, indentation);
+}
+
+async function readFileMode(
+  absolutePath: string,
+  mode: ReadMode,
+  offset: number,
+  limit: number,
+  indentation: IndentationOptions | undefined,
+): Promise<string> {
+  if (mode === "slice") {
+    return await readSliceFromFile(absolutePath, offset, limit);
+  }
+
+  return await readIndentationMode(absolutePath, offset, limit, indentation);
+}
+
 async function readSliceFromFile(
   absolutePath: string,
   offset: number,
   limit: number,
 ): Promise<string> {
-  if (offset < 1) throw new Error("offset must be a 1-indexed line number");
-  if (limit < 1) throw new Error("limit must be greater than zero");
+  validateSliceRange(offset, limit);
 
   const input = createReadStream(absolutePath, { encoding: "utf-8" });
   const reader = readline.createInterface({
@@ -101,16 +402,10 @@ async function readSliceFromFile(
   try {
     for await (const line of reader) {
       lineNumber += 1;
-      if (lineNumber < offset) {
-        continue;
-      }
-      if (visible.length >= limit) {
-        break;
-      }
+      if (lineNumber < offset) continue;
+
       visible.push(`L${lineNumber}: ${truncateLine(line)}`);
-      if (visible.length >= limit) {
-        break;
-      }
+      if (visible.length >= limit) break;
     }
   } finally {
     reader.close();
@@ -130,91 +425,16 @@ export function readIndentationBlock(
   limit: number,
   indentation: IndentationOptions = {},
 ): string {
-  const anchorLine = indentation.anchor_line ?? offset;
-  const maxLevels = indentation.max_levels ?? 0;
-  const includeSiblings = indentation.include_siblings ?? false;
-  const includeHeader = indentation.include_header ?? true;
-  const maxLines = indentation.max_lines ?? limit;
-
-  if (anchorLine < 1) throw new Error("anchor_line must be a 1-indexed line number");
-  if (anchorLine > records.length) throw new Error("anchor_line exceeds file length");
-  if (limit < 1 || maxLines < 1) throw new Error("limit must be greater than zero");
-
-  const effectiveIndents: number[] = [];
-  let previousIndent = 0;
-  for (const record of records) {
-    if (record.raw.trim().length === 0) effectiveIndents.push(previousIndent);
-    else {
-      previousIndent = record.indent;
-      effectiveIndents.push(previousIndent);
-    }
-  }
-
-  const anchorIndex = anchorLine - 1;
-  const anchorIndent = effectiveIndents[anchorIndex];
-  const minIndent = maxLevels > 0 ? Math.max(0, anchorIndent - maxLevels * TAB_WIDTH) : 0;
-  const finalLimit = Math.min(limit, maxLines, records.length);
-
-  const selected = new Set<number>([anchorIndex]);
-  let up = anchorIndex - 1;
-  let down = anchorIndex + 1;
-  let upMinIndentHits = 0;
-  let downMinIndentHits = 0;
-
-  while (selected.size < finalLimit) {
-    let progressed = false;
-
-    if (up >= 0) {
-      if (effectiveIndents[up] >= minIndent) {
-        let take = true;
-        if (effectiveIndents[up] === minIndent && !includeSiblings) {
-          const allowHeaderComment = includeHeader && isComment(records[up].raw);
-          take = allowHeaderComment || upMinIndentHits === 0;
-          if (take) upMinIndentHits += 1;
-          else up = -1;
-        }
-
-        if (take) {
-          selected.add(up);
-          progressed = true;
-          up -= 1;
-        }
-      } else {
-        up = -1;
-      }
-    }
-
-    if (selected.size >= finalLimit) break;
-
-    if (down < records.length) {
-      if (effectiveIndents[down] >= minIndent) {
-        let take = true;
-        if (effectiveIndents[down] === minIndent && !includeSiblings) {
-          take = downMinIndentHits === 0;
-          if (take) downMinIndentHits += 1;
-          else down = records.length;
-        }
-
-        if (take) {
-          selected.add(down);
-          progressed = true;
-          down += 1;
-        }
-      } else {
-        down = records.length;
-      }
-    }
-
-    if (!progressed) break;
-  }
-
-  const ordered = [...selected]
-    .sort((left: number, right: number) => left - right)
-    .map((index: number) => records[index]);
-
-  return trimEmptyEdges(ordered)
-    .map((record) => `L${record.number}: ${record.display}`)
-    .join("\n");
+  const effectiveIndents = buildEffectiveIndents(records);
+  const selectionOptions = resolveIndentationSelectionOptions(
+    records,
+    offset,
+    limit,
+    indentation,
+    effectiveIndents,
+  );
+  const selectedIndexes = selectIndentationIndexes(records, effectiveIndents, selectionOptions);
+  return formatSelectedRecords(records, selectedIndexes);
 }
 
 export function registerReadFileTool(pi: ExtensionAPI): void {
@@ -244,83 +464,24 @@ export function registerReadFileTool(pi: ExtensionAPI): void {
       const absolutePath = resolveAbsolutePathWithVariants(ctx.cwd, params.file_path);
       const offset = params.offset ?? 1;
       const limit = params.limit ?? 2000;
-      const mode = params.mode === "indentation" ? "indentation" : "slice";
-
-      let stats;
-      try {
-        stats = await fs.stat(absolutePath);
-      } catch (error) {
-        const systemError = error as NodeJS.ErrnoException;
-        if (systemError?.code === "ENOENT") {
-          throw new Error(`file not found: ${absolutePath}`);
-        }
-        throw error;
-      }
+      const mode = normalizeReadMode(params.mode);
+      const stats = await statFileOrThrow(absolutePath);
 
       if (isSecretFilePath(absolutePath)) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Refused to read ${absolutePath}: file may contain secrets. Ask the user to share the relevant values instead.`,
-            },
-          ],
-          details: { filePath: absolutePath, mode: "secret_blocked", truncated: false },
-          isError: true,
-        };
+        return buildSecretBlockedResult(absolutePath);
       }
 
-      if (!stats.isFile()) {
-        throw new Error(`read_file only supports regular files: ${absolutePath}`);
-      }
+      validateRegularFile(stats, absolutePath);
 
       const imageMimeType = await detectSupportedImageMimeTypeFromFile(absolutePath);
       if (imageMimeType) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `File is a supported image (${imageMimeType}). Use view_image with the same path instead.`,
-            },
-          ],
-          details: {
-            filePath: absolutePath,
-            mode: "image_redirect",
-            mimeType: imageMimeType,
-            truncated: false,
-          },
-        };
+        return buildImageRedirectResult(absolutePath, imageMimeType);
       }
 
-      if (mode === "indentation" && stats.size > MAX_INDENTATION_FILE_BYTES) {
-        throw new Error(
-          `File too large for indentation mode (${stats.size} bytes). Use slice mode instead.`,
-        );
-      }
-      if (mode === "slice" && stats.size > MAX_SLICE_FILE_BYTES) {
-        throw new Error(
-          `File too large for safe slice mode (${stats.size} bytes). Narrow the file or inspect it with another tool first.`,
-        );
-      }
+      validateReadModeSize(mode, Number(stats.size));
 
-      const output =
-        mode === "indentation"
-          ? (() => {
-              return fs.readFile(absolutePath, "utf-8").then((content) => {
-                const records = buildLineRecords(content);
-                return readIndentationBlock(records, offset, limit, params.indentation);
-              });
-            })()
-          : readSliceFromFile(absolutePath, offset, limit);
-      const trimmed = trimToBudget(await output);
-      const text = trimmed.truncated
-        ? `${trimmed.text}\n\n[Use offset/limit or indentation mode to narrow the read.]`
-        : trimmed.text;
-
-      return {
-        content: [{ type: "text", text }],
-        details: { filePath: absolutePath, mode, truncated: trimmed.truncated },
-      };
+      const output = await readFileMode(absolutePath, mode, offset, limit, params.indentation);
+      return buildReadSuccessResult(absolutePath, mode, output);
     },
     renderCall() {
       return undefined;

@@ -1,12 +1,10 @@
+export type ApplyPatchErrorCode = "invalid_patch" | "invalid_hunk" | "apply_failed";
+
 export class ApplyPatchError extends Error {
-  code: "invalid_patch" | "invalid_hunk" | "apply_failed";
+  code: ApplyPatchErrorCode;
   lineNumber?: number;
 
-  constructor(
-    code: "invalid_patch" | "invalid_hunk" | "apply_failed",
-    message: string,
-    lineNumber?: number,
-  ) {
+  constructor(code: ApplyPatchErrorCode, message: string, lineNumber?: number) {
     super(message);
     this.name = "ApplyPatchError";
     this.code = code;
@@ -52,8 +50,10 @@ export type AffectedPaths = {
   deleted: string[];
 };
 
+export type ApplyPatchFileChangeAction = "added" | "modified" | "deleted" | "moved";
+
 export type ApplyPatchFileChange = {
-  action: "added" | "modified" | "deleted" | "moved";
+  action: ApplyPatchFileChangeAction;
   path: string;
   sourcePath?: string;
   diff?: string;

@@ -429,7 +429,10 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     const signature = completionSignature(record);
     if (completionSignatureByAgentId.get(record.agentId) !== signature) {
       completionSignatureByAgentId.set(record.agentId, signature);
-      completionVersionByAgentId.set(record.agentId, (completionVersionByAgentId.get(record.agentId) ?? 0) + 1);
+      completionVersionByAgentId.set(
+        record.agentId,
+        (completionVersionByAgentId.get(record.agentId) ?? 0) + 1,
+      );
     }
     return completionVersionByAgentId.get(record.agentId) ?? 0;
   };
@@ -1381,11 +1384,11 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   pi.registerTool({
     name: "wait_agent",
     label: "wait_agent",
-    description:
-      "Wait for agents to reach a final status. Returns empty status when timed out.",
+    description: "Wait for agents to reach a final status. Returns empty status when timed out.",
     parameters: Type.Object({
       ids: Type.Array(Type.String(), {
-        description: "Agent ids to wait on. Pass multiple ids to wait for whichever finishes first.",
+        description:
+          "Agent ids to wait on. Pass multiple ids to wait for whichever finishes first.",
       }),
       timeout_ms: Type.Optional(
         Type.Number({

@@ -4,10 +4,7 @@
       "support_verbosity": true,
       "default_verbosity": "low",
       "apply_patch_tool_type": "freeform",
-      "input_modalities": [
-        "text",
-        "image"
-      ],
+      "input_modalities": ["text", "image"],
       "supports_image_detail_original": true,
       "truncation_policy": {
         "mode": "tokens",
@@ -77,10 +74,7 @@
       "support_verbosity": true,
       "default_verbosity": "low",
       "apply_patch_tool_type": "freeform",
-      "input_modalities": [
-        "text",
-        "image"
-      ],
+      "input_modalities": ["text", "image"],
       "supports_image_detail_original": true,
       "truncation_policy": {
         "mode": "tokens",
@@ -147,10 +141,7 @@
       "support_verbosity": false,
       "default_verbosity": null,
       "apply_patch_tool_type": "freeform",
-      "input_modalities": [
-        "text",
-        "image"
-      ],
+      "input_modalities": ["text", "image"],
       "supports_image_detail_original": false,
       "truncation_policy": {
         "mode": "tokens",
@@ -221,10 +212,7 @@
       "support_verbosity": false,
       "default_verbosity": null,
       "apply_patch_tool_type": "freeform",
-      "input_modalities": [
-        "text",
-        "image"
-      ],
+      "input_modalities": ["text", "image"],
       "supports_image_detail_original": false,
       "truncation_policy": {
         "mode": "tokens",
@@ -288,10 +276,7 @@
       "support_verbosity": false,
       "default_verbosity": null,
       "apply_patch_tool_type": "freeform",
-      "input_modalities": [
-        "text",
-        "image"
-      ],
+      "input_modalities": ["text", "image"],
       "supports_image_detail_original": false,
       "truncation_policy": {
         "mode": "tokens",
@@ -351,10 +336,7 @@
       "support_verbosity": true,
       "default_verbosity": "low",
       "apply_patch_tool_type": "freeform",
-      "input_modalities": [
-        "text",
-        "image"
-      ],
+      "input_modalities": ["text", "image"],
       "supports_image_detail_original": false,
       "truncation_policy": {
         "mode": "bytes",
@@ -418,10 +400,7 @@
       "support_verbosity": true,
       "default_verbosity": "low",
       "apply_patch_tool_type": "freeform",
-      "input_modalities": [
-        "text",
-        "image"
-      ],
+      "input_modalities": ["text", "image"],
       "supports_image_detail_original": false,
       "truncation_policy": {
         "mode": "bytes",
@@ -481,10 +460,7 @@
       "support_verbosity": false,
       "default_verbosity": null,
       "apply_patch_tool_type": "freeform",
-      "input_modalities": [
-        "text",
-        "image"
-      ],
+      "input_modalities": ["text", "image"],
       "supports_image_detail_original": false,
       "truncation_policy": {
         "mode": "tokens",
@@ -544,10 +520,7 @@
       "support_verbosity": true,
       "default_verbosity": null,
       "apply_patch_tool_type": null,
-      "input_modalities": [
-        "text",
-        "image"
-      ],
+      "input_modalities": ["text", "image"],
       "supports_image_detail_original": false,
       "truncation_policy": {
         "mode": "bytes",
@@ -611,9 +584,7 @@
       "support_verbosity": true,
       "default_verbosity": null,
       "apply_patch_tool_type": "freeform",
-      "input_modalities": [
-        "text"
-      ],
+      "input_modalities": ["text"],
       "supports_image_detail_original": false,
       "truncation_policy": {
         "mode": "bytes",
@@ -670,9 +641,7 @@
       "support_verbosity": true,
       "default_verbosity": null,
       "apply_patch_tool_type": "freeform",
-      "input_modalities": [
-        "text"
-      ],
+      "input_modalities": ["text"],
       "supports_image_detail_original": false,
       "truncation_policy": {
         "mode": "bytes",
@@ -729,10 +698,7 @@
       "support_verbosity": false,
       "default_verbosity": null,
       "apply_patch_tool_type": "freeform",
-      "input_modalities": [
-        "text",
-        "image"
-      ],
+      "input_modalities": ["text", "image"],
       "supports_image_detail_original": false,
       "truncation_policy": {
         "mode": "tokens",
@@ -788,10 +754,7 @@
       "support_verbosity": false,
       "default_verbosity": null,
       "apply_patch_tool_type": "freeform",
-      "input_modalities": [
-        "text",
-        "image"
-      ],
+      "input_modalities": ["text", "image"],
       "supports_image_detail_original": false,
       "truncation_policy": {
         "mode": "tokens",

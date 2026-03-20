@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ExplorationTracker } from "./state.ts";
+import { ExplorationTracker, summarizeExplorationItems } from "./state.ts";
 
 test("ExplorationTracker records a completed group from tool_execution_end when tool_result is absent", () => {
   const tracker = new ExplorationTracker();
@@ -69,4 +69,34 @@ test("ExplorationTracker does not duplicate items when both tool_result and tool
     groups[0]?.items.map((item) => item.detail),
     ["Find *.ts in /repo"],
   );
+});
+
+test("summarizeExplorationItems merges consecutive successful read items", () => {
+  assert.deepEqual(
+    summarizeExplorationItems([
+      { toolName: "read_file", detail: "Read /repo/a.ts" },
+      { toolName: "read", detail: "Read /repo/b.ts" },
+      { toolName: "find_files", detail: "Find *.ts in /repo" },
+    ]),
+    [
+      { detail: "Read /repo/a.ts, /repo/b.ts", failed: undefined, errorPreview: undefined },
+      { detail: "Find *.ts in /repo", failed: undefined, errorPreview: undefined },
+    ],
+  );
+});
+
+test("ExplorationTracker summarizes live status from active exploration details", () => {
+  const tracker = new ExplorationTracker();
+
+  tracker.onToolExecutionStart("call-1", "read_file", {
+    file_path: "/tmp/example.ts",
+    offset: 1,
+    limit: 20,
+  });
+  tracker.onToolExecutionStart("call-2", "find_files", {
+    path: "/repo",
+    pattern: "*.ts",
+  });
+
+  assert.equal(tracker.liveExplorationStatusText(), "Exploring: Read x1, Search x1");
 });

@@ -5,6 +5,7 @@ import { Type } from "@sinclair/typebox";
 import { renderRequestUserInputResult } from "../renderers/request-user-input.ts";
 import {
   CUSTOM_INPUT_OPTION,
+  type RequestAnswer,
   type RequestOption,
   type RequestQuestion,
   RequestOptionSchema,
@@ -12,44 +13,166 @@ import {
   type RequestUserInputDetails,
 } from "./types.ts";
 
-export function normalizeRequestOptions(
-  input: Array<string | { label: string; value?: string; description?: string }>,
-): RequestOption[] {
-  return input.map((option) => {
+type RequestOptionInput = string | { label: string; value?: string; description?: string };
+
+type RequestQuestionInput = {
+  id: string;
+  header: string;
+  question: string;
+  options: Array<{ label: string; value?: string; description?: string }>;
+};
+
+type QuestionBehavior = {
+  allowTextInput: boolean;
+  multiLine: boolean;
+  useFreeformOnly: boolean;
+};
+
+type CollectedAnswer = {
+  answer: RequestAnswer;
+  interrupted: boolean;
+};
+
+type QuestionBuildResult = {
+  questions: RequestQuestion[];
+  legacyOptions: RequestOption[];
+  usesLegacyQuestion: boolean;
+};
+
+function defaultLegacyOption(): RequestOption {
+  return {
+    label: "Answer",
+    value: "Answer",
+    description: "Provide a custom answer.",
+  };
+}
+
+function legacyQuestionText(params: { question?: string; prompt?: string }): string {
+  return (params.question ?? params.prompt ?? "").trim();
+}
+
+function legacyQuestionDefinition(question: string, options: RequestOption[]): RequestQuestion {
+  return {
+    id: "question_1",
+    header: "Question",
+    question,
+    options: options.length > 0 ? options : [defaultLegacyOption()],
+  };
+}
+
+export function normalizeRequestOptions(input: RequestOptionInput[]): RequestOption[] {
+  const normalized: RequestOption[] = [];
+
+  for (const option of input) {
     if (typeof option === "string") {
-      return { label: option, value: option } as RequestOption;
+      normalized.push({ label: option, value: option });
+      continue;
     }
 
-    return {
+    normalized.push({
       label: option.label,
       value: option.value ?? option.label,
       description: option.description,
-    } as RequestOption;
-  });
+    });
+  }
+
+  return normalized;
 }
 
-export function normalizeRequestQuestions(
-  input: Array<{
-    id: string;
-    header: string;
-    question: string;
-    options: Array<{ label: string; value?: string; description?: string }>;
-  }>,
-): RequestQuestion[] {
-  return input
-    .map((question) => ({
+export function normalizeRequestQuestions(input: RequestQuestionInput[]): RequestQuestion[] {
+  const questions: RequestQuestion[] = [];
+
+  for (const question of input) {
+    const normalizedQuestion = {
       id: question.id.trim(),
       header: question.header.trim(),
       question: question.question.trim(),
       options: normalizeRequestOptions(question.options),
-    }))
-    .filter(
-      (question) =>
-        question.id.length > 0 &&
-        question.header.length > 0 &&
-        question.question.length > 0 &&
-        question.options.length > 0,
-    );
+    } satisfies RequestQuestion;
+
+    if (!normalizedQuestion.id) continue;
+    if (!normalizedQuestion.header) continue;
+    if (!normalizedQuestion.question) continue;
+    if (normalizedQuestion.options.length === 0) continue;
+
+    questions.push(normalizedQuestion);
+  }
+
+  return questions;
+}
+
+function buildQuestionsFromParams(params: {
+  questions?: RequestQuestionInput[];
+  question?: string;
+  prompt?: string;
+  options?: RequestOptionInput[];
+}): QuestionBuildResult {
+  const legacyOptions = normalizeRequestOptions(params.options ?? []);
+  if (params.questions?.length) {
+    return {
+      questions: normalizeRequestQuestions(params.questions),
+      legacyOptions,
+      usesLegacyQuestion: false,
+    };
+  }
+
+  const question = legacyQuestionText(params);
+  if (!question) {
+    return {
+      questions: [],
+      legacyOptions,
+      usesLegacyQuestion: false,
+    };
+  }
+
+  return {
+    questions: [legacyQuestionDefinition(question, legacyOptions)],
+    legacyOptions,
+    usesLegacyQuestion: true,
+  };
+}
+
+function buildQuestionBehavior(
+  params: {
+    allow_text_input?: boolean;
+    multi_line?: boolean;
+  },
+  legacyOptions: RequestOption[],
+  usesLegacyQuestion: boolean,
+  questionIndex: number,
+): QuestionBehavior {
+  const isLegacyQuestion = usesLegacyQuestion && questionIndex === 0;
+  if (!isLegacyQuestion) {
+    return {
+      allowTextInput: true,
+      multiLine: false,
+      useFreeformOnly: false,
+    };
+  }
+
+  return {
+    allowTextInput: params.allow_text_input ?? legacyOptions.length === 0,
+    multiLine: params.multi_line ?? false,
+    useFreeformOnly: legacyOptions.length === 0,
+  };
+}
+
+function validateQuestionRequest(
+  questions: RequestQuestion[],
+  behavior: QuestionBehavior,
+  timeoutMs: number | undefined,
+): void {
+  if (questions.length === 0) {
+    throw new Error("questions or question/prompt is required");
+  }
+
+  if (questions.length > 3) {
+    throw new Error("request_user_input supports at most 3 questions");
+  }
+
+  if (behavior.multiLine && timeoutMs !== undefined) {
+    throw new Error("timeout_ms is not supported when multi_line is true");
+  }
 }
 
 export async function collectFreeformInput(
@@ -61,12 +184,137 @@ export async function collectFreeformInput(
   timeoutMs: number | undefined,
 ): Promise<string | undefined> {
   const dialogOptions = timeoutMs ? { timeout: timeoutMs } : undefined;
-
   if (multiLine) {
     return await ctx.ui.editor(question, defaultValue ?? "");
   }
 
   return await ctx.ui.input(question, placeholder ?? defaultValue, dialogOptions);
+}
+
+function buildCancelledAnswer(wasCustom = false): RequestAnswer {
+  return {
+    answers: [],
+    cancelled: true,
+    wasCustom: wasCustom || undefined,
+  };
+}
+
+function buildTypedAnswer(value: string): RequestAnswer {
+  return {
+    answers: [value, `user_note: ${value}`],
+    label: value,
+    wasCustom: true,
+  };
+}
+
+function buildSelectedAnswer(label: string, value: string): RequestAnswer {
+  return {
+    answers: [value],
+    label,
+    wasCustom: false,
+  };
+}
+
+async function collectTypedAnswer(
+  ctx: ExtensionContext,
+  question: RequestQuestion,
+  params: {
+    placeholder?: string;
+    default_value?: string;
+  },
+  behavior: QuestionBehavior,
+  timeoutMs: number | undefined,
+): Promise<CollectedAnswer> {
+  const typed = await collectFreeformInput(
+    ctx,
+    question.question,
+    params.placeholder,
+    behavior.multiLine,
+    params.default_value,
+    timeoutMs,
+  );
+
+  if (typed === undefined) {
+    return {
+      answer: buildCancelledAnswer(true),
+      interrupted: true,
+    };
+  }
+
+  return {
+    answer: buildTypedAnswer(typed),
+    interrupted: false,
+  };
+}
+
+async function collectSelectedAnswer(
+  ctx: ExtensionContext,
+  question: RequestQuestion,
+  params: {
+    placeholder?: string;
+    default_value?: string;
+  },
+  behavior: QuestionBehavior,
+  timeoutMs: number | undefined,
+): Promise<CollectedAnswer> {
+  const labels = question.options.map((option) => option.label);
+  if (behavior.allowTextInput) {
+    labels.push(CUSTOM_INPUT_OPTION);
+  }
+
+  const selected = await ctx.ui.select(
+    question.question,
+    labels,
+    timeoutMs ? { timeout: timeoutMs } : undefined,
+  );
+  if (selected === undefined) {
+    return {
+      answer: buildCancelledAnswer(),
+      interrupted: true,
+    };
+  }
+
+  if (behavior.allowTextInput && selected === CUSTOM_INPUT_OPTION) {
+    return await collectTypedAnswer(ctx, question, params, behavior, timeoutMs);
+  }
+
+  const matched = question.options.find((option) => option.label === selected);
+  return {
+    answer: buildSelectedAnswer(selected, matched?.value ?? selected),
+    interrupted: false,
+  };
+}
+
+function answeredQuestionCount(answers: RequestUserInputDetails["answers"]): number {
+  return Object.values(answers).filter((answer) => answer.answers.length > 0).length;
+}
+
+function resultSummaryText(
+  answeredCount: number,
+  questionCount: number,
+  interrupted: boolean,
+): string {
+  if (interrupted) {
+    return `User input interrupted after ${answeredCount}/${questionCount} answers`;
+  }
+
+  return `Collected user input for ${answeredCount} question${answeredCount === 1 ? "" : "s"}`;
+}
+
+function noUiResult(): {
+  content: Array<{ type: "text"; text: string }>;
+  details: RequestUserInputDetails;
+  isError: true;
+} {
+  return {
+    content: [{ type: "text", text: "Error: UI is not available for request_user_input" }],
+    details: {
+      questions: [],
+      answers: {},
+      interrupted: true,
+    },
+    isError: true,
+  };
 }
 
 export function registerRequestUserInputTool(pi: ExtensionAPI): void {
@@ -106,154 +354,44 @@ export function registerRequestUserInputTool(pi: ExtensionAPI): void {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       if (!ctx.hasUI) {
-        return {
-          content: [{ type: "text", text: "Error: UI is not available for request_user_input" }],
-          details: {
-            questions: [],
-            answers: {},
-            interrupted: true,
-          } as RequestUserInputDetails,
-          isError: true,
-        };
+        return noUiResult();
       }
 
       const timeoutMs = params.timeout_ms;
-      const legacyQuestion = (params.question ?? params.prompt ?? "").trim();
-      const legacyOptions = normalizeRequestOptions(params.options ?? []);
-      const questions = params.questions?.length
-        ? normalizeRequestQuestions(params.questions)
-        : legacyQuestion
-          ? [
-              {
-                id: "question_1",
-                header: "Question",
-                question: legacyQuestion,
-                options:
-                  legacyOptions.length > 0
-                    ? legacyOptions
-                    : [
-                        {
-                          label: "Answer",
-                          value: "Answer",
-                          description: "Provide a custom answer.",
-                        },
-                      ],
-              },
-            ]
-          : [];
-
-      if (questions.length === 0) {
-        throw new Error("questions or question/prompt is required");
-      }
-
-      if (questions.length > 3) {
-        throw new Error("request_user_input supports at most 3 questions");
-      }
+      const { questions, legacyOptions, usesLegacyQuestion } = buildQuestionsFromParams(params);
+      const firstQuestionBehavior = buildQuestionBehavior(
+        params,
+        legacyOptions,
+        usesLegacyQuestion,
+        0,
+      );
+      validateQuestionRequest(questions, firstQuestionBehavior, timeoutMs);
 
       const answers: RequestUserInputDetails["answers"] = {};
       let interrupted = false;
 
       for (const [index, question] of questions.entries()) {
-        const isLegacyQuestion = !params.questions?.length && index === 0;
-        const allowTextInput = isLegacyQuestion
-          ? (params.allow_text_input ?? legacyOptions.length === 0)
-          : true;
-        const multiLine = isLegacyQuestion ? (params.multi_line ?? false) : false;
+        const behavior = buildQuestionBehavior(params, legacyOptions, usesLegacyQuestion, index);
+        validateQuestionRequest(questions, behavior, timeoutMs);
 
-        if (multiLine && timeoutMs !== undefined) {
-          throw new Error("timeout_ms is not supported when multi_line is true");
-        }
+        const collected = behavior.useFreeformOnly
+          ? await collectTypedAnswer(ctx, question, params, behavior, timeoutMs)
+          : await collectSelectedAnswer(ctx, question, params, behavior, timeoutMs);
 
-        if (isLegacyQuestion && legacyOptions.length === 0) {
-          const typed = await collectFreeformInput(
-            ctx,
-            question.question,
-            params.placeholder,
-            multiLine,
-            params.default_value,
-            timeoutMs,
-          );
-          if (typed === undefined) {
-            answers[question.id] = {
-              answers: [],
-              cancelled: true,
-              wasCustom: true,
-            };
-            interrupted = true;
-            break;
-          }
-
-          answers[question.id] = {
-            answers: [typed, `user_note: ${typed}`],
-            label: typed,
-            wasCustom: true,
-          };
+        answers[question.id] = collected.answer;
+        if (!collected.interrupted) {
           continue;
         }
 
-        const labels = question.options.map((option) => option.label);
-        if (allowTextInput) {
-          labels.push(CUSTOM_INPUT_OPTION);
-        }
-
-        const selected = await ctx.ui.select(
-          question.question,
-          labels,
-          timeoutMs ? { timeout: timeoutMs } : undefined,
-        );
-        if (selected === undefined) {
-          answers[question.id] = {
-            answers: [],
-            cancelled: true,
-          };
-          interrupted = true;
-          break;
-        }
-
-        if (allowTextInput && selected === CUSTOM_INPUT_OPTION) {
-          const typed = await collectFreeformInput(
-            ctx,
-            question.question,
-            params.placeholder,
-            multiLine,
-            params.default_value,
-            timeoutMs,
-          );
-          if (typed === undefined) {
-            answers[question.id] = {
-              answers: [],
-              cancelled: true,
-              wasCustom: true,
-            };
-            interrupted = true;
-            break;
-          }
-
-          answers[question.id] = {
-            answers: [typed, `user_note: ${typed}`],
-            label: typed,
-            wasCustom: true,
-          };
-          continue;
-        }
-
-        const matched = question.options.find((option) => option.label === selected);
-        answers[question.id] = {
-          answers: [matched?.value ?? selected],
-          label: selected,
-          wasCustom: false,
-        };
+        interrupted = true;
+        break;
       }
 
-      const answeredCount = Object.values(answers).filter(
-        (answer) => answer.answers.length > 0,
-      ).length;
-      const contentText = interrupted
-        ? `User input interrupted after ${answeredCount}/${questions.length} answers`
-        : `Collected user input for ${answeredCount} question${answeredCount === 1 ? "" : "s"}`;
-
+      const answeredCount = answeredQuestionCount(answers);
       return {
-        content: [{ type: "text", text: contentText }],
+        content: [
+          { type: "text", text: resultSummaryText(answeredCount, questions.length, interrupted) },
+        ],
         details: {
           questions,
           answers,

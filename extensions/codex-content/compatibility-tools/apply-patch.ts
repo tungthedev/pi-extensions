@@ -1,10 +1,25 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { Type } from "@sinclair/typebox";
 
 import { applyPatch as runNativeApplyPatch } from "../apply-patch.ts";
 import { renderApplyPatchResult } from "../renderers/apply-patch.ts";
 import { trimToBudget } from "./runtime.ts";
+
+type ToolResult<TDetails> = AgentToolResult<TDetails> & { isError?: boolean };
+
+function buildApplyPatchResult(
+  text: string,
+  details: Record<string, unknown>,
+  isError: boolean,
+): ToolResult<Record<string, unknown>> {
+  const trimmed = trimToBudget(text);
+  return {
+    content: [{ type: "text" as const, text: trimmed.text }],
+    details,
+    isError,
+  };
+}
 
 export function registerApplyPatchTool(pi: ExtensionAPI): void {
   pi.registerTool({
@@ -18,21 +33,14 @@ export function registerApplyPatchTool(pi: ExtensionAPI): void {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {
         const result = await runNativeApplyPatch(params.input, ctx.cwd);
-        const trimmed = trimToBudget(result.summary.trimEnd() || "Patch applied");
-
-        return {
-          content: [{ type: "text", text: trimmed.text }],
-          details: { exitCode: 0, affected: result.affected, files: result.files },
-          isError: false,
-        };
+        return buildApplyPatchResult(
+          result.summary.trimEnd() || "Patch applied",
+          { exitCode: 0, affected: result.affected, files: result.files },
+          false,
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        const trimmed = trimToBudget(message);
-        return {
-          content: [{ type: "text", text: trimmed.text }],
-          details: { exitCode: 1 },
-          isError: true,
-        };
+        return buildApplyPatchResult(message, { exitCode: 1 }, true);
       }
     },
     renderCall() {

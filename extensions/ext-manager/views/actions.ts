@@ -11,10 +11,16 @@ export async function openManagerOverlay(
 ): Promise<ManagerAction | null> {
   return ctx.ui.custom<ManagerAction | null>(
     (tui, theme, _kb, done) => {
-      const palette = new StackPalette(rootView, theme, done, (error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        ctx.ui.notify(`Extension manager error: ${message}`, "warning");
-      }, () => tui.requestRender());
+      const palette = new StackPalette(
+        rootView,
+        theme,
+        done,
+        (error) => {
+          const message = error instanceof Error ? error.message : String(error);
+          ctx.ui.notify(`Extension manager error: ${message}`, "warning");
+        },
+        () => tui.requestRender(),
+      );
       return {
         render: (width: number) => palette.render(width),
         invalidate: () => palette.invalidate(),

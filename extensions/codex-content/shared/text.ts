@@ -20,16 +20,30 @@ export function firstText(result: AgentToolResult<unknown>): string {
   const parts = result.content
     .filter((item) => item.type === "text")
     .map((item) => item.text ?? "");
+
   return parts.join("\n").replace(/\r/g, "").trim();
 }
 
 export function firstLine(text: string): string {
-  return (
-    text
-      .split("\n")
-      .find((line) => line.trim())
-      ?.trim() ?? ""
-  );
+  const firstNonEmptyLine = text.split("\n").find((line) => line.trim());
+
+  return firstNonEmptyLine?.trim() ?? "";
+}
+
+export function shortenText(value: string | undefined, max: number, fallback = ""): string {
+  if (!value) return fallback;
+  if (value.length <= max) return value;
+  return `${value.slice(0, max - 3)}...`;
+}
+
+export function summarizeList(items: string[], maxVisible = 2): string {
+  if (items.length <= maxVisible) {
+    return items.join(", ");
+  }
+
+  const visibleItems = items.slice(0, maxVisible);
+  const hiddenCount = items.length - visibleItems.length;
+  return `${visibleItems.join(", ")}, +${hiddenCount} more`;
 }
 
 export function isErrorText(text: string): boolean {
@@ -39,6 +53,7 @@ export function isErrorText(text: string): boolean {
 export function parseExitCode(text: string): number | undefined {
   const match = text.match(/(?:exit code:?|exited with code)\s*(-?\d+)/i);
   if (!match) return undefined;
+
   const value = Number(match[1]);
   return Number.isFinite(value) ? value : undefined;
 }
@@ -60,15 +75,16 @@ export function countDiff(diff?: string): { added: number; removed: number } {
 
   let added = 0;
   let removed = 0;
+
   for (const line of diff.split("\n")) {
     if (line.startsWith("+++") || line.startsWith("---")) continue;
     if (line.startsWith("+")) added += 1;
     if (line.startsWith("-")) removed += 1;
   }
+
   return { added, removed };
 }
 
 export function summarizeCommand(command?: string): string {
-  if (!command) return "command";
-  return command.length > 100 ? `${command.slice(0, 97)}...` : command;
+  return shortenText(command, 100, "command");
 }

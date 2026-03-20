@@ -2,22 +2,22 @@
   "name": "@tungthedev/pi-extensions",
   "version": "0.1.0",
   "description": "A Pi package containing the editor, mermaid, skill, web-search, codex-content, codex-system-prompt, codex-subagents, and ext-manager extensions.",
+  "keywords": [
+    "codex",
+    "mermaid",
+    "pi",
+    "pi-extension",
+    "pi-package"
+  ],
   "homepage": "https://github.com/tungthedev/pi-extensions#readme",
+  "bugs": {
+    "url": "https://github.com/tungthedev/pi-extensions/issues"
+  },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tungthedev/pi-extensions.git"
   },
-  "bugs": {
-    "url": "https://github.com/tungthedev/pi-extensions/issues"
-  },
-  "keywords": [
-    "pi-package",
-    "pi",
-    "pi-extension",
-    "codex",
-    "mermaid"
-  ],
-  "license": "MIT",
   "files": [
     "extensions",
     "README.md",
@@ -25,6 +25,9 @@
     "LICENSE"
   ],
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "check": "bun run test && bun run lint && bun run typecheck",
     "format": "oxfmt .",
@@ -57,9 +60,6 @@
   "engines": {
     "bun": ">=1.3.8",
     "node": ">=20.6.0"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "packageManager": "bun@1.3.8",
   "pi": {

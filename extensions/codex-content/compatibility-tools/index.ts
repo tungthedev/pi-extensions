@@ -9,7 +9,7 @@ import { registerReadFileTool } from "./read-file.ts";
 import { registerShellCommandTool } from "./shell-command.ts";
 import { registerViewImageTool } from "./view-image.ts";
 
-const DISABLED_BUILTIN_TOOL_NAMES = new Set([
+const REPLACED_BUILTIN_TOOL_NAMES = new Set([
   "read",
   "grep",
   "find",
@@ -19,23 +19,27 @@ const DISABLED_BUILTIN_TOOL_NAMES = new Set([
   "write",
 ]);
 
-export function registerCodexCompatibilityTools(pi: ExtensionAPI) {
-  const applyToolOverrides = () => {
-    const activeToolNames = pi
-      .getAllTools()
-      .map((tool) => tool.name)
-      .filter((toolName) => !DISABLED_BUILTIN_TOOL_NAMES.has(toolName));
+function applyCompatibilityToolOverrides(pi: ExtensionAPI): void {
+  const activeToolNames = pi
+    .getAllTools()
+    .map((tool) => tool.name)
+    .filter((toolName) => !REPLACED_BUILTIN_TOOL_NAMES.has(toolName));
 
-    pi.setActiveTools(activeToolNames);
-  };
+  pi.setActiveTools(activeToolNames);
+}
 
+function registerToolOverrideHandlers(pi: ExtensionAPI): void {
   pi.on("session_start", async () => {
-    applyToolOverrides();
+    applyCompatibilityToolOverrides(pi);
   });
 
   pi.on("before_agent_start", async () => {
-    applyToolOverrides();
+    applyCompatibilityToolOverrides(pi);
   });
+}
+
+export function registerCodexCompatibilityTools(pi: ExtensionAPI) {
+  registerToolOverrideHandlers(pi);
 
   registerCodexWorkflowTools(pi);
 

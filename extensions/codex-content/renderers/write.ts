@@ -2,7 +2,12 @@ import type { AgentToolResult, Theme } from "@mariozechner/pi-coding-agent";
 import type { Text } from "@mariozechner/pi-tui";
 
 import { firstLine, firstText, isErrorText, shortenPath } from "../shared/text.ts";
-import { detailLine, renderLines, titleLine } from "./common.ts";
+import { accentSuffix, detailLine, renderLines, titleLine } from "./common.ts";
+
+function lineCountText(content: unknown): string | undefined {
+  if (typeof content !== "string") return undefined;
+  return `(${content.split("\n").length} lines)`;
+}
 
 export function renderWriteResult(
   theme: Theme,
@@ -10,15 +15,11 @@ export function renderWriteResult(
   result: AgentToolResult<unknown>,
 ): Text {
   const path = shortenPath(args.path ?? args.file_path);
-  const lineCount = typeof args.content === "string" ? args.content.split("\n").length : undefined;
   const text = firstText(result);
   const failed = isErrorText(text);
-  const suffix = `${theme.fg("accent", path)}${
-    lineCount ? theme.fg("dim", ` (${lineCount} lines)`) : ""
-  }`;
-  const lines = [
-    titleLine(theme, failed ? "error" : "text", failed ? "Write failed" : "Wrote", suffix),
-  ];
+  const suffix = accentSuffix(theme, path, lineCountText(args.content));
+  const title = failed ? "Write failed" : "Wrote";
+  const lines = [titleLine(theme, failed ? "error" : "text", title, suffix)];
 
   if (failed && text) {
     lines.push(detailLine(theme, firstLine(text), true));

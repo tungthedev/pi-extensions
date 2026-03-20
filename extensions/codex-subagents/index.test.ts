@@ -236,10 +236,7 @@ test("normalizeWaitAgentTimeoutMs applies wait_agent default, clamp, and validat
   assert.equal(normalizeWaitAgentTimeoutMs(10_000), 10_000);
   assert.equal(normalizeWaitAgentTimeoutMs(5_000), 10_000);
   assert.equal(normalizeWaitAgentTimeoutMs(45_000), 30_000);
-  assert.throws(
-    () => normalizeWaitAgentTimeoutMs(0),
-    /timeout_ms must be greater than zero/,
-  );
+  assert.throws(() => normalizeWaitAgentTimeoutMs(0), /timeout_ms must be greater than zero/);
 });
 
 test("resolveParentSpawnDefaults inherits parent model and thinking level from session context", () => {

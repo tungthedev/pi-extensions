@@ -7,6 +7,10 @@ import { loadPhoton, type PhotonImageModule } from "./photon.ts";
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 const FILE_TYPE_SNIFF_BYTES = 4100;
 const DEFAULT_MAX_BYTES = 4.5 * 1024 * 1024;
+const QUALITY_STEPS = [85, 70, 55, 40] as const;
+const SCALE_STEPS = [0.75, 0.5, 0.35, 0.25] as const;
+const MIN_OUTPUT_DIMENSION = 100;
+
 const DEFAULT_OPTIONS = {
   maxWidth: 2000,
   maxHeight: 2000,
@@ -15,14 +19,31 @@ const DEFAULT_OPTIONS = {
 };
 
 type SupportedImageMimeType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+type PhotonImage = InstanceType<PhotonImageModule["PhotonImage"]>;
 
-type ResizeableImage = {
+type ResizableImage = {
   type: "image";
   data: string;
   mimeType: string;
 };
 
 type ResizeOptions = Partial<typeof DEFAULT_OPTIONS>;
+
+type EncodedImage = {
+  buffer: Uint8Array;
+  mimeType: string;
+};
+
+type ResizeAttempt = {
+  encoded: EncodedImage;
+  width: number;
+  height: number;
+};
+
+type Dimensions = {
+  width: number;
+  height: number;
+};
 
 export type ResizeImageResult = {
   data: string;
@@ -36,84 +57,313 @@ export type ResizeImageResult = {
 
 function rotate90(
   photon: PhotonImageModule,
-  image: InstanceType<PhotonImageModule["PhotonImage"]>,
+  image: PhotonImage,
   dstIndex: (x: number, y: number, w: number, h: number) => number,
-): InstanceType<PhotonImageModule["PhotonImage"]> {
-  const w = image.get_width();
-  const h = image.get_height();
-  const src = image.get_raw_pixels();
-  const dst = new Uint8Array(src.length);
+): PhotonImage {
+  const width = image.get_width();
+  const height = image.get_height();
+  const sourcePixels = image.get_raw_pixels();
+  const destinationPixels = new Uint8Array(sourcePixels.length);
 
-  for (let y = 0; y < h; y += 1) {
-    for (let x = 0; x < w; x += 1) {
-      const srcIdx = (y * w + x) * 4;
-      const dstIdx = dstIndex(x, y, w, h) * 4;
-      dst[dstIdx] = src[srcIdx];
-      dst[dstIdx + 1] = src[srcIdx + 1];
-      dst[dstIdx + 2] = src[srcIdx + 2];
-      dst[dstIdx + 3] = src[srcIdx + 3];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const sourceIndex = (y * width + x) * 4;
+      const destinationIndex = dstIndex(x, y, width, height) * 4;
+
+      destinationPixels[destinationIndex] = sourcePixels[sourceIndex];
+      destinationPixels[destinationIndex + 1] = sourcePixels[sourceIndex + 1];
+      destinationPixels[destinationIndex + 2] = sourcePixels[sourceIndex + 2];
+      destinationPixels[destinationIndex + 3] = sourcePixels[sourceIndex + 3];
     }
   }
 
-  return new photon.PhotonImage(dst, h, w);
+  return new photon.PhotonImage(destinationPixels, height, width);
+}
+
+function rotateClockwise(photon: PhotonImageModule, image: PhotonImage): PhotonImage {
+  return rotate90(photon, image, (x, y, _width, height) => x * height + (height - 1 - y));
+}
+
+function rotateCounterClockwise(photon: PhotonImageModule, image: PhotonImage): PhotonImage {
+  return rotate90(photon, image, (x, y, width, height) => (width - 1 - x) * height + y);
 }
 
 function applyExifOrientation(
   photon: PhotonImageModule,
-  image: InstanceType<PhotonImageModule["PhotonImage"]>,
+  image: PhotonImage,
   originalBytes: Uint8Array,
-): InstanceType<PhotonImageModule["PhotonImage"]> {
+): PhotonImage {
   const orientation = getExifOrientation(originalBytes);
-  if (orientation === 1) return image;
+  if (orientation === 1) {
+    return image;
+  }
 
-  switch (orientation) {
-    case 2:
-      photon.fliph(image);
-      return image;
-    case 3:
-      photon.fliph(image);
-      photon.flipv(image);
-      return image;
-    case 4:
-      photon.flipv(image);
-      return image;
-    case 5: {
-      const rotated = rotate90(photon, image, (x, y, _w, h) => x * h + (h - 1 - y));
-      photon.fliph(rotated);
-      return rotated;
-    }
-    case 6:
-      return rotate90(photon, image, (x, y, _w, h) => x * h + (h - 1 - y));
-    case 7: {
-      const rotated = rotate90(photon, image, (x, y, w, h) => (w - 1 - x) * h + y);
-      photon.fliph(rotated);
-      return rotated;
-    }
-    case 8:
-      return rotate90(photon, image, (x, y, w, h) => (w - 1 - x) * h + y);
-    default:
-      return image;
+  if (orientation === 2) {
+    photon.fliph(image);
+    return image;
+  }
+
+  if (orientation === 3) {
+    photon.fliph(image);
+    photon.flipv(image);
+    return image;
+  }
+
+  if (orientation === 4) {
+    photon.flipv(image);
+    return image;
+  }
+
+  if (orientation === 5) {
+    const rotated = rotateClockwise(photon, image);
+    photon.fliph(rotated);
+    return rotated;
+  }
+
+  if (orientation === 6) {
+    return rotateClockwise(photon, image);
+  }
+
+  if (orientation === 7) {
+    const rotated = rotateCounterClockwise(photon, image);
+    photon.fliph(rotated);
+    return rotated;
+  }
+
+  if (orientation === 8) {
+    return rotateCounterClockwise(photon, image);
+  }
+
+  return image;
+}
+
+function pickSmaller(a: EncodedImage, b: EncodedImage): EncodedImage {
+  if (a.buffer.length <= b.buffer.length) {
+    return a;
+  }
+
+  return b;
+}
+
+function buildFallbackResult(image: ResizableImage): ResizeImageResult {
+  return {
+    data: image.data,
+    mimeType: image.mimeType,
+    originalWidth: 0,
+    originalHeight: 0,
+    width: 0,
+    height: 0,
+    wasResized: false,
+  };
+}
+
+function buildUnchangedResult(image: ResizableImage, dimensions: Dimensions): ResizeImageResult {
+  return {
+    data: image.data,
+    mimeType: image.mimeType,
+    originalWidth: dimensions.width,
+    originalHeight: dimensions.height,
+    width: dimensions.width,
+    height: dimensions.height,
+    wasResized: false,
+  };
+}
+
+function buildResizedResult(
+  attempt: ResizeAttempt,
+  originalDimensions: Dimensions,
+): ResizeImageResult {
+  return {
+    data: Buffer.from(attempt.encoded.buffer).toString("base64"),
+    mimeType: attempt.encoded.mimeType,
+    originalWidth: originalDimensions.width,
+    originalHeight: originalDimensions.height,
+    width: attempt.width,
+    height: attempt.height,
+    wasResized: true,
+  };
+}
+
+function buildQualitySteps(preferredQuality: number): number[] {
+  return [preferredQuality, ...QUALITY_STEPS.filter((quality) => quality !== preferredQuality)];
+}
+
+function fitsWithinLimits(
+  dimensions: Dimensions,
+  byteLength: number,
+  options: typeof DEFAULT_OPTIONS,
+): boolean {
+  return (
+    dimensions.width <= options.maxWidth &&
+    dimensions.height <= options.maxHeight &&
+    byteLength <= options.maxBytes
+  );
+}
+
+function clampDimensions(dimensions: Dimensions, maxWidth: number, maxHeight: number): Dimensions {
+  let width = dimensions.width;
+  let height = dimensions.height;
+
+  if (width > maxWidth) {
+    height = Math.round((height * maxWidth) / width);
+    width = maxWidth;
+  }
+
+  if (height > maxHeight) {
+    width = Math.round((width * maxHeight) / height);
+    height = maxHeight;
+  }
+
+  return { width, height };
+}
+
+function scaleDimensions(dimensions: Dimensions, scale: number): Dimensions {
+  return {
+    width: Math.round(dimensions.width * scale),
+    height: Math.round(dimensions.height * scale),
+  };
+}
+
+function isTooSmallToContinue(dimensions: Dimensions): boolean {
+  return dimensions.width < MIN_OUTPUT_DIMENSION || dimensions.height < MIN_OUTPUT_DIMENSION;
+}
+
+function encodeResizedImage(
+  photon: PhotonImageModule,
+  image: PhotonImage,
+  dimensions: Dimensions,
+  jpegQuality: number,
+): EncodedImage {
+  const resized = photon.resize(
+    image,
+    dimensions.width,
+    dimensions.height,
+    photon.SamplingFilter.Lanczos3,
+  );
+
+  try {
+    const pngImage = { buffer: resized.get_bytes(), mimeType: "image/png" };
+    const jpegImage = {
+      buffer: resized.get_bytes_jpeg(jpegQuality),
+      mimeType: "image/jpeg",
+    };
+    return pickSmaller(pngImage, jpegImage);
+  } finally {
+    resized.free();
   }
 }
 
-function pickSmaller(
-  a: { buffer: Uint8Array; mimeType: string },
-  b: { buffer: Uint8Array; mimeType: string },
-) {
-  return a.buffer.length <= b.buffer.length ? a : b;
+function findAttemptAtDimensions(
+  photon: PhotonImageModule,
+  image: PhotonImage,
+  dimensions: Dimensions,
+  qualities: number[],
+  maxBytes: number,
+): { accepted?: ResizeAttempt; best: ResizeAttempt } {
+  let best: ResizeAttempt | undefined;
+
+  for (const quality of qualities) {
+    const encoded = encodeResizedImage(photon, image, dimensions, quality);
+    const attempt = {
+      encoded,
+      width: dimensions.width,
+      height: dimensions.height,
+    };
+    best = attempt;
+
+    if (encoded.buffer.length <= maxBytes) {
+      return { accepted: attempt, best: attempt };
+    }
+  }
+
+  if (!best) {
+    throw new Error("at least one resize quality must be provided");
+  }
+
+  return { best };
+}
+
+function findBestResizeAttempt(
+  photon: PhotonImageModule,
+  image: PhotonImage,
+  targetDimensions: Dimensions,
+  options: typeof DEFAULT_OPTIONS,
+): ResizeAttempt {
+  const initialQualities = buildQualitySteps(options.jpegQuality);
+  const initialAttempt = findAttemptAtDimensions(
+    photon,
+    image,
+    targetDimensions,
+    initialQualities,
+    options.maxBytes,
+  );
+
+  if (initialAttempt.accepted) {
+    return initialAttempt.accepted;
+  }
+
+  let bestAttempt = initialAttempt.best;
+  for (const scale of SCALE_STEPS) {
+    const scaledDimensions = scaleDimensions(targetDimensions, scale);
+    if (isTooSmallToContinue(scaledDimensions)) {
+      break;
+    }
+
+    const scaledAttempt = findAttemptAtDimensions(
+      photon,
+      image,
+      scaledDimensions,
+      [...QUALITY_STEPS],
+      options.maxBytes,
+    );
+
+    if (scaledAttempt.accepted) {
+      return scaledAttempt.accepted;
+    }
+
+    bestAttempt = scaledAttempt.best;
+  }
+
+  return bestAttempt;
+}
+
+function createWorkingImage(photon: PhotonImageModule, inputBuffer: Buffer): PhotonImage {
+  const inputBytes = new Uint8Array(inputBuffer);
+  const rawImage = photon.PhotonImage.new_from_byteslice(inputBytes);
+  const orientedImage = applyExifOrientation(photon, rawImage, inputBytes);
+
+  if (orientedImage === rawImage) {
+    return rawImage;
+  }
+
+  rawImage.free();
+  return orientedImage;
+}
+
+function readDimensions(image: PhotonImage): Dimensions {
+  return {
+    width: image.get_width(),
+    height: image.get_height(),
+  };
 }
 
 export async function detectSupportedImageMimeTypeFromFile(
   filePath: string,
 ): Promise<SupportedImageMimeType | null> {
   const fileHandle = await open(filePath, "r");
+
   try {
     const buffer = Buffer.alloc(FILE_TYPE_SNIFF_BYTES);
     const { bytesRead } = await fileHandle.read(buffer, 0, FILE_TYPE_SNIFF_BYTES, 0);
-    if (bytesRead === 0) return null;
+    if (bytesRead === 0) {
+      return null;
+    }
 
     const fileType = await fileTypeFromBuffer(buffer.subarray(0, bytesRead));
-    if (!fileType || !IMAGE_MIME_TYPES.has(fileType.mime)) return null;
+    if (!fileType || !IMAGE_MIME_TYPES.has(fileType.mime)) {
+      return null;
+    }
+
     return fileType.mime as SupportedImageMimeType;
   } finally {
     await fileHandle.close();
@@ -121,164 +371,52 @@ export async function detectSupportedImageMimeTypeFromFile(
 }
 
 export async function resizeImage(
-  image: ResizeableImage,
+  image: ResizableImage,
   options?: ResizeOptions,
 ): Promise<ResizeImageResult> {
-  const opts = { ...DEFAULT_OPTIONS, ...options };
+  const resolvedOptions = { ...DEFAULT_OPTIONS, ...options };
   const inputBuffer = Buffer.from(image.data, "base64");
   const photon = await loadPhoton();
-  if (!photon) {
-    return {
-      data: image.data,
-      mimeType: image.mimeType,
-      originalWidth: 0,
-      originalHeight: 0,
-      width: 0,
-      height: 0,
-      wasResized: false,
-    };
-  }
-  const photonModule = photon;
 
-  let workingImage: InstanceType<PhotonImageModule["PhotonImage"]> | undefined;
+  if (!photon) {
+    return buildFallbackResult(image);
+  }
+
+  let workingImage: PhotonImage | undefined;
 
   try {
-    const inputBytes = new Uint8Array(inputBuffer);
-    const rawImage = photonModule.PhotonImage.new_from_byteslice(inputBytes);
-    workingImage = applyExifOrientation(photonModule, rawImage, inputBytes);
-    if (workingImage !== rawImage) rawImage.free();
+    workingImage = createWorkingImage(photon, inputBuffer);
 
-    const originalWidth = workingImage.get_width();
-    const originalHeight = workingImage.get_height();
-    const format = image.mimeType.split("/")[1] ?? "png";
-    const originalSize = inputBuffer.length;
-
-    if (
-      originalWidth <= opts.maxWidth &&
-      originalHeight <= opts.maxHeight &&
-      originalSize <= opts.maxBytes
-    ) {
-      return {
-        data: image.data,
-        mimeType: image.mimeType ?? `image/${format}`,
-        originalWidth,
-        originalHeight,
-        width: originalWidth,
-        height: originalHeight,
-        wasResized: false,
-      };
+    const originalDimensions = readDimensions(workingImage);
+    if (fitsWithinLimits(originalDimensions, inputBuffer.length, resolvedOptions)) {
+      return buildUnchangedResult(image, originalDimensions);
     }
 
-    let targetWidth = originalWidth;
-    let targetHeight = originalHeight;
-    if (targetWidth > opts.maxWidth) {
-      targetHeight = Math.round((targetHeight * opts.maxWidth) / targetWidth);
-      targetWidth = opts.maxWidth;
-    }
-    if (targetHeight > opts.maxHeight) {
-      targetWidth = Math.round((targetWidth * opts.maxHeight) / targetHeight);
-      targetHeight = opts.maxHeight;
-    }
+    const targetDimensions = clampDimensions(
+      originalDimensions,
+      resolvedOptions.maxWidth,
+      resolvedOptions.maxHeight,
+    );
+    const bestAttempt = findBestResizeAttempt(
+      photon,
+      workingImage,
+      targetDimensions,
+      resolvedOptions,
+    );
 
-    function tryBothFormats(width: number, height: number, jpegQuality: number) {
-      const resized = photonModule.resize(
-        workingImage!,
-        width,
-        height,
-        photonModule.SamplingFilter.Lanczos3,
-      );
-      try {
-        const pngBuffer = resized.get_bytes();
-        const jpegBuffer = resized.get_bytes_jpeg(jpegQuality);
-        return pickSmaller(
-          { buffer: pngBuffer, mimeType: "image/png" },
-          { buffer: jpegBuffer, mimeType: "image/jpeg" },
-        );
-      } finally {
-        resized.free();
-      }
-    }
-
-    const qualitySteps = [85, 70, 55, 40];
-    const scaleSteps = [1.0, 0.75, 0.5, 0.35, 0.25];
-    let best = tryBothFormats(targetWidth, targetHeight, opts.jpegQuality);
-    let finalWidth = targetWidth;
-    let finalHeight = targetHeight;
-
-    if (best.buffer.length <= opts.maxBytes) {
-      return {
-        data: Buffer.from(best.buffer).toString("base64"),
-        mimeType: best.mimeType,
-        originalWidth,
-        originalHeight,
-        width: finalWidth,
-        height: finalHeight,
-        wasResized: true,
-      };
-    }
-
-    for (const quality of qualitySteps) {
-      best = tryBothFormats(targetWidth, targetHeight, quality);
-      if (best.buffer.length <= opts.maxBytes) {
-        return {
-          data: Buffer.from(best.buffer).toString("base64"),
-          mimeType: best.mimeType,
-          originalWidth,
-          originalHeight,
-          width: finalWidth,
-          height: finalHeight,
-          wasResized: true,
-        };
-      }
-    }
-
-    for (const scale of scaleSteps) {
-      finalWidth = Math.round(targetWidth * scale);
-      finalHeight = Math.round(targetHeight * scale);
-      if (finalWidth < 100 || finalHeight < 100) break;
-
-      for (const quality of qualitySteps) {
-        best = tryBothFormats(finalWidth, finalHeight, quality);
-        if (best.buffer.length <= opts.maxBytes) {
-          return {
-            data: Buffer.from(best.buffer).toString("base64"),
-            mimeType: best.mimeType,
-            originalWidth,
-            originalHeight,
-            width: finalWidth,
-            height: finalHeight,
-            wasResized: true,
-          };
-        }
-      }
-    }
-
-    return {
-      data: Buffer.from(best.buffer).toString("base64"),
-      mimeType: best.mimeType,
-      originalWidth,
-      originalHeight,
-      width: finalWidth,
-      height: finalHeight,
-      wasResized: true,
-    };
+    return buildResizedResult(bestAttempt, originalDimensions);
   } catch {
-    return {
-      data: image.data,
-      mimeType: image.mimeType,
-      originalWidth: 0,
-      originalHeight: 0,
-      width: 0,
-      height: 0,
-      wasResized: false,
-    };
+    return buildFallbackResult(image);
   } finally {
     workingImage?.free();
   }
 }
 
 export function formatDimensionNote(result: ResizeImageResult): string | undefined {
-  if (!result.wasResized) return undefined;
+  if (!result.wasResized) {
+    return undefined;
+  }
+
   const scale = result.originalWidth / result.width;
   return `[Image: original ${result.originalWidth}x${result.originalHeight}, displayed at ${result.width}x${result.height}. Multiply coordinates by ${scale.toFixed(2)} to map to original image.]`;
 }

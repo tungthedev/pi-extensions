@@ -74,8 +74,12 @@ export function resolveCodexConfigPath(
   return path.join(codexHome, CODEX_CONFIG_FILE);
 }
 
-export function parseCodexPersonality(configToml: string | undefined): CodexPersonality | undefined {
-  const match = configToml?.match(/^[ \t]*personality[ \t]*=[ \t]*"(none|friendly|pragmatic)"[ \t]*(?:#.*)?$/m);
+export function parseCodexPersonality(
+  configToml: string | undefined,
+): CodexPersonality | undefined {
+  const match = configToml?.match(
+    /^[ \t]*personality[ \t]*=[ \t]*"(none|friendly|pragmatic)"[ \t]*(?:#.*)?$/m,
+  );
   const personality = match?.[1];
   if (personality === "none" || personality === "friendly" || personality === "pragmatic") {
     return personality;
@@ -196,7 +200,10 @@ export function registerCodexPrompt(pi: ExtensionAPI) {
       resolveCodexPromptBody(ctx.model?.id, modelsCatalog, codexPersonality),
     );
     return {
-      systemPrompt: injectCodexPrompt(injectCodexPrompt(event.systemPrompt, codexPrompt), profilePrompt),
+      systemPrompt: injectCodexPrompt(
+        injectCodexPrompt(event.systemPrompt, codexPrompt),
+        profilePrompt,
+      ),
     };
   });
 }

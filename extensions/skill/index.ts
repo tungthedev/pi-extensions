@@ -1,7 +1,3 @@
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-
 import {
   DefaultPackageManager,
   SettingsManager,
@@ -16,6 +12,9 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
 import { renderLines, titleLine } from "../codex-content/renderers/common.ts";
 
@@ -63,7 +62,9 @@ function isUnderPath(target: string, root: string): boolean {
   const normalizedTarget = path.resolve(target);
   const normalizedRoot = path.resolve(root);
   if (normalizedTarget === normalizedRoot) return true;
-  const prefix = normalizedRoot.endsWith(path.sep) ? normalizedRoot : `${normalizedRoot}${path.sep}`;
+  const prefix = normalizedRoot.endsWith(path.sep)
+    ? normalizedRoot
+    : `${normalizedRoot}${path.sep}`;
   return normalizedTarget.startsWith(prefix);
 }
 
@@ -181,7 +182,8 @@ function mergeDiscoveredSkillSets(skillSets: DiscoveredSkills[]): DiscoveredSkil
 
 function sortSkills(skills: Skill[]): Skill[] {
   return [...skills].sort(
-    (left, right) => left.name.localeCompare(right.name) || left.filePath.localeCompare(right.filePath),
+    (left, right) =>
+      left.name.localeCompare(right.name) || left.filePath.localeCompare(right.filePath),
   );
 }
 
@@ -214,25 +216,37 @@ export async function discoverAvailableSkills(
       .map((resource) => resource.path);
 
     if (fs.existsSync(globalSkillsDir)) {
-      skillSets.push(loadSkills({ cwd, agentDir, skillPaths: [globalSkillsDir], includeDefaults: false }));
+      skillSets.push(
+        loadSkills({ cwd, agentDir, skillPaths: [globalSkillsDir], includeDefaults: false }),
+      );
     }
-    skillSets.push(loadOptionalSkillDir(path.join(resolveHomeDir(), ".agents", "skills"), "global"));
+    skillSets.push(
+      loadOptionalSkillDir(path.join(resolveHomeDir(), ".agents", "skills"), "global"),
+    );
     if (fs.existsSync(projectSkillsDir)) {
-      skillSets.push(loadSkills({ cwd, agentDir, skillPaths: [projectSkillsDir], includeDefaults: false }));
+      skillSets.push(
+        loadSkills({ cwd, agentDir, skillPaths: [projectSkillsDir], includeDefaults: false }),
+      );
     }
     for (const dir of collectAncestorAgentSkillDirs(cwd)) {
       skillSets.push(loadOptionalSkillDir(dir, "project"));
     }
     if (packageSkillPaths.length > 0) {
-      skillSets.push(loadSkills({ cwd, agentDir, skillPaths: packageSkillPaths, includeDefaults: false }));
+      skillSets.push(
+        loadSkills({ cwd, agentDir, skillPaths: packageSkillPaths, includeDefaults: false }),
+      );
     }
     if (configuredSkillPaths.length > 0) {
-      skillSets.push(loadSkills({ cwd, agentDir, skillPaths: configuredSkillPaths, includeDefaults: false }));
+      skillSets.push(
+        loadSkills({ cwd, agentDir, skillPaths: configuredSkillPaths, includeDefaults: false }),
+      );
     }
   }
 
   if (cli.skillPaths.length > 0) {
-    skillSets.push(loadSkills({ cwd, agentDir, skillPaths: cli.skillPaths, includeDefaults: false }));
+    skillSets.push(
+      loadSkills({ cwd, agentDir, skillPaths: cli.skillPaths, includeDefaults: false }),
+    );
   }
 
   return mergeDiscoveredSkillSets(skillSets);
@@ -242,7 +256,9 @@ export async function findAvailableSkill(
   name: string,
   options: DiscoverSkillsOptions = {},
 ): Promise<SkillEntry | null> {
-  const skill = (await discoverAvailableSkills(options)).skills.find((entry) => entry.name === name);
+  const skill = (await discoverAvailableSkills(options)).skills.find(
+    (entry) => entry.name === name,
+  );
   if (!skill) return null;
 
   return {
@@ -325,7 +341,9 @@ type ListSkillsPayload = {
   }>;
 };
 
-function parseListSkillsPayload(result: { content?: Array<{ type?: string; text?: string }> }): ListSkillsPayload {
+function parseListSkillsPayload(result: {
+  content?: Array<{ type?: string; text?: string }>;
+}): ListSkillsPayload {
   const content = result.content?.[0];
   if (!content || content.type !== "text" || !content.text) return {};
 
@@ -341,7 +359,12 @@ function treeLine(theme: Pick<Theme, "fg">, text: string, branch: "mid" | "last"
   return `${theme.fg("dim", prefix)}${theme.fg("toolOutput", text)}`;
 }
 
-function skillTreeLine(theme: Pick<Theme, "fg">, skillName: string, filePath: string, branch: "mid" | "last"): string {
+function skillTreeLine(
+  theme: Pick<Theme, "fg">,
+  skillName: string,
+  filePath: string,
+  branch: "mid" | "last",
+): string {
   const prefix = branch === "last" ? "└ " : "├ ";
   return `${theme.fg("dim", prefix)}${theme.fg("accent", skillName)}${theme.fg("toolOutput", ` - ${filePath}`)}`;
 }
@@ -493,7 +516,9 @@ export function createListSkillsTool(): ToolDefinition {
       return undefined;
     },
     renderResult(result, options, theme) {
-      return renderLines(buildListSkillsLines(theme, parseListSkillsPayload(result), options.expanded));
+      return renderLines(
+        buildListSkillsLines(theme, parseListSkillsPayload(result), options.expanded),
+      );
     },
   };
 }

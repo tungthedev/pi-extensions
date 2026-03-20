@@ -1,4 +1,3 @@
-import { Text } from "@mariozechner/pi-tui";
 import { spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants as fsConstants } from "node:fs";
 import os from "node:os";
@@ -39,9 +38,15 @@ type WindowedCapture = {
   truncated: boolean;
 };
 
+type ExecCommandOptions = {
+  timeoutMs?: number;
+  stdinText?: string;
+  signal?: AbortSignal;
+};
+
 const CAPTURE_SEGMENT_BYTES = Math.floor(MAX_CAPTURE_BYTES / 2);
 
-function normalizePath(input: string): string {
+function normalizePathInput(input: string): string {
   const stripped = input.startsWith("@") ? input.slice(1) : input;
   if (stripped === "~") return os.homedir();
   if (stripped.startsWith("~/")) return path.join(os.homedir(), stripped.slice(2));
@@ -55,7 +60,7 @@ export function truncateLine(text: string): string {
 export function trimToBudget(text: string): { text: string; truncated: boolean } {
   const lines = text.replace(/\r/g, "").split("\n");
   const visibleLines: string[] = [];
-  let bytes = 0;
+  let visibleBytes = 0;
   let truncated = false;
 
   for (const line of lines) {
@@ -65,14 +70,14 @@ export function trimToBudget(text: string): { text: string; truncated: boolean }
     }
 
     const candidate = truncateLine(line);
-    const lineBytes = Buffer.byteLength(candidate + "\n", "utf-8");
-    if (bytes + lineBytes > DEFAULT_MAX_BYTES) {
+    const candidateBytes = Buffer.byteLength(`${candidate}\n`, "utf-8");
+    if (visibleBytes + candidateBytes > DEFAULT_MAX_BYTES) {
       truncated = true;
       break;
     }
 
     visibleLines.push(candidate);
-    bytes += lineBytes;
+    visibleBytes += candidateBytes;
   }
 
   let output = visibleLines.join("\n");
@@ -84,8 +89,12 @@ export function trimToBudget(text: string): { text: string; truncated: boolean }
 }
 
 export function resolveAbsolutePath(cwd: string, input: string): string {
-  const normalized = normalizePath(input);
-  return path.isAbsolute(normalized) ? normalized : path.resolve(cwd, normalized);
+  const normalized = normalizePathInput(input);
+  if (path.isAbsolute(normalized)) {
+    return normalized;
+  }
+
+  return path.resolve(cwd, normalized);
 }
 
 function pathExists(filePath: string): boolean {
@@ -97,6 +106,8 @@ function pathExists(filePath: string): boolean {
   }
 }
 
+// Some paths differ only by unicode normalization or the narrow no-break space
+// that macOS may insert in localized date suffixes. Try a few safe variants.
 export function resolveAbsolutePathWithVariants(cwd: string, input: string): string {
   const resolved = resolveAbsolutePath(cwd, input);
   if (pathExists(resolved)) return resolved;
@@ -119,9 +130,11 @@ export function splitLeadingCdCommand(
 ): { workdir: string; command: string } | null {
   const match = command.match(/^\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))\s*(?:&&|;)\s*(.+)$/s);
   if (!match) return null;
+
   const workdir = match[1] ?? match[2] ?? match[3];
   const nextCommand = match[4]?.trim();
   if (!workdir || !nextCommand) return null;
+
   return { workdir, command: nextCommand };
 }
 
@@ -160,6 +173,7 @@ function detectShellFlavor(
   if (shellName === "fish") {
     return "fish";
   }
+
   return "unknown";
 }
 
@@ -168,6 +182,22 @@ function pickFirstExistingShell(
   shellExists = shellPathExists,
 ): string | undefined {
   return candidates.find((candidate) => candidate && shellExists(candidate));
+}
+
+function fallbackShellCandidates(login: boolean): string[] {
+  if (login) {
+    return ["/bin/bash", "/bin/zsh", "/bin/sh"];
+  }
+
+  return ["/bin/sh", "/bin/bash", "/bin/zsh"];
+}
+
+function fallbackShellArgs(shell: string, command: string, login: boolean): string[] {
+  if (login && shell !== "/bin/sh") {
+    return ["-lc", command];
+  }
+
+  return ["-c", command];
 }
 
 export function resolveShellInvocation(
@@ -193,15 +223,16 @@ export function resolveShellInvocation(
     };
   }
 
-  const fallbackShell = login
-    ? pickFirstExistingShell(["/bin/bash", "/bin/zsh", "/bin/sh"], shellExists)
-    : pickFirstExistingShell(["/bin/sh", "/bin/bash", "/bin/zsh"], shellExists);
-
+  const fallbackShell =
+    pickFirstExistingShell(fallbackShellCandidates(login), shellExists) ?? "/bin/sh";
   return {
-    shell: fallbackShell ?? "/bin/sh",
-    shellArgs:
-      login && fallbackShell && fallbackShell !== "/bin/sh" ? ["-lc", command] : ["-c", command],
+    shell: fallbackShell,
+    shellArgs: fallbackShellArgs(fallbackShell, command, login),
   };
+}
+
+function createWindowedCapture(): WindowedCapture {
+  return { head: "", tail: "", truncated: false };
 }
 
 function sliceUtf8Head(text: string, maxBytes: number): string {
@@ -212,6 +243,8 @@ function sliceUtf8Tail(text: string, maxBytes: number): string {
   return Buffer.from(text, "utf-8").subarray(-maxBytes).toString("utf-8");
 }
 
+// Keep the first window and last window of very large output so callers still
+// see both the start of the stream and the most recent failure details.
 function appendWindowedCapture(current: WindowedCapture, chunk: string): WindowedCapture {
   if (!current.truncated) {
     const combined = `${current.head}${chunk}`;
@@ -259,15 +292,28 @@ function killChildProcess(child: ChildProcess, signal: NodeJS.Signals): void {
   }
 }
 
+function clearTimer(timer: ReturnType<typeof setTimeout> | null): null {
+  if (timer) {
+    clearTimeout(timer);
+  }
+
+  return null;
+}
+
+function writeChildStdin(child: ChildProcess, stdinText: string | undefined): void {
+  if (stdinText === undefined || !child.stdin) {
+    return;
+  }
+
+  child.stdin.write(stdinText);
+  child.stdin.end();
+}
+
 export async function execCommand(
   command: string,
   args: string[],
   cwd: string,
-  options: {
-    timeoutMs?: number;
-    stdinText?: string;
-    signal?: AbortSignal;
-  } = {},
+  options: ExecCommandOptions = {},
 ): Promise<ExecResult> {
   const { timeoutMs, stdinText, signal } = options;
 
@@ -278,30 +324,24 @@ export async function execCommand(
       stdio: [stdinText !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
     });
 
-    let stdout: WindowedCapture = { head: "", tail: "", truncated: false };
-    let stderr: WindowedCapture = { head: "", tail: "", truncated: false };
+    let stdout = createWindowedCapture();
+    let stderr = createWindowedCapture();
     let settled = false;
     let forcedExitCode: number | null = null;
     let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
     let forceKillTimer: ReturnType<typeof setTimeout> | null = null;
 
     const cleanup = () => {
-      if (timeoutTimer) {
-        clearTimeout(timeoutTimer);
-        timeoutTimer = null;
-      }
-      if (forceKillTimer) {
-        clearTimeout(forceKillTimer);
-        forceKillTimer = null;
-      }
+      timeoutTimer = clearTimer(timeoutTimer);
+      forceKillTimer = clearTimer(forceKillTimer);
       signal?.removeEventListener("abort", onAbort);
     };
 
     const finish = (exitCode: number) => {
       if (settled) return;
+
       settled = true;
       cleanup();
-
       resolve({
         stdout: finalizeWindowedCapture(stdout, "stdout"),
         stderr: finalizeWindowedCapture(stderr, "stderr"),
@@ -311,6 +351,7 @@ export async function execCommand(
 
     const terminate = (message: string, exitCode: number) => {
       if (settled) return;
+
       forcedExitCode = exitCode;
       stderr = appendWindowedCapture(stderr, message);
       killChildProcess(child, "SIGTERM");
@@ -333,22 +374,20 @@ export async function execCommand(
     });
     child.on("error", (error) => {
       if (settled) return;
+
       cleanup();
       reject(error);
     });
-    child.on("close", (code) => finish(forcedExitCode ?? code ?? 1));
+    child.on("close", (code) => {
+      finish(forcedExitCode ?? code ?? 1);
+    });
 
-    if (stdinText !== undefined && child.stdin) {
-      child.stdin.write(stdinText);
-      child.stdin.end();
-    }
+    writeChildStdin(child, stdinText);
 
-    if (signal) {
-      if (signal.aborted) {
-        onAbort();
-      } else {
-        signal.addEventListener("abort", onAbort, { once: true });
-      }
+    if (signal?.aborted) {
+      onAbort();
+    } else if (signal) {
+      signal.addEventListener("abort", onAbort, { once: true });
     }
 
     if (timeoutMs && timeoutMs > 0) {
@@ -357,8 +396,4 @@ export async function execCommand(
       }, timeoutMs);
     }
   });
-}
-
-export function conciseResult(title: string, detail?: string) {
-  return new Text(detail ? `${title} ${detail}` : title, 0, 0);
 }

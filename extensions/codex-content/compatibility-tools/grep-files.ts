@@ -4,17 +4,17 @@ import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import {
+  normalizeCommandOutputPaths,
+  statSortedFileMatches,
+  type StatSortedMatches,
+  type TimedFileMatch,
+} from "./file-match-utils.ts";
 import { execCommand, resolveAbsolutePathWithVariants, trimToBudget } from "./runtime.ts";
 
-export type GrepFilesMatch = {
-  absolutePath: string;
-  mtimeMs: number;
-};
+export type GrepFilesMatch = TimedFileMatch;
 
-type GrepFilesResult = {
-  matches: GrepFilesMatch[];
-  skippedCount: number;
-};
+type GrepFilesResult = StatSortedMatches;
 
 export function formatGrepFilesOutput(
   result: GrepFilesResult,
@@ -44,34 +44,33 @@ export function formatGrepFilesOutput(
   return lines.join("\n");
 }
 
-async function statSortedMatches(files: string[]): Promise<GrepFilesResult> {
-  const entries = await Promise.all(
-    [...new Set(files)].map(async (absolutePath) => ({
-      absolutePath,
-      stat: await fs.stat(absolutePath).catch(() => null),
-    })),
-  );
+type SearchScope = {
+  searchRoot: string;
+  fileFilter?: string;
+};
 
-  const matches: GrepFilesMatch[] = [];
-  let skippedCount = 0;
-  for (const entry of entries) {
-    if (!entry.stat) {
-      skippedCount += 1;
-      continue;
+async function resolveSearchScope(searchPath: string): Promise<SearchScope> {
+  let stats;
+
+  try {
+    stats = await fs.stat(searchPath);
+  } catch (error) {
+    const systemError = error as NodeJS.ErrnoException;
+    if (systemError?.code === "ENOENT") {
+      throw new Error(`path not found: ${searchPath}`);
     }
-    if (!entry.stat.isFile()) continue;
-    matches.push({
-      absolutePath: entry.absolutePath,
-      mtimeMs: entry.stat.mtimeMs,
-    });
+
+    throw error;
   }
 
-  matches.sort((left, right) => {
-    if (right.mtimeMs !== left.mtimeMs) return right.mtimeMs - left.mtimeMs;
-    return left.absolutePath.localeCompare(right.absolutePath);
-  });
+  if (stats.isDirectory()) {
+    return { searchRoot: searchPath };
+  }
 
-  return { matches, skippedCount };
+  return {
+    searchRoot: path.dirname(searchPath),
+    fileFilter: searchPath,
+  };
 }
 
 function normalizeRgError(stderr: string, exitCode: number): Error {
@@ -82,25 +81,7 @@ function normalizeRgError(stderr: string, exitCode: number): Error {
   return new Error(message || `rg exited with code ${exitCode}`);
 }
 
-export async function findContentMatches(
-  searchPath: string,
-  pattern: string,
-  include?: string,
-  signal?: AbortSignal,
-): Promise<GrepFilesResult> {
-  let stats;
-  try {
-    stats = await fs.stat(searchPath);
-  } catch (error) {
-    const systemError = error as NodeJS.ErrnoException;
-    if (systemError?.code === "ENOENT") {
-      throw new Error(`path not found: ${searchPath}`);
-    }
-    throw error;
-  }
-
-  const searchRoot = stats.isDirectory() ? searchPath : path.dirname(searchPath);
-  const fileFilter = stats.isDirectory() ? undefined : searchPath;
+function buildGrepFilesArgs(pattern: string, searchPath: string, include?: string): string[] {
   const args = [
     "--files-with-matches",
     "--hidden",
@@ -111,31 +92,57 @@ export async function findContentMatches(
     "--glob",
     "!**/.jj/**",
   ];
+
   if (include) {
     args.push("--glob", include);
   }
+
   args.push(pattern, searchPath);
+  return args;
+}
+
+function isAbortedSearch(stderr: string, exitCode: number): boolean {
+  return exitCode === 130 || /command aborted/i.test(stderr);
+}
+
+function buildSearchAbortedResult(pattern: string, searchPath?: string) {
+  return {
+    content: [{ type: "text" as const, text: "Search aborted" }],
+    details: {
+      pattern,
+      ...(searchPath ? { path: searchPath } : {}),
+      count: 0,
+    },
+    isError: true,
+  };
+}
+
+export async function findContentMatches(
+  searchPath: string,
+  pattern: string,
+  include?: string,
+  signal?: AbortSignal,
+): Promise<GrepFilesResult> {
+  const { searchRoot, fileFilter } = await resolveSearchScope(searchPath);
+  const args = buildGrepFilesArgs(pattern, searchPath, include);
 
   const result = await execCommand("rg", args, searchRoot, { signal });
-  if (result.exitCode === 130 || /command aborted/i.test(result.stderr)) {
+
+  if (isAbortedSearch(result.stderr, result.exitCode)) {
     throw new Error("search aborted");
   }
+
   if (result.exitCode === 1) {
     return { matches: [], skippedCount: 0 };
   }
+
   if (result.exitCode !== 0) {
     throw normalizeRgError(result.stderr, result.exitCode);
   }
 
-  const candidates = result.stdout
-    .replace(/\r/g, "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => (path.isAbsolute(line) ? line : path.resolve(searchRoot, line)))
-    .filter((absolutePath) => !fileFilter || absolutePath === fileFilter);
+  const candidates = normalizeCommandOutputPaths(result.stdout, searchRoot, fileFilter);
 
-  return await statSortedMatches(candidates);
+  return await statSortedFileMatches(candidates);
 }
 
 export function registerGrepFilesTool(pi: ExtensionAPI): void {
@@ -157,11 +164,7 @@ export function registerGrepFilesTool(pi: ExtensionAPI): void {
       const limit = Math.max(1, params.limit ?? 100);
 
       if (signal?.aborted) {
-        return {
-          content: [{ type: "text", text: "Search aborted" }],
-          details: { pattern: params.pattern, count: 0 },
-          isError: true,
-        };
+        return buildSearchAbortedResult(params.pattern);
       }
 
       let matches;
@@ -170,14 +173,12 @@ export function registerGrepFilesTool(pi: ExtensionAPI): void {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (/search aborted/i.test(message)) {
-          return {
-            content: [{ type: "text", text: "Search aborted" }],
-            details: { pattern: params.pattern, path: searchPath, count: 0 },
-            isError: true,
-          };
+          return buildSearchAbortedResult(params.pattern, searchPath);
         }
+
         throw error;
       }
+
       const output = formatGrepFilesOutput(matches, { limit });
       const trimmed = trimToBudget(output);
 

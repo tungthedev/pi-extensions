@@ -4,35 +4,47 @@ import { registerUpdatePlanTool, syncPlanUi } from "./plan.ts";
 import { registerRequestUserInputTool } from "./request-user-input.ts";
 import { CODEX_WORKFLOW_TOOL_NAMES, type WorkflowPlanItem } from "./types.ts";
 
+type WorkflowState = {
+  explanation?: string;
+  plan: WorkflowPlanItem[];
+};
+
 export { CODEX_WORKFLOW_TOOL_NAMES };
 
-export function registerCodexWorkflowTools(pi: ExtensionAPI) {
-  let currentExplanation: string | undefined;
-  let currentPlan: WorkflowPlanItem[] = [];
-
-  const resetPlan = (ctx: ExtensionContext) => {
-    currentExplanation = undefined;
-    currentPlan = [];
-    syncPlanUi(ctx, currentExplanation, currentPlan);
+function createWorkflowState(): WorkflowState {
+  return {
+    explanation: undefined,
+    plan: [],
   };
+}
+
+function resetWorkflowState(ctx: ExtensionContext, state: WorkflowState): void {
+  state.explanation = undefined;
+  state.plan = [];
+  syncPlanUi(ctx, state.explanation, state.plan);
+}
+
+export function registerCodexWorkflowTools(pi: ExtensionAPI) {
+  const state = createWorkflowState();
 
   pi.on("session_start", async (_event, ctx) => {
-    resetPlan(ctx);
+    resetWorkflowState(ctx, state);
   });
 
   pi.on("session_switch", async (_event, ctx) => {
-    resetPlan(ctx);
+    resetWorkflowState(ctx, state);
   });
 
   registerUpdatePlanTool(pi, {
-    getExplanation: () => currentExplanation,
+    getExplanation: () => state.explanation,
     setExplanation: (value) => {
-      currentExplanation = value;
+      state.explanation = value;
     },
-    getPlan: () => currentPlan,
+    getPlan: () => state.plan,
     setPlan: (items) => {
-      currentPlan = items;
+      state.plan = items;
     },
   });
+
   registerRequestUserInputTool(pi);
 }

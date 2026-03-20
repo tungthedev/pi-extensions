@@ -1,5 +1,6 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
+import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 
@@ -8,7 +9,86 @@ import {
   formatDimensionNote,
   resizeImage,
 } from "../image-utils.ts";
-import { conciseResult, resolveAbsolutePath } from "./runtime.ts";
+import { resolveAbsolutePath } from "./runtime.ts";
+
+type ViewImageDetail = "original" | undefined;
+
+function conciseResult(title: string, detail?: string) {
+  return new Text(detail ? `${title} ${detail}` : title, 0, 0);
+}
+
+function resolveRequestedImagePath(params: { path?: string; file_path?: string }): string {
+  const rawPath = params.path ?? params.file_path;
+  if (!rawPath) {
+    throw new Error("path or file_path is required");
+  }
+
+  return rawPath;
+}
+
+function normalizeDetail(detail: string | undefined): ViewImageDetail {
+  if (detail === undefined || detail === "original") {
+    return detail;
+  }
+
+  throw new Error(
+    `view_image.detail only supports \`original\`; omit \`detail\` for default resized behavior, got \`${detail}\``,
+  );
+}
+
+function buildOriginalImageResult(
+  filePath: string,
+  mimeType: string,
+  imageData: string,
+): AgentToolResult<Record<string, unknown>> {
+  return {
+    content: [
+      { type: "text" as const, text: `Read image file [${mimeType}] (original detail)` },
+      { type: "image" as const, data: imageData, mimeType },
+    ],
+    details: {
+      filePath,
+      mimeType,
+      detail: "original",
+      wasResized: false,
+    },
+  };
+}
+
+function buildResizedImageResult(
+  filePath: string,
+  resized: {
+    data: string;
+    mimeType: string;
+    wasResized: boolean;
+    width: number;
+    height: number;
+    originalWidth: number;
+    originalHeight: number;
+  },
+): AgentToolResult<Record<string, unknown>> {
+  const dimensionNote = formatDimensionNote(resized);
+  let textNote = `Read image file [${resized.mimeType}]`;
+  if (dimensionNote) {
+    textNote += `\n${dimensionNote}`;
+  }
+
+  return {
+    content: [
+      { type: "text" as const, text: textNote },
+      { type: "image" as const, data: resized.data, mimeType: resized.mimeType },
+    ],
+    details: {
+      filePath,
+      mimeType: resized.mimeType,
+      wasResized: resized.wasResized,
+      width: resized.width,
+      height: resized.height,
+      originalWidth: resized.originalWidth,
+      originalHeight: resized.originalHeight,
+    },
+  };
+}
 
 export function registerViewImageTool(pi: ExtensionAPI): void {
   pi.registerTool({
@@ -27,11 +107,8 @@ export function registerViewImageTool(pi: ExtensionAPI): void {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const rawPath = params.path ?? params.file_path;
-      if (!rawPath) {
-        throw new Error("path or file_path is required");
-      }
-
+      const rawPath = resolveRequestedImagePath(params);
+      const detail = normalizeDetail(params.detail);
       const absolutePath = resolveAbsolutePath(ctx.cwd, rawPath);
       const stats = await fs.stat(absolutePath);
       if (!stats.isFile()) {
@@ -44,53 +121,17 @@ export function registerViewImageTool(pi: ExtensionAPI): void {
       }
 
       const buffer = await fs.readFile(absolutePath);
-      if (params.detail !== undefined && params.detail !== "original") {
-        throw new Error(
-          `view_image.detail only supports \`original\`; omit \`detail\` for default resized behavior, got \`${params.detail}\``,
-        );
-      }
-
-      if (params.detail === "original") {
-        return {
-          content: [
-            { type: "text", text: `Read image file [${mimeType}] (original detail)` },
-            { type: "image", data: buffer.toString("base64"), mimeType },
-          ],
-          details: {
-            filePath: absolutePath,
-            mimeType,
-            detail: "original",
-            wasResized: false,
-          },
-        };
+      const imageData = buffer.toString("base64");
+      if (detail === "original") {
+        return buildOriginalImageResult(absolutePath, mimeType, imageData);
       }
 
       const resized = await resizeImage({
         type: "image",
-        data: buffer.toString("base64"),
+        data: imageData,
         mimeType,
       });
-      const dimensionNote = formatDimensionNote(resized);
-      let textNote = `Read image file [${resized.mimeType}]`;
-      if (dimensionNote) {
-        textNote += `\n${dimensionNote}`;
-      }
-
-      return {
-        content: [
-          { type: "text", text: textNote },
-          { type: "image", data: resized.data, mimeType: resized.mimeType },
-        ],
-        details: {
-          filePath: absolutePath,
-          mimeType: resized.mimeType,
-          wasResized: resized.wasResized,
-          width: resized.width,
-          height: resized.height,
-          originalWidth: resized.originalWidth,
-          originalHeight: resized.originalHeight,
-        },
-      };
+      return buildResizedImageResult(absolutePath, resized);
     },
     renderCall(args) {
       return conciseResult("view_image", args.path ?? args.file_path);

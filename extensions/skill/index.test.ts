@@ -4,11 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import {
-  createListSkillsTool,
-  discoverAvailableSkills,
-  findAvailableSkill,
-} from "./index.ts";
+import { createListSkillsTool, discoverAvailableSkills, findAvailableSkill } from "./index.ts";
 
 function writeSkillFile(filePath: string, name: string, description: string) {
   mkdirSync(path.dirname(filePath), { recursive: true });
@@ -28,11 +24,31 @@ test("discoverAvailableSkills follows documented skill discovery locations", asy
   mkdirSync(cwd, { recursive: true });
   mkdirSync(agentDir, { recursive: true });
 
-  writeSkillFile(path.join(agentDir, "skills", "global-alpha", "SKILL.md"), "global-alpha", "Global skill");
-  writeSkillFile(path.join(home, ".agents", "skills", "global-beta", "SKILL.md"), "global-beta", "Home agents skill");
-  writeSkillFile(path.join(repoRoot, ".agents", "skills", "ancestor-gamma", "SKILL.md"), "ancestor-gamma", "Ancestor skill");
-  writeSkillFile(path.join(cwd, ".pi", "skills", "project-delta", "SKILL.md"), "project-delta", "Project skill");
-  writeSkillFile(path.join(home, ".pi", "shared-skills", "settings-epsilon.md"), "settings-epsilon", "Settings skill file");
+  writeSkillFile(
+    path.join(agentDir, "skills", "global-alpha", "SKILL.md"),
+    "global-alpha",
+    "Global skill",
+  );
+  writeSkillFile(
+    path.join(home, ".agents", "skills", "global-beta", "SKILL.md"),
+    "global-beta",
+    "Home agents skill",
+  );
+  writeSkillFile(
+    path.join(repoRoot, ".agents", "skills", "ancestor-gamma", "SKILL.md"),
+    "ancestor-gamma",
+    "Ancestor skill",
+  );
+  writeSkillFile(
+    path.join(cwd, ".pi", "skills", "project-delta", "SKILL.md"),
+    "project-delta",
+    "Project skill",
+  );
+  writeSkillFile(
+    path.join(home, ".pi", "shared-skills", "settings-epsilon.md"),
+    "settings-epsilon",
+    "Settings skill file",
+  );
   writeFileSync(
     path.join(agentDir, "settings.json"),
     JSON.stringify({ skills: ["../shared-skills"] }, null, 2),
@@ -51,7 +67,10 @@ test("discoverAvailableSkills follows documented skill discovery locations", asy
     );
 
     const ancestorSkill = await findAvailableSkill("ancestor-gamma", { cwd, agentDir });
-    assert.equal(ancestorSkill?.filePath, path.join(repoRoot, ".agents", "skills", "ancestor-gamma", "SKILL.md"));
+    assert.equal(
+      ancestorSkill?.filePath,
+      path.join(repoRoot, ".agents", "skills", "ancestor-gamma", "SKILL.md"),
+    );
   } finally {
     if (previousHome === undefined) {
       delete process.env.HOME;
@@ -75,7 +94,11 @@ test("list_skills tool returns discovered skills with metadata", async () => {
 
   mkdirSync(cwd, { recursive: true });
   mkdirSync(agentDir, { recursive: true });
-  writeSkillFile(path.join(agentDir, "skills", "review-helper", "SKILL.md"), "review-helper", "Helps review code");
+  writeSkillFile(
+    path.join(agentDir, "skills", "review-helper", "SKILL.md"),
+    "review-helper",
+    "Helps review code",
+  );
 
   const previousHome = process.env.HOME;
   const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -84,15 +107,9 @@ test("list_skills tool returns discovered skills with metadata", async () => {
 
   try {
     const tool = createListSkillsTool();
-    const result = await tool.execute(
-      "tool-call-1",
-      {},
-      undefined,
-      undefined,
-      {
-        cwd,
-      } as never,
-    );
+    const result = await tool.execute("tool-call-1", {}, undefined, undefined, {
+      cwd,
+    } as never);
 
     const content = result.content?.[0];
     assert.equal(content?.type, "text");

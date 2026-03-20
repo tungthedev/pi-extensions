@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { Dirent } from "node:fs";
 
 import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
@@ -17,11 +18,101 @@ export type ListDirectoryScan = {
   skippedCount: number;
 };
 
+type ScanQueueEntry = {
+  absolutePath: string;
+  relativePrefix: string;
+  remainingDepth: number;
+};
+
+type ScannedBatchEntry = {
+  dirent: Dirent;
+  relativePath: string;
+  absolutePath: string;
+  entry: ListDirectoryEntry;
+};
+
+function listEntryTypeLabel(dirent: Dirent): ListDirectoryEntry["typeLabel"] {
+  if (dirent.isDirectory()) {
+    return "dir";
+  }
+
+  if (dirent.isSymbolicLink()) {
+    return "symlink";
+  }
+
+  return "file";
+}
+
+function listEntrySuffix(dirent: Dirent): string {
+  if (dirent.isDirectory()) {
+    return "/";
+  }
+
+  if (dirent.isSymbolicLink()) {
+    return "@";
+  }
+
+  return "";
+}
+
+function buildScannedBatchEntry(
+  current: ScanQueueEntry,
+  dirent: ScannedBatchEntry["dirent"],
+): ScannedBatchEntry {
+  const relativePath = current.relativePrefix
+    ? path.posix.join(current.relativePrefix, dirent.name)
+    : dirent.name;
+
+  return {
+    dirent,
+    relativePath,
+    absolutePath: path.join(current.absolutePath, dirent.name),
+    entry: {
+      sortKey: relativePath,
+      relativePath: `${relativePath}${listEntrySuffix(dirent)}`,
+      typeLabel: listEntryTypeLabel(dirent),
+    },
+  };
+}
+
+function formatSkippedDirectoryNote(skippedCount = 0): string | undefined {
+  if (skippedCount === 0) {
+    return undefined;
+  }
+
+  return `[Skipped ${skippedCount} unreadable director${skippedCount === 1 ? "y" : "ies"}.]`;
+}
+
+function buildListDirResult(
+  absolutePath: string,
+  entries: ListDirectoryEntry[],
+  skippedCount: number,
+  options: { offset?: number; limit?: number } = {},
+) {
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: formatListDirectoryOutput(absolutePath, entries, {
+          offset: options.offset,
+          limit: options.limit,
+          skippedCount,
+        }),
+      },
+    ],
+    details: {
+      dirPath: absolutePath,
+      count: entries.length,
+      skippedCount,
+    },
+  };
+}
+
 export async function scanDirectoryEntries(
   dirPath: string,
   depth: number,
 ): Promise<ListDirectoryScan> {
-  const queue: Array<{ absolutePath: string; relativePrefix: string; remainingDepth: number }> = [
+  const queue: ScanQueueEntry[] = [
     { absolutePath: dirPath, relativePrefix: "", remainingDepth: depth },
   ];
   const entries: ListDirectoryEntry[] = [];
@@ -42,28 +133,7 @@ export async function scanDirectoryEntries(
       continue;
     }
 
-    const batch = dirents.map((dirent) => {
-      const relativePath = current.relativePrefix
-        ? path.posix.join(current.relativePrefix, dirent.name)
-        : dirent.name;
-      const absolutePath = path.join(current.absolutePath, dirent.name);
-      const suffix = dirent.isDirectory() ? "/" : dirent.isSymbolicLink() ? "@" : "";
-      const typeLabel: ListDirectoryEntry["typeLabel"] = dirent.isDirectory()
-        ? "dir"
-        : dirent.isSymbolicLink()
-          ? "symlink"
-          : "file";
-      return {
-        dirent,
-        relativePath,
-        absolutePath,
-        entry: {
-          sortKey: relativePath,
-          relativePath: `${relativePath}${suffix}`,
-          typeLabel,
-        },
-      };
-    });
+    const batch = dirents.map((dirent) => buildScannedBatchEntry(current, dirent));
 
     batch.sort((left, right) => left.entry.sortKey.localeCompare(right.entry.sortKey));
 
@@ -104,14 +174,14 @@ export function formatListDirectoryOutput(
 ): string {
   const offset = options.offset ?? 1;
   const limit = options.limit ?? entries.length;
+  const skippedDirectoryNote = formatSkippedDirectoryNote(options.skippedCount);
 
   if (entries.length === 0) {
     const lines = [`Absolute path: ${absolutePath}`];
-    if ((options.skippedCount ?? 0) > 0) {
-      lines.push(
-        `[Skipped ${options.skippedCount} unreadable director${options.skippedCount === 1 ? "y" : "ies"}.]`,
-      );
+    if (skippedDirectoryNote) {
+      lines.push(skippedDirectoryNote);
     }
+
     return lines.join("\n");
   }
 
@@ -130,10 +200,8 @@ export function formatListDirectoryOutput(
     );
   }
 
-  if ((options.skippedCount ?? 0) > 0) {
-    lines.push(
-      `[Skipped ${options.skippedCount} unreadable director${options.skippedCount === 1 ? "y" : "ies"}.]`,
-    );
+  if (skippedDirectoryNote) {
+    lines.push(skippedDirectoryNote);
   }
 
   return lines.join("\n");
@@ -157,45 +225,20 @@ export function registerListDirTool(pi: ExtensionAPI): void {
       const offset = params.offset ?? 1;
       const limit = params.limit ?? 25;
       const depth = params.depth ?? 2;
+
       if (!stats.isDirectory()) throw new Error("list_dir only supports directories");
       if (offset < 1) throw new Error("offset must be a 1-indexed entry number");
       if (limit < 1) throw new Error("limit must be greater than zero");
       if (depth < 1) throw new Error("depth must be greater than zero");
 
       const scan = await scanDirectoryEntries(absolutePath, depth);
-      const allEntries = scan.entries;
-      if (allEntries.length === 0) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: formatListDirectoryOutput(absolutePath, allEntries, {
-                skippedCount: scan.skippedCount,
-              }),
-            },
-          ],
-          details: { dirPath: absolutePath, count: 0, skippedCount: scan.skippedCount },
-        };
+      if (scan.entries.length === 0) {
+        return buildListDirResult(absolutePath, scan.entries, scan.skippedCount);
       }
-      if (offset > allEntries.length) throw new Error("offset exceeds directory entry count");
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: formatListDirectoryOutput(absolutePath, allEntries, {
-              offset,
-              limit,
-              skippedCount: scan.skippedCount,
-            }),
-          },
-        ],
-        details: {
-          dirPath: absolutePath,
-          count: allEntries.length,
-          skippedCount: scan.skippedCount,
-        },
-      };
+      if (offset > scan.entries.length) throw new Error("offset exceeds directory entry count");
+
+      return buildListDirResult(absolutePath, scan.entries, scan.skippedCount, { offset, limit });
     },
     renderCall() {
       return undefined;
