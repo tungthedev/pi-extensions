@@ -27,6 +27,7 @@ import {
   buildWaitAgentContent,
   CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
   formatSubagentNotificationMessage,
+  getSubagentNotificationDeliveryOptions,
   parseSubagentNotificationMessage,
 } from "./notifications.ts";
 import { rebuildDurableRegistry } from "./persistence.ts";
@@ -520,7 +521,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         display: true,
         details: snapshot,
       },
-      parentIsStreaming ? { deliverAs: "followUp" } : undefined,
+      getSubagentNotificationDeliveryOptions(parentIsStreaming),
     );
   };
 

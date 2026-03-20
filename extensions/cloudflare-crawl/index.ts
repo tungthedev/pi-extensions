@@ -32,6 +32,12 @@ const MAX_DEPTH = 2;
 const POLL_INTERVAL_MS = 1_500;
 const COLLAPSED_PREVIEW_LINE_COUNT = 4;
 
+function getBackgroundNotificationDeliveryOptions(parentIsStreaming: boolean):
+  | { deliverAs: "followUp" }
+  | { triggerTurn: true } {
+  return parentIsStreaming ? { deliverAs: "followUp" } : { triggerTurn: true };
+}
+
 type CrawlOutputFormat = "markdown" | "html";
 type CrawlJobStatus =
   | "running"
@@ -597,7 +603,7 @@ export default function cloudflareCrawl(pi: ExtensionAPI) {
         display: true,
         details,
       },
-      parentIsStreaming ? { deliverAs: "steer" } : undefined,
+      getBackgroundNotificationDeliveryOptions(parentIsStreaming),
     );
   };
 
