@@ -26,6 +26,7 @@ import {
   resolveParentSpawnDefaults,
   resolveSpawnPrompt,
 } from "./index.ts";
+import { getSubagentNotificationDeliveryOptions } from "./subagents/notifications.ts";
 
 function createPersistedSessionFixture() {
   const root = mkdtempSync(path.join(tmpdir(), "codex-subagents-"));
@@ -398,6 +399,11 @@ test("parseSubagentNotificationMessage extracts wrapped notification payloads", 
   );
 
   assert.equal(parseSubagentNotificationMessage("not a wrapped payload"), undefined);
+});
+
+test("getSubagentNotificationDeliveryOptions steers notifications while parent is streaming", () => {
+  assert.deepEqual(getSubagentNotificationDeliveryOptions(true), { deliverAs: "steer" });
+  assert.deepEqual(getSubagentNotificationDeliveryOptions(false), { triggerTurn: true });
 });
 
 test("resolveForkContextSessionFile creates a durable branched session for the requested leaf", () => {

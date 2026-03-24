@@ -3,9 +3,9 @@ import type { AgentSnapshot } from "./types.ts";
 export const CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE = "codex-subagent-notification";
 
 export function getSubagentNotificationDeliveryOptions(parentIsStreaming: boolean):
-  | { deliverAs: "followUp" }
+  | { deliverAs: "steer" }
   | { triggerTurn: true } {
-  return parentIsStreaming ? { deliverAs: "followUp" } : { triggerTurn: true };
+  return parentIsStreaming ? { deliverAs: "steer" } : { triggerTurn: true };
 }
 
 const SUBAGENT_NOTIFICATION_OPEN_TAG = "<subagent_notification>";

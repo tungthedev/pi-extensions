@@ -2,6 +2,12 @@
 
 All notable changes to `@tungthedev/pi-extensions` will be documented in this file.
 
+## [0.3.1] - 2026-03-24
+
+### Fixed
+
+- Fixed `codex-subagents` completion notifications during active parent turns by switching streaming delivery from follow-up to steering so finished child agents surface inline instead of waiting for the turn to end.
+
 ## [0.3.0] - 2026-03-20
 
 ### Added
