@@ -135,9 +135,9 @@ function waitForAnyStateChange(
   });
 }
 
-const MIN_WAIT_AGENT_TIMEOUT_MS = 10_000;
-const DEFAULT_WAIT_AGENT_TIMEOUT_MS = 30_000;
-const MAX_WAIT_AGENT_TIMEOUT_MS = 30_000;
+const MIN_WAIT_AGENT_TIMEOUT_MS = 30_000;
+const DEFAULT_WAIT_AGENT_TIMEOUT_MS = 45_000;
+const MAX_WAIT_AGENT_TIMEOUT_MS = 90_000;
 
 export function normalizeWaitAgentTimeoutMs(timeoutMs: number | undefined): number {
   const rawTimeoutMs = timeoutMs ?? DEFAULT_WAIT_AGENT_TIMEOUT_MS;
@@ -1402,7 +1402,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       timeout_ms: Type.Optional(
         Type.Number({
           description:
-            "Maximum time to wait before returning. Defaults to 30000, min 10000, max 30000.",
+            "Maximum time to wait before returning. Defaults to 45000, min 30000, max 90000.",
         }),
       ),
     }),
