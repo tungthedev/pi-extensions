@@ -4,6 +4,7 @@ import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { renderEmptySlot } from "../renderers/common.ts";
 import {
   normalizeCommandOutputPaths,
   statSortedFileMatches,
@@ -193,10 +194,10 @@ export function registerGrepFilesTool(pi: ExtensionAPI): void {
       };
     },
     renderCall() {
-      return undefined;
+      return renderEmptySlot();
     },
     renderResult() {
-      return undefined;
+      return renderEmptySlot();
     },
   });
 }

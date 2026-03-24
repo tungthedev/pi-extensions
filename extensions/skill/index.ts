@@ -16,12 +16,25 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { renderLines, titleLine } from "../codex-content/renderers/common.ts";
+import {
+  renderEmptySlot,
+  renderFallbackResult,
+  renderLines,
+  titleLine,
+} from "../codex-content/renderers/common.ts";
 
 interface SkillEntry {
   name: string;
   filePath: string;
   baseDir: string;
+}
+
+function legacySkillSource(skill: Pick<Skill, "sourceInfo">): string {
+  if (skill.sourceInfo.source === "local") {
+    return skill.sourceInfo.scope === "temporary" ? "path" : skill.sourceInfo.scope;
+  }
+
+  return skill.sourceInfo.source;
 }
 
 type SkillParams = {
@@ -161,8 +174,8 @@ function mergeDiscoveredSkillSets(skillSets: DiscoveredSkills[]): DiscoveredSkil
             name: skill.name,
             winnerPath: existing.filePath,
             loserPath: skill.filePath,
-            winnerSource: existing.source,
-            loserSource: skill.source,
+            winnerSource: legacySkillSource(existing),
+            loserSource: legacySkillSource(skill),
           },
         });
         continue;
@@ -317,7 +330,7 @@ function formatSkillsList(skills: Skill[], diagnostics: ResourceDiagnostic[]): s
       skills: skills.map((skill) => ({
         name: skill.name,
         description: skill.description,
-        source: skill.source,
+        source: legacySkillSource(skill),
         file_path: skill.filePath,
         base_dir: skill.baseDir,
         disable_model_invocation: skill.disableModelInvocation,
@@ -488,7 +501,7 @@ export function createSkillTool(): ToolDefinition {
       if (content.text.startsWith("<loaded_skill")) {
         return new Text("skill loaded", 0, 0);
       }
-      return undefined;
+      return renderFallbackResult(result);
     },
   };
 }
@@ -513,7 +526,7 @@ export function createListSkillsTool(): ToolDefinition {
       };
     },
     renderCall() {
-      return undefined;
+      return renderEmptySlot();
     },
     renderResult(result, options, theme) {
       return renderLines(

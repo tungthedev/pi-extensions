@@ -20,7 +20,7 @@ import type {
   SubagentEntryType,
 } from "./types.ts";
 
-import { titleLine } from "../../codex-content/renderers/common.ts";
+import { renderEmptySlot, renderFallbackResult, titleLine } from "../../codex-content/renderers/common.ts";
 import { appendBounded, createLiveAttachment } from "./attachment.ts";
 import { generateUniqueSubagentName, resolveSubagentName } from "./naming.ts";
 import {
@@ -1192,7 +1192,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           | (AgentSnapshot & { model_label?: string; prompt?: string })
           | undefined) ?? undefined;
       if (!details?.prompt) {
-        return undefined;
+        return renderFallbackResult(result, theme.fg("muted", "spawned"));
       }
       return new Text(
         `${theme.fg("muted", "└ ")}${theme.fg("dim", shorten(details.prompt, 140))}`,
@@ -1284,6 +1284,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     renderResult(result, _options, theme) {
       const details = result.details as { status?: AgentSnapshot } | AgentSnapshot | undefined;
       const snapshot = extractSnapshotDetails(details);
+      if (!snapshot) {
+        return renderFallbackResult(result, theme.fg("muted", "resumed"));
+      }
       const displayName = snapshot ? getSubagentDisplayName(snapshot) : "";
       return new Text(
         `${theme.fg("success", "✓ ")}${theme.fg("muted", "resumed ")}${theme.fg("accent", displayName)}`,
@@ -1372,10 +1375,13 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       });
     },
     renderCall() {
-      return undefined;
+      return renderEmptySlot();
     },
     renderResult(result, _options, theme) {
       const details = (result.details ?? {}) as AgentSnapshot & { input: string };
+      if (typeof details.input !== "string") {
+        return renderFallbackResult(result, theme.fg("muted", "messaged subagent"));
+      }
       const snapshot = extractSnapshotDetails(details);
       const displayName = snapshot ? getSubagentDisplayName(snapshot) : "";
 
@@ -1623,11 +1629,14 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       };
     },
     renderCall() {
-      return undefined;
+      return renderEmptySlot();
     },
     renderResult(result, _options, theme) {
       const details = result.details as { status?: AgentSnapshot } | AgentSnapshot | undefined;
       const snapshot = extractSnapshotDetails(details);
+      if (!snapshot) {
+        return renderFallbackResult(result, theme.fg("muted", "closed"));
+      }
       const displayName = snapshot ? getSubagentDisplayName(snapshot) : "";
 
       const title = titleLine(theme, "text", "Closed", `${theme.fg("accent", `${displayName}`)}`);

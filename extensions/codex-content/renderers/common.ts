@@ -1,6 +1,8 @@
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import type { AgentToolResult, Theme } from "@mariozechner/pi-coding-agent";
 
-import { Text } from "@mariozechner/pi-tui";
+import { Container, Text } from "@mariozechner/pi-tui";
+
+import { firstText } from "../shared/text.ts";
 
 export function conciseResult(title: string, detail?: string): Text {
   return new Text(detail ? `${title} ${detail}` : title, 0, 0);
@@ -46,4 +48,15 @@ export function expandHintLine(theme: Theme, hiddenCount?: number, hiddenLabel =
 
 export function renderLines(lines: string[]): Text {
   return new Text(lines.join("\n"), 0, 0);
+}
+
+export function renderFallbackResult(
+  result: AgentToolResult<unknown>,
+  fallbackText = "(no output)",
+): Text {
+  return new Text(firstText(result) || fallbackText, 0, 0);
+}
+
+export function renderEmptySlot(): Container {
+  return new Container();
 }

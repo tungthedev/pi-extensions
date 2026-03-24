@@ -16,6 +16,7 @@ import path from "node:path";
 import {
   detailLine,
   expandHintLine,
+  renderFallbackResult,
   renderLines,
   titleLine,
 } from "../codex-content/renderers/common.ts";
@@ -760,7 +761,9 @@ export default function cloudflareCrawl(pi: ExtensionAPI) {
     },
     renderResult(result, { expanded, isPartial }, theme) {
       const details = result.details as ClawlPageResultDetails | undefined;
-      if (!details) return undefined;
+      if (!details) {
+        return renderFallbackResult(result, titleLine(theme, "text", "Crawl page"));
+      }
 
       if (isPartial) {
         return new Text(

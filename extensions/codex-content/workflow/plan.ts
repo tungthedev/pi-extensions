@@ -6,6 +6,7 @@ import {
   conciseResult,
   detailLine,
   expandHintLine,
+  renderEmptySlot,
   renderLines,
   titleLine,
 } from "../renderers/common.ts";
@@ -328,7 +329,7 @@ export function registerUpdatePlanTool(
       };
     },
     renderCall() {
-      return undefined;
+      return renderEmptySlot();
     },
     renderResult(result, options, theme) {
       const details = result.details as UpdatePlanDetails | undefined;

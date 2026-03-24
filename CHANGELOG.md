@@ -2,6 +2,16 @@
 
 All notable changes to `@tungthedev/pi-extensions` will be documented in this file.
 
+## [1.0.0] - 2026-03-24
+
+### Breaking Changes
+
+- Raised the supported Pi baseline to `0.62.0`.
+
+### Notes
+
+- If you are using Pi `<0.62.0`, stay on `@tungthedev/pi-extensions@0.3.1`.
+
 ## [0.3.1] - 2026-03-24
 
 ### Fixed

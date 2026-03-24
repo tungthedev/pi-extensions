@@ -234,10 +234,10 @@ test("normalizeThinkingLevelToReasoningEffort keeps supported inherited values",
 });
 
 test("normalizeWaitAgentTimeoutMs applies wait_agent default, clamp, and validation", () => {
-  assert.equal(normalizeWaitAgentTimeoutMs(undefined), 30_000);
-  assert.equal(normalizeWaitAgentTimeoutMs(10_000), 10_000);
-  assert.equal(normalizeWaitAgentTimeoutMs(5_000), 10_000);
-  assert.equal(normalizeWaitAgentTimeoutMs(45_000), 30_000);
+  assert.equal(normalizeWaitAgentTimeoutMs(undefined), 45_000);
+  assert.equal(normalizeWaitAgentTimeoutMs(30_000), 30_000);
+  assert.equal(normalizeWaitAgentTimeoutMs(5_000), 30_000);
+  assert.equal(normalizeWaitAgentTimeoutMs(95_000), 90_000);
   assert.throws(() => normalizeWaitAgentTimeoutMs(0), /timeout_ms must be greater than zero/);
 });
 

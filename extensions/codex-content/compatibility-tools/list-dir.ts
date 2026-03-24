@@ -5,6 +5,7 @@ import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { renderEmptySlot } from "../renderers/common.ts";
 import { MAX_LIST_DIR_SCAN_ENTRIES, resolveAbsolutePathWithVariants } from "./runtime.ts";
 
 export type ListDirectoryEntry = {
@@ -241,10 +242,10 @@ export function registerListDirTool(pi: ExtensionAPI): void {
       return buildListDirResult(absolutePath, scan.entries, scan.skippedCount, { offset, limit });
     },
     renderCall() {
-      return undefined;
+      return renderEmptySlot();
     },
     renderResult() {
-      return undefined;
+      return renderEmptySlot();
     },
   });
 }

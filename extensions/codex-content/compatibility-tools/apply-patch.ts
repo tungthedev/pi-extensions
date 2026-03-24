@@ -3,6 +3,7 @@ import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agen
 import { Type } from "@sinclair/typebox";
 
 import { applyPatch as runNativeApplyPatch } from "../apply-patch.ts";
+import { renderEmptySlot, renderFallbackResult } from "../renderers/common.ts";
 import { renderApplyPatchResult } from "../renderers/apply-patch.ts";
 import { trimToBudget } from "./runtime.ts";
 
@@ -44,10 +45,10 @@ export function registerApplyPatchTool(pi: ExtensionAPI): void {
       }
     },
     renderCall() {
-      return undefined;
+      return renderEmptySlot();
     },
     renderResult(result, { expanded, isPartial }, theme) {
-      if (isPartial) return undefined;
+      if (isPartial) return renderFallbackResult(result);
       return renderApplyPatchResult(theme, result, expanded);
     },
   });

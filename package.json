@@ -1,6 +1,6 @@
 {
   "name": "@tungthedev/pi-extensions",
-  "version": "0.3.1",
+  "version": "1.0.0",
   "description": "A Pi package containing the editor, mermaid, skill, web-search, codex-content, codex-system-prompt, codex-subagents, and ext-manager extensions.",
   "keywords": [
     "codex",
@@ -44,8 +44,8 @@
     "file-type": "^21.1.1"
   },
   "devDependencies": {
-    "@mariozechner/pi-coding-agent": "0.58.4",
-    "@mariozechner/pi-tui": "0.58.4",
+    "@mariozechner/pi-coding-agent": "0.62.0",
+    "@mariozechner/pi-tui": "0.62.0",
     "@sinclair/typebox": "0.34.48",
     "@types/node": "^24.3.0",
     "oxfmt": "0.41.0",

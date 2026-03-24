@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import readline from "node:readline";
 
 import { detectSupportedImageMimeTypeFromFile } from "../image-utils.ts";
+import { renderEmptySlot } from "../renderers/common.ts";
 import {
   COMMENT_PREFIXES,
   MAX_INDENTATION_FILE_BYTES,
@@ -484,10 +485,10 @@ export function registerReadFileTool(pi: ExtensionAPI): void {
       return buildReadSuccessResult(absolutePath, mode, output);
     },
     renderCall() {
-      return undefined;
+      return renderEmptySlot();
     },
     renderResult() {
-      return undefined;
+      return renderEmptySlot();
     },
   });
 }

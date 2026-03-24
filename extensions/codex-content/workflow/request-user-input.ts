@@ -3,6 +3,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Type } from "@sinclair/typebox";
 
 import { renderRequestUserInputResult } from "../renderers/request-user-input.ts";
+import { renderEmptySlot, renderFallbackResult } from "../renderers/common.ts";
 import {
   CUSTOM_INPUT_OPTION,
   type RequestAnswer,
@@ -400,10 +401,10 @@ export function registerRequestUserInputTool(pi: ExtensionAPI): void {
       };
     },
     renderCall() {
-      return undefined;
+      return renderEmptySlot();
     },
     renderResult(result, { expanded, isPartial }, theme) {
-      if (isPartial) return undefined;
+      if (isPartial) return renderFallbackResult(result);
       return renderRequestUserInputResult(theme, result, expanded);
     },
   });

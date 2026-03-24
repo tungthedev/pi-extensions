@@ -4,6 +4,7 @@ import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 
 import { renderBashResult } from "../renderers/bash.ts";
+import { renderEmptySlot, renderFallbackResult } from "../renderers/common.ts";
 import {
   execCommand,
   resolveAbsolutePath,
@@ -164,10 +165,10 @@ export function registerShellCommandTool(pi: ExtensionAPI): void {
       };
     },
     renderCall() {
-      return undefined;
+      return renderEmptySlot();
     },
     renderResult(result, { expanded, isPartial }, theme) {
-      if (isPartial) return undefined;
+      if (isPartial) return renderFallbackResult(result);
 
       const details = (result.details ?? {}) as { command?: string };
       return renderBashResult(theme, { command: details.command }, result, expanded);

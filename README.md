@@ -11,6 +11,12 @@ A Pi package repo that bundles eight extensions from this repository:
 - `codex-subagents` — Adds Codex-style subagent tools for spawning, resuming, messaging, and waiting on child agents.
 - `ext-manager` — Adds an in-app extension manager for browsing and managing local and package-provided extensions. Trigger with `/extmgr`
 
+## Compatibility
+
+`@tungthedev/pi-extensions@1.0.0` targets Pi `0.62.0` and newer.
+
+- Use `@tungthedev/pi-extensions@0.3.1` with older Pi releases `<0.62.0`.
+
 ## Env Setup
 
 Some extensions need provider credentials in your shell environment before starting Pi.
@@ -37,6 +43,12 @@ From npm (after publishing):
 
 ```bash
 pi install npm:@tungthedev/pi-extensions
+```
+
+For older Pi versions:
+
+```bash
+pi install npm:@tungthedev/pi-extensions@0.3.1
 ```
 
 Or from a local checkout:
