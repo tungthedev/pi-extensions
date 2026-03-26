@@ -2,6 +2,16 @@
 
 All notable changes to `@tungthedev/pi-extensions` will be documented in this file.
 
+## [1.0.3] - 2026-03-26
+
+### Added
+
+- Added bundled `ayu-dark`, `one-dark-pro`, and `dracula` Pi themes under the package `themes/` directory.
+
+### Changed
+
+- Refined the bundled theme contrast for secondary text and tool output to improve readability in Codex-style tool renderers.
+
 ## [1.0.2] - 2026-03-26
 
 ### Fixed
