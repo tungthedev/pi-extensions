@@ -2,6 +2,12 @@
 
 All notable changes to `@tungthedev/pi-extensions` will be documented in this file.
 
+## [1.0.1] - 2026-03-26
+
+### Fixed
+
+- Improved Windows compatibility for `codex-content` shell and search tools.
+
 ## [1.0.0] - 2026-03-24
 
 ### Breaking Changes
