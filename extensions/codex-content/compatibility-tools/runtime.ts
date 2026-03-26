@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { accessSync, constants as fsConstants } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,6 +18,8 @@ export type ExecResult = {
   stderr: string;
   exitCode: number;
 };
+
+type ManagedToolName = "fd" | "rg";
 
 type ShellFlavor = "posix" | "fish" | "unknown";
 
@@ -42,14 +44,18 @@ type ExecCommandOptions = {
   timeoutMs?: number;
   stdinText?: string;
   signal?: AbortSignal;
+  env?: NodeJS.ProcessEnv;
 };
 
 const CAPTURE_SEGMENT_BYTES = Math.floor(MAX_CAPTURE_BYTES / 2);
 
 function normalizePathInput(input: string): string {
   const stripped = input.startsWith("@") ? input.slice(1) : input;
+  const joinHomePath = (relativePath: string) =>
+    path.join(os.homedir(), ...relativePath.split(/[\\/]+/).filter(Boolean));
   if (stripped === "~") return os.homedir();
-  if (stripped.startsWith("~/")) return path.join(os.homedir(), stripped.slice(2));
+  if (stripped.startsWith("~/")) return joinHomePath(stripped.slice(2));
+  if (stripped.startsWith("~\\")) return joinHomePath(stripped.slice(2));
   return stripped;
 }
 
@@ -86,6 +92,61 @@ export function trimToBudget(text: string): { text: string; truncated: boolean }
   }
 
   return { text: output, truncated };
+}
+
+export function normalizeRipgrepGlob(pattern: string): string {
+  return pattern.replace(/\\/g, "/");
+}
+
+function expandHomeDirectory(input: string): string {
+  if (input === "~") return os.homedir();
+  if (input.startsWith("~/") || input.startsWith("~\\")) {
+    return path.join(os.homedir(), ...input.slice(2).split(/[\\/]+/).filter(Boolean));
+  }
+
+  return input;
+}
+
+export function getPiAgentDir(): string {
+  const configured = process.env.PI_CODING_AGENT_DIR;
+  if (configured) {
+    return expandHomeDirectory(configured);
+  }
+
+  return path.join(os.homedir(), ".pi", "agent");
+}
+
+export function getPiBinDir(): string {
+  return path.join(getPiAgentDir(), "bin");
+}
+
+export function getShellEnv(): NodeJS.ProcessEnv {
+  const binDir = getPiBinDir();
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+  const currentPath = process.env[pathKey] ?? "";
+  const delimiter = path.delimiter;
+  const pathEntries = currentPath.split(delimiter).filter(Boolean);
+  const normalizedBinDir = path.normalize(binDir);
+  const hasBinDir = pathEntries.some((entry) => {
+    const normalizedEntry = path.normalize(entry);
+    if (process.platform === "win32") {
+      return normalizedEntry.toLowerCase() === normalizedBinDir.toLowerCase();
+    }
+
+    return normalizedEntry === normalizedBinDir;
+  });
+  const updatedPath = hasBinDir ? currentPath : [binDir, currentPath].filter(Boolean).join(delimiter);
+
+  return {
+    ...process.env,
+    [pathKey]: updatedPath,
+  };
+}
+
+export function resolvePiManagedToolPath(tool: ManagedToolName): string | undefined {
+  const binaryName = process.platform === "win32" ? `${tool}.exe` : tool;
+  const candidate = path.join(getPiBinDir(), binaryName);
+  return pathExists(candidate) ? candidate : undefined;
 }
 
 export function resolveAbsolutePath(cwd: string, input: string): string {
@@ -151,11 +212,66 @@ export function stripTrailingBackgroundOperator(command: string): {
 
 function shellPathExists(shellPath: string): boolean {
   try {
-    accessSync(shellPath, fsConstants.X_OK);
+    accessSync(shellPath, process.platform === "win32" ? fsConstants.F_OK : fsConstants.X_OK);
     return true;
   } catch {
     return false;
   }
+}
+
+export function findExecutableOnPath(executable: string): string | undefined {
+  const lookupExecutable =
+    process.platform === "win32" && !path.extname(executable) ? `${executable}.exe` : executable;
+  const resolver = process.platform === "win32" ? "where" : "which";
+
+  try {
+    const result = spawnSync(resolver, [lookupExecutable], {
+      encoding: "utf-8",
+      timeout: 5000,
+    });
+    if (result.status !== 0 || !result.stdout) {
+      return undefined;
+    }
+
+    for (const candidate of result.stdout.trim().split(/\r?\n/)) {
+      if (candidate && shellPathExists(candidate)) {
+        return candidate;
+      }
+    }
+  } catch {
+    // Ignore lookup failures and let callers handle the fallback.
+  }
+
+  return undefined;
+}
+
+export function resolvePiToolPath(tool: ManagedToolName): string | undefined {
+  return resolvePiManagedToolPath(tool) ?? findExecutableOnPath(tool);
+}
+
+function findWindowsBash(shellExists = shellPathExists): string | undefined {
+  const candidates: string[] = [];
+  const programFiles = process.env.ProgramFiles;
+  if (programFiles) {
+    candidates.push(path.join(programFiles, "Git", "bin", "bash.exe"));
+  }
+
+  const programFilesX86 = process.env["ProgramFiles(x86)"];
+  if (programFilesX86) {
+    candidates.push(path.join(programFilesX86, "Git", "bin", "bash.exe"));
+  }
+
+  const bundledBash = candidates.find((candidate) => shellExists(candidate));
+  if (bundledBash) {
+    return bundledBash;
+  }
+
+  const bashOnPath = findExecutableOnPath("bash");
+  if (bashOnPath && shellExists(bashOnPath)) {
+    return bashOnPath;
+  }
+
+  return undefined;
 }
 
 function detectShellFlavor(
@@ -166,7 +282,9 @@ function detectShellFlavor(
     return "unknown";
   }
 
-  const shellName = path.basename(shellPath).toLowerCase();
+  const shellName = (shellPath.split(/[\\/]/).at(-1) ?? shellPath)
+    .replace(/\.(?:exe|cmd|bat)$/i, "")
+    .toLowerCase();
   if (["sh", "bash", "zsh", "dash", "ksh", "ash"].includes(shellName)) {
     return "posix";
   }
@@ -223,13 +341,32 @@ export function resolveShellInvocation(
     };
   }
 
+  if (process.platform === "win32") {
+    const windowsBash = findWindowsBash(shellExists);
+    if (!windowsBash) {
+      throw new Error(
+        "No bash shell found. Install Git Bash or add bash.exe to PATH, or configure a supported shell path.",
+      );
+    }
+
+    return {
+      shell: windowsBash,
+      shellArgs: [login ? "-lc" : "-c", command],
+    };
+  }
+
   const fallbackShell =
-    pickFirstExistingShell(fallbackShellCandidates(login), shellExists) ?? "/bin/sh";
+    pickFirstExistingShell(
+      [...fallbackShellCandidates(login), findExecutableOnPath("bash")],
+      shellExists,
+    ) ?? "/bin/sh";
   return {
     shell: fallbackShell,
     shellArgs: fallbackShellArgs(fallbackShell, command, login),
   };
 }
+
+const EXIT_STDIO_GRACE_MS = 100;
 
 function createWindowedCapture(): WindowedCapture {
   return { head: "", tail: "", truncated: false };
@@ -275,7 +412,101 @@ function finalizeWindowedCapture(capture: WindowedCapture, streamLabel: string):
   return `${capture.head}${marker}${capture.tail}`;
 }
 
+function waitForChildProcess(child: ChildProcess): Promise<number | null> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let exited = false;
+    let exitCode: number | null = null;
+    let postExitTimer: ReturnType<typeof setTimeout> | undefined;
+    let stdoutEnded = child.stdout === null;
+    let stderrEnded = child.stderr === null;
+
+    const cleanup = () => {
+      if (postExitTimer) {
+        clearTimeout(postExitTimer);
+        postExitTimer = undefined;
+      }
+
+      child.removeListener("error", onError);
+      child.removeListener("exit", onExit);
+      child.removeListener("close", onClose);
+      child.stdout?.removeListener("end", onStdoutEnd);
+      child.stderr?.removeListener("end", onStderrEnd);
+    };
+
+    const finalize = (code: number | null) => {
+      if (settled) return;
+
+      settled = true;
+      cleanup();
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      resolve(code);
+    };
+
+    const maybeFinalizeAfterExit = () => {
+      if (!exited || settled) return;
+      if (stdoutEnded && stderrEnded) {
+        finalize(exitCode);
+      }
+    };
+
+    const onStdoutEnd = () => {
+      stdoutEnded = true;
+      maybeFinalizeAfterExit();
+    };
+
+    const onStderrEnd = () => {
+      stderrEnded = true;
+      maybeFinalizeAfterExit();
+    };
+
+    const onError = (error: Error) => {
+      if (settled) return;
+
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+
+    const onExit = (code: number | null) => {
+      exited = true;
+      exitCode = code;
+      maybeFinalizeAfterExit();
+      if (!settled) {
+        postExitTimer = setTimeout(() => finalize(code), EXIT_STDIO_GRACE_MS);
+      }
+    };
+
+    const onClose = (code: number | null) => {
+      finalize(code);
+    };
+
+    child.stdout?.once("end", onStdoutEnd);
+    child.stderr?.once("end", onStderrEnd);
+    child.once("error", onError);
+    child.once("exit", onExit);
+    child.once("close", onClose);
+  });
+}
+
 function killChildProcess(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (process.platform === "win32") {
+    if (!child.pid) {
+      return;
+    }
+
+    try {
+      spawn("taskkill", ["/F", "/T", "/PID", String(child.pid)], {
+        stdio: "ignore",
+        detached: true,
+      });
+      return;
+    } catch {
+      // Fall back to killing the direct child below.
+    }
+  }
+
   if (child.pid) {
     try {
       process.kill(-child.pid, signal);
@@ -315,12 +546,13 @@ export async function execCommand(
   cwd: string,
   options: ExecCommandOptions = {},
 ): Promise<ExecResult> {
-  const { timeoutMs, stdinText, signal } = options;
+  const { timeoutMs, stdinText, signal, env } = options;
 
   return await new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
       detached: true,
+      env,
       stdio: [stdinText !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
     });
 
@@ -372,15 +604,16 @@ export async function execCommand(
     child.stderr?.on("data", (chunk) => {
       stderr = appendWindowedCapture(stderr, chunk.toString());
     });
-    child.on("error", (error) => {
-      if (settled) return;
+    void waitForChildProcess(child)
+      .then((code) => {
+        finish(forcedExitCode ?? code ?? 1);
+      })
+      .catch((error) => {
+        if (settled) return;
 
-      cleanup();
-      reject(error);
-    });
-    child.on("close", (code) => {
-      finish(forcedExitCode ?? code ?? 1);
-    });
+        cleanup();
+        reject(error);
+      });
 
     writeChildStdin(child, stdinText);
 

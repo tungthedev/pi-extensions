@@ -11,7 +11,13 @@ import {
   type StatSortedMatches,
   type TimedFileMatch,
 } from "./file-match-utils.ts";
-import { execCommand, resolveAbsolutePathWithVariants, trimToBudget } from "./runtime.ts";
+import {
+  execCommand,
+  normalizeRipgrepGlob,
+  resolvePiToolPath,
+  resolveAbsolutePathWithVariants,
+  trimToBudget,
+} from "./runtime.ts";
 
 export type GrepFilesMatch = TimedFileMatch;
 
@@ -83,6 +89,7 @@ function normalizeRgError(stderr: string, exitCode: number): Error {
 }
 
 function buildGrepFilesArgs(pattern: string, searchPath: string, include?: string): string[] {
+  const normalizedInclude = include ? normalizeRipgrepGlob(include) : undefined;
   const args = [
     "--files-with-matches",
     "--hidden",
@@ -94,8 +101,8 @@ function buildGrepFilesArgs(pattern: string, searchPath: string, include?: strin
     "!**/.jj/**",
   ];
 
-  if (include) {
-    args.push("--glob", include);
+  if (normalizedInclude) {
+    args.push("--glob", normalizedInclude);
   }
 
   args.push(pattern, searchPath);
@@ -126,8 +133,12 @@ export async function findContentMatches(
 ): Promise<GrepFilesResult> {
   const { searchRoot, fileFilter } = await resolveSearchScope(searchPath);
   const args = buildGrepFilesArgs(pattern, searchPath, include);
+  const rgPath = resolvePiToolPath("rg");
+  if (!rgPath) {
+    throw new Error("ripgrep (rg) is not available in Pi's managed bin directory or on PATH");
+  }
 
-  const result = await execCommand("rg", args, searchRoot, { signal });
+  const result = await execCommand(rgPath, args, searchRoot, { signal });
 
   if (isAbortedSearch(result.stderr, result.exitCode)) {
     throw new Error("search aborted");

@@ -7,6 +7,7 @@ import { renderBashResult } from "../renderers/bash.ts";
 import { renderEmptySlot, renderFallbackResult } from "../renderers/common.ts";
 import {
   execCommand,
+  getShellEnv,
   resolveAbsolutePath,
   resolveShellInvocation,
   splitLeadingCdCommand,
@@ -146,6 +147,7 @@ export function registerShellCommandTool(pi: ExtensionAPI): void {
         login: params.login,
       });
       const result = await execCommand(invocation.shell, invocation.shellArgs, normalized.workdir, {
+        env: getShellEnv(),
         timeoutMs: params.timeout_ms,
         signal,
       });

@@ -10,7 +10,13 @@ import {
   statSortedFileMatches,
   type TimedFileMatch,
 } from "./file-match-utils.ts";
-import { execCommand, resolveAbsolutePath, trimToBudget } from "./runtime.ts";
+import {
+  execCommand,
+  normalizeRipgrepGlob,
+  resolvePiToolPath,
+  resolveAbsolutePath,
+  trimToBudget,
+} from "./runtime.ts";
 
 export type FindFilesMatch = TimedFileMatch;
 
@@ -58,6 +64,7 @@ async function resolveFindSearchScope(searchPath: string): Promise<FindSearchSco
 }
 
 function buildFindFilesArgs(pattern: string, searchRoot: string): string[] {
+  const normalizedPattern = normalizeRipgrepGlob(pattern);
   return [
     "--files",
     "--hidden",
@@ -67,7 +74,7 @@ function buildFindFilesArgs(pattern: string, searchRoot: string): string[] {
     "--glob",
     "!.jj",
     "--glob",
-    pattern,
+    normalizedPattern,
     searchRoot,
   ];
 }
@@ -77,7 +84,12 @@ export async function findMatchingFiles(
   pattern: string,
 ): Promise<FindFilesMatch[]> {
   const { searchRoot, fileFilter } = await resolveFindSearchScope(searchPath);
-  const result = await execCommand("rg", buildFindFilesArgs(pattern, searchRoot), searchRoot);
+  const rgPath = resolvePiToolPath("rg");
+  if (!rgPath) {
+    throw new Error("ripgrep (rg) is not available in Pi's managed bin directory or on PATH");
+  }
+
+  const result = await execCommand(rgPath, buildFindFilesArgs(pattern, searchRoot), searchRoot);
 
   if (result.exitCode !== 0 && result.exitCode !== 1) {
     throw new Error(result.stderr.trim() || `rg exited with code ${result.exitCode}`);
