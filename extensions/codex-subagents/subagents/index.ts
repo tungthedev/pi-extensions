@@ -3,6 +3,7 @@ import {
   getMarkdownTheme,
   SessionManager,
   type ExtensionAPI,
+  type ExtensionContext,
   type SessionEntry,
 } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
@@ -20,7 +21,22 @@ import type {
   SubagentEntryType,
 } from "./types.ts";
 
-import { renderEmptySlot, renderFallbackResult, titleLine } from "../../codex-content/renderers/common.ts";
+import {
+  renderEmptySlot,
+  renderFallbackResult,
+  titleLine,
+} from "../../codex-content/renderers/common.ts";
+import {
+  markSubagentActivityRunning,
+  markSubagentActivitySubmitted,
+  markSubagentToolExecutionEnd,
+  markSubagentToolExecutionStart,
+  removeSubagentActivity,
+  snapshotSubagentActivities,
+  type SubagentActivityState,
+  SubagentActivityWidget,
+  SUBAGENT_ACTIVITY_WIDGET_KEY,
+} from "./activity-widget.ts";
 import { appendBounded, createLiveAttachment } from "./attachment.ts";
 import { generateUniqueSubagentName, resolveSubagentName } from "./naming.ts";
 import {
@@ -402,8 +418,80 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   const completionSignatureByAgentId = new Map<string, string>();
   const consumedCompletionVersionByAgentId = new Map<string, number>();
   const suppressedCompletionVersionByAgentId = new Map<string, number>();
+  const subagentActivitiesById = new Map<string, SubagentActivityState>();
   let parentIsStreaming = false;
   let activeSessionFile: string | undefined;
+  let subagentActivityVersion = 0;
+  let subagentActivityWidget: SubagentActivityWidget | null = null;
+
+  const requestSubagentActivityRender = () => {
+    subagentActivityVersion += 1;
+    subagentActivityWidget?.requestRender();
+  };
+
+  const mountSubagentActivityWidget = (ctx: Pick<ExtensionContext, "ui">) => {
+    ctx.ui.setWidget(
+      SUBAGENT_ACTIVITY_WIDGET_KEY,
+      (tui: { requestRender(): void }, theme: ExtensionContext["ui"]["theme"]) => {
+        subagentActivityWidget = new SubagentActivityWidget(
+          tui,
+          theme,
+          () => snapshotSubagentActivities(subagentActivitiesById),
+          () => subagentActivityVersion,
+        );
+        return subagentActivityWidget;
+      },
+      { placement: "aboveEditor" },
+    );
+  };
+
+  const clearSubagentActivities = () => {
+    if (subagentActivitiesById.size === 0) {
+      return;
+    }
+
+    subagentActivitiesById.clear();
+    requestSubagentActivityRender();
+  };
+
+  const syncSubagentActivityIdentity = (record: DurableChildRecord) => {
+    const current = subagentActivitiesById.get(record.agentId);
+    if (!current) {
+      return;
+    }
+
+    if (current.name === record.name && current.agent_type === record.agentType) {
+      return;
+    }
+
+    current.name = record.name;
+    current.agent_type = record.agentType;
+    requestSubagentActivityRender();
+  };
+
+  const subagentActivityIdentity = (agentId: string) => {
+    const record = durableChildrenById.get(agentId);
+    if (record) {
+      return childSnapshot(record);
+    }
+
+    const activity = subagentActivitiesById.get(agentId);
+    if (activity) {
+      return {
+        agent_id: activity.agent_id,
+        name: activity.name,
+        agent_type: activity.agent_type,
+      };
+    }
+
+    return { agent_id: agentId };
+  };
+
+  const dropSubagentActivity = (agentId: string) => {
+    if (removeSubagentActivity(subagentActivitiesById, agentId)) {
+      requestSubagentActivityRender();
+    }
+  };
 
   const incrementActiveWaits = (ids: string[]) => {
     for (const id of ids) {
@@ -587,9 +675,6 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       if (summary) {
         detail += `${theme.fg("muted", " - ")}${theme.fg("toolOutput", summary)}`;
       }
-      if (expanded && displayName !== snapshot.agent_id) {
-        detail += `${theme.fg("dim", ` (${snapshot.agent_id})`)}`;
-      }
 
       return new Text(
         `${theme.fg("muted", "• ")}${theme.fg("toolTitle", "Finished waiting")}` +
@@ -617,6 +702,11 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     }
     if (options.persistAs) {
       persistRegistryEvent(options.persistAs, next, { reason: options.reason });
+    }
+    if (next.status === "live_running") {
+      syncSubagentActivityIdentity(next);
+    } else {
+      dropSubagentActivity(agentId);
     }
     return next;
   };
@@ -714,6 +804,11 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       attachment.lastLiveAt = Date.now();
 
       if (type === "agent_start") {
+        markSubagentActivityRunning(
+          subagentActivitiesById,
+          subagentActivityIdentity(attachment.agentId),
+        );
+        requestSubagentActivityRender();
         handleDurablePatch(
           {
             status: "live_running",
@@ -722,6 +817,36 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           { persistAs: SUBAGENT_ENTRY_TYPES.update },
         );
         notifyStateChange(attachment);
+        return;
+      }
+
+      if (type === "tool_execution_start") {
+        const toolCallId = typeof message.toolCallId === "string" ? message.toolCallId : undefined;
+        const toolName = typeof message.toolName === "string" ? message.toolName : undefined;
+        if (toolCallId && toolName) {
+          markSubagentToolExecutionStart(
+            subagentActivitiesById,
+            subagentActivityIdentity(attachment.agentId),
+            toolCallId,
+            toolName,
+          );
+          requestSubagentActivityRender();
+        }
+        return;
+      }
+
+      if (type === "tool_execution_end") {
+        const toolCallId = typeof message.toolCallId === "string" ? message.toolCallId : undefined;
+        const toolName = typeof message.toolName === "string" ? message.toolName : undefined;
+        if (toolCallId) {
+          markSubagentToolExecutionEnd(
+            subagentActivitiesById,
+            attachment.agentId,
+            toolCallId,
+            toolName,
+          );
+          requestSubagentActivityRender();
+        }
         return;
       }
 
@@ -808,6 +933,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         notifyParentOfChildStatus(nextRecord);
       }
       liveAttachmentsById.delete(attachment.agentId);
+      dropSubagentActivity(attachment.agentId);
       notifyStateChange(attachment);
     });
 
@@ -858,6 +984,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         }
       }
 
+      dropSubagentActivity(attachment.agentId);
       notifyStateChange(attachment);
     });
   };
@@ -947,6 +1074,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     for (const attachment of activeAttachments) {
       await closeLiveAttachment(attachment, reason === "detach" ? "detach" : "discard");
       liveAttachmentsById.delete(attachment.agentId);
+      dropSubagentActivity(attachment.agentId);
 
       const record = durableChildrenById.get(attachment.agentId);
       if (record && record.status !== "closed") {
@@ -964,6 +1092,8 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     clearResolvedAgentProfilesCache();
     await closeAllLiveAttachments("detach");
     reconstructDurableRegistry(ctx.sessionManager.getEntries() as SessionEntryLike[]);
+    clearSubagentActivities();
+    mountSubagentActivityWidget(ctx);
   });
 
   pi.on("session_switch", async (_event, ctx) => {
@@ -971,6 +1101,8 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     clearResolvedAgentProfilesCache();
     await closeAllLiveAttachments("detach");
     reconstructDurableRegistry(ctx.sessionManager.getEntries() as SessionEntryLike[]);
+    clearSubagentActivities();
+    mountSubagentActivityWidget(ctx);
   });
 
   pi.on("agent_start", async () => {
@@ -983,6 +1115,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async () => {
     await closeAllLiveAttachments("shutdown");
+    clearSubagentActivities();
   });
 
   pi.registerTool({
@@ -1085,6 +1218,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         parentSessionFile: ctx.sessionManager.getSessionFile(),
         sessionFile: forkedSessionFile,
       };
+      const prompt = resolveSpawnPrompt(params);
+      markSubagentActivitySubmitted(subagentActivitiesById, childSnapshot(baseRecord), prompt);
+      requestSubagentActivityRender();
 
       const { attachment } = await attachChild(baseRecord, forkedSessionFile ? "fork" : "fresh");
 
@@ -1103,7 +1239,6 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           }
         }
 
-        const prompt = resolveSpawnPrompt(params);
         const response = await sendRpcCommand(attachment, {
           type: "prompt",
           message: prompt,
@@ -1129,6 +1264,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         }
 
         durableChildrenById.set(agentId, durableRecord);
+        if (durableRecord.status !== "live_running") {
+          dropSubagentActivity(agentId);
+        }
         persistRegistryEvent(SUBAGENT_ENTRY_TYPES.create, durableRecord);
         persistRegistryEvent(SUBAGENT_ENTRY_TYPES.attach, durableRecord);
 
@@ -1171,6 +1309,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         if (forkedSessionFile && fs.existsSync(forkedSessionFile)) {
           fs.rmSync(forkedSessionFile, { force: true });
         }
+        dropSubagentActivity(agentId);
         throw error;
       }
     },
@@ -1270,11 +1409,16 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
             { persistAs: SUBAGENT_ENTRY_TYPES.update },
           )
         : requireDurableChild(agentId);
+      const resumedSnapshot = childSnapshot(resumedRecord, attachment);
+      if (resumedSnapshot.status === "running") {
+        markSubagentActivityRunning(subagentActivitiesById, resumedSnapshot);
+        requestSubagentActivityRender();
+      }
 
       return {
         content: [{ type: "text", text: `Resumed agent ${agentId}` }],
         details: {
-          status: childSnapshot(resumedRecord, attachment),
+          status: resumedSnapshot,
         },
       };
     },
@@ -1362,6 +1506,12 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           },
           { persistAs: SUBAGENT_ENTRY_TYPES.update },
         );
+        markSubagentActivitySubmitted(
+          subagentActivitiesById,
+          childSnapshot(nextRecord, attachment),
+          input,
+        );
+        requestSubagentActivityRender();
 
         return {
           content: [{ type: "text", text: buildSendInputContent(submissionId) }],
