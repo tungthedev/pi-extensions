@@ -5,7 +5,11 @@ import { buildUpdatePlanResultLines, normalizePlanItems, syncPlanUi } from "./pl
 
 test("syncPlanUi clears the status segment and keeps the widget", () => {
   const calls: Array<{ key: string; value: string | undefined }> = [];
-  const widgets: Array<{ key: string; lines: string[] | undefined }> = [];
+  const widgets: Array<{
+    key: string;
+    lines: string[] | undefined;
+    placement: string | undefined;
+  }> = [];
   const ui = {
     theme: {
       fg: (_color: string, text: string) => text,
@@ -13,8 +17,8 @@ test("syncPlanUi clears the status segment and keeps the widget", () => {
     setStatus: (key: string, value?: string) => {
       calls.push({ key, value });
     },
-    setWidget: (key: string, lines?: string[]) => {
-      widgets.push({ key, lines });
+    setWidget: (key: string, lines?: string[], options?: { placement?: string }) => {
+      widgets.push({ key, lines, placement: options?.placement });
     },
   };
 
@@ -28,6 +32,41 @@ test("syncPlanUi clears the status segment and keeps the widget", () => {
     {
       key: "codex-content:plan",
       lines: ["Plan 1/2 • Draw realistic ASCII layout"],
+      placement: "aboveEditor",
+    },
+  ]);
+});
+
+test("syncPlanUi hides the widget when the plan is fully completed", () => {
+  const calls: Array<{ key: string; value: string | undefined }> = [];
+  const widgets: Array<{
+    key: string;
+    lines: string[] | undefined;
+    placement: string | undefined;
+  }> = [];
+  const ui = {
+    theme: {
+      fg: (_color: string, text: string) => text,
+    },
+    setStatus: (key: string, value?: string) => {
+      calls.push({ key, value });
+    },
+    setWidget: (key: string, lines?: string[], options?: { placement?: string }) => {
+      widgets.push({ key, lines, placement: options?.placement });
+    },
+  };
+
+  syncPlanUi({ ui } as any, undefined, [
+    { step: "Inspect codex-content widgets", status: "completed" },
+    { step: "Move workflow widget above the editor", status: "completed" },
+  ]);
+
+  assert.deepEqual(calls, [{ key: "codex-content:plan", value: undefined }]);
+  assert.deepEqual(widgets, [
+    {
+      key: "codex-content:plan",
+      lines: undefined,
+      placement: "aboveEditor",
     },
   ]);
 });

@@ -115,6 +115,10 @@ function countCompletedItems(items: WorkflowPlanItem[]): number {
   return items.filter((item) => item.status === "completed").length;
 }
 
+function isPlanComplete(items: WorkflowPlanItem[]): boolean {
+  return items.length > 0 && countCompletedItems(items) === items.length;
+}
+
 function updatePlanTitle(details: UpdatePlanDetails): string {
   return details.changeType === "new" ? "New Plan" : "Updated Plan";
 }
@@ -275,13 +279,13 @@ export function syncPlanUi(
 ): void {
   ctx.ui.setStatus(PLAN_STATUS_KEY, undefined);
 
-  if (items.length === 0) {
-    ctx.ui.setWidget(PLAN_WIDGET_KEY, undefined, { placement: "belowEditor" });
+  if (items.length === 0 || isPlanComplete(items)) {
+    ctx.ui.setWidget(PLAN_WIDGET_KEY, undefined, { placement: "aboveEditor" });
     return;
   }
 
   ctx.ui.setWidget(PLAN_WIDGET_KEY, planWidgetLines(ctx, explanation, items), {
-    placement: "belowEditor",
+    placement: "aboveEditor",
   });
 }
 
