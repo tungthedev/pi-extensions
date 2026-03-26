@@ -2,6 +2,16 @@
 
 All notable changes to `@tungthedev/pi-extensions` will be documented in this file.
 
+## [1.0.2] - 2026-03-26
+
+### Fixed
+
+- Moved the plan widget above the editor and automatically hide it once all plan items are completed.
+
+### Added
+
+- Added new widget for runner subagents
+
 ## [1.0.1] - 2026-03-26
 
 ### Fixed
