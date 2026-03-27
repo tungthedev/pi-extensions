@@ -1,7 +1,8 @@
 # @tungthedev/pi-extensions
 
-A Pi package repo that bundles eight extensions from this repository:
+A collection of Pi packages:
 
+- `ext-manager` — An in-app extension manager. Trigger with `/extmgr`
 - `editor` — Replaces Pi's default editor with a boxed composer and an extensible status row.
 - `mermaid` — Renders Mermaid code blocks inline in chat and opens a full diagram viewer on demand.
 - `web-search` — Adds Gemini-backed `web_search` and `web_extract` tools for grounded web research.
@@ -9,7 +10,6 @@ A Pi package repo that bundles eight extensions from this repository:
 - `codex-content` — Overrides default tools with Codex-style compatibility tools and TUI rendering.
 - `codex-system-prompt` — Injects Codex-specific system prompt and collaboration mode instructions before agent start.
 - `codex-subagents` — Adds Codex-style subagent tools for spawning, resuming, messaging, and waiting on child agents.
-- `ext-manager` — Adds an in-app extension manager for browsing and managing local and package-provided extensions. Trigger with `/extmgr`
 
 ## Compatibility
 
