@@ -5,7 +5,7 @@ export function durableStatusToAgentStatus(status: DurableChildStatus): AgentToo
 }
 
 export function normalizeReconstructedStatus(status: DurableChildStatus): DurableChildStatus {
-  return status === "live_running" || status === "live_idle" ? "detached" : status;
+  return status === "live_running" || status === "live_idle" ? "closed" : status;
 }
 
 export function deriveDurableStatusFromState(

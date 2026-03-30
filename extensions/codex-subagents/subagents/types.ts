@@ -6,14 +6,12 @@ import { fileURLToPath } from "node:url";
 
 export const CODEX_SUBAGENT_TOOL_NAMES = [
   "spawn_agent",
-  "resume_agent",
   "send_input",
   "wait_agent",
   "close_agent",
 ] as const;
 export const CODEX_SUBAGENT_RESERVED_TOOL_NAMES = [
   "spawn_agent",
-  "resume_agent",
   "send_input",
   "wait_agent",
   "close_agent",

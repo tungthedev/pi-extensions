@@ -122,7 +122,7 @@ test("deriveDurableStatusFromState distinguishes running and idle child states",
   );
 });
 
-test("rebuildDurableRegistry reconstructs the latest durable record and normalizes live states", () => {
+test("rebuildDurableRegistry reconstructs the latest durable record and closes stale live states", () => {
   const records = rebuildDurableRegistry([
     {
       type: "custom",
@@ -157,7 +157,7 @@ test("rebuildDurableRegistry reconstructs the latest durable record and normaliz
   assert.deepEqual(records.get("agent-1"), {
     agentId: "agent-1",
     cwd: "/tmp/project",
-    status: "detached",
+    status: "closed",
     createdAt: "2026-03-17T00:00:00.000Z",
     updatedAt: "2026-03-17T00:01:00.000Z",
     sessionFile: "/tmp/project/.pi/session.jsonl",
@@ -335,8 +335,9 @@ test("buildWaitAgentContent returns empty status when wait_agent times out", () 
 
 test("getWaitAgentResultTitle reports timeout when no agent completed", () => {
   assert.equal(getWaitAgentResultTitle(true, 0), "Waiting timed out");
-  assert.equal(getWaitAgentResultTitle(false, 0), "Finished waiting");
-  assert.equal(getWaitAgentResultTitle(true, 1), "Finished waiting");
+  assert.equal(getWaitAgentResultTitle(false, 0), "Agents finished");
+  assert.equal(getWaitAgentResultTitle(true, 1), "Agent finished");
+  assert.equal(getWaitAgentResultTitle(false, 2), "Agents finished");
 });
 
 test("buildSpawnAgentContent matches Codex JSON shape and preserves null nickname", () => {
@@ -349,6 +350,47 @@ test("buildSpawnAgentContent matches Codex JSON shape and preserves null nicknam
     agent_id: "agent-2",
     nickname: "explorer",
   });
+});
+
+test("buildSpawnAgentContent includes a completed agent snapshot for foreground spawn_agent calls", () => {
+  assert.deepEqual(
+    JSON.parse(
+      buildSpawnAgentContent("agent-3", "reviewer", {
+        agent_id: "agent-3",
+        status: "idle",
+        durable_status: "live_idle",
+        cwd: "/tmp/project",
+        name: "reviewer",
+        last_assistant_text: "child done",
+      }),
+    ),
+    {
+      agent_id: "agent-3",
+      nickname: "reviewer",
+      status: {
+        "agent-3": "idle",
+      },
+      timed_out: false,
+      agent: {
+        agent_id: "agent-3",
+        status: "idle",
+        durable_status: "live_idle",
+        cwd: "/tmp/project",
+        name: "reviewer",
+        last_assistant_text: "child done",
+      },
+      agents: [
+        {
+          agent_id: "agent-3",
+          status: "idle",
+          durable_status: "live_idle",
+          cwd: "/tmp/project",
+          name: "reviewer",
+          last_assistant_text: "child done",
+        },
+      ],
+    },
+  );
 });
 
 test("buildSendInputContent matches Codex JSON shape", () => {
