@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 
@@ -14,8 +15,12 @@ import {
   PROJECT_ROOT,
 } from "./types.ts";
 
-function resolveChildSessionDir(): string {
-  const sessionDir = path.join(PROJECT_ROOT, ".pi", "subagents", "sessions");
+export function resolveChildSessionDir(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir = os.homedir(),
+): string {
+  const home = env.HOME?.trim() || homeDir;
+  const sessionDir = path.join(home, ".pi", "subagents", "sessions");
   fs.mkdirSync(sessionDir, { recursive: true });
   return sessionDir;
 }
