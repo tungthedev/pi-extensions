@@ -2,6 +2,16 @@
 
 All notable changes to `@tungthedev/pi-extensions` will be documented in this file.
 
+## [1.1.0] - 2026-03-31
+
+### Changed
+
+- Simplified codex subagents: `spawn_agent` now waits for completion by default.
+
+### Fixed
+
+- Fixed duplicate codex subagents completion reports.
+
 ## [1.0.3] - 2026-03-26
 
 ### Added
