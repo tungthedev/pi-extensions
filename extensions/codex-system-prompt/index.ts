@@ -7,17 +7,20 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { CODEX_AGENT_PROFILE_JSON_ENV } from "../codex-subagents/subagents/types.ts";
-
-const MODELS_CATALOG_PATH = new URL("./assets/models.json", import.meta.url);
+const BUNDLED_MODELS_CATALOG_PATH = new URL("./assets/models.json", import.meta.url);
 const DEFAULT_GPT_PROMPT_MODEL = "gpt-5.4";
 const PERSONALITY_PLACEHOLDER = "{{ personality }}";
 const CODEX_HOME_ENV = "CODEX_HOME";
 const CODEX_CONFIG_FILE = "config.toml";
+const CODEX_MODELS_CACHE_FILE = "models_cache.json";
+const CODEX_MODEL_CATALOG_PATH_ENV = "PI_CODEX_MODEL_CATALOG_PATH";
 
 type CodexPersonality = "none" | "friendly" | "pragmatic";
 
 type ModelsCatalog = {
+  fetched_at?: string;
+  etag?: string;
+  client_version?: string;
   models?: ModelCatalogEntry[];
 };
 
@@ -36,12 +39,38 @@ type ModelInstructionsVariables = {
   personality_pragmatic?: string;
 };
 
-function readModelsCatalog(assetPath = MODELS_CATALOG_PATH): ModelsCatalog | undefined {
+function parseModelsCatalog(raw: string): ModelsCatalog | undefined {
   try {
-    return JSON.parse(fs.readFileSync(assetPath, "utf-8")) as ModelsCatalog;
+    const parsed = JSON.parse(raw) as ModelsCatalog;
+    if (!parsed || typeof parsed !== "object") return undefined;
+    if (!Array.isArray(parsed.models)) return undefined;
+
+    const normalizedModels = parsed.models.filter(
+      (entry): entry is ModelCatalogEntry => !!entry && typeof entry === "object",
+    );
+
+    return {
+      fetched_at: typeof parsed.fetched_at === "string" ? parsed.fetched_at : undefined,
+      etag: typeof parsed.etag === "string" ? parsed.etag : undefined,
+      client_version: typeof parsed.client_version === "string" ? parsed.client_version : undefined,
+      models: normalizedModels,
+    };
   } catch {
     return undefined;
   }
+}
+
+function readModelsCatalogFromPath(filePath: string | URL | undefined): ModelsCatalog | undefined {
+  if (!filePath) return undefined;
+  try {
+    return parseModelsCatalog(fs.readFileSync(filePath, "utf-8"));
+  } catch {
+    return undefined;
+  }
+}
+
+export function readModelsCatalog(assetPath = BUNDLED_MODELS_CATALOG_PATH): ModelsCatalog | undefined {
+  return readModelsCatalogFromPath(assetPath);
 }
 
 export function buildCodexPrompt(promptBody: string): string {
@@ -72,6 +101,37 @@ export function resolveCodexConfigPath(
   const codexHome = resolveCodexHome(env, homeDir);
   if (!codexHome) return undefined;
   return path.join(codexHome, CODEX_CONFIG_FILE);
+}
+
+export function resolveCodexModelsCachePath(
+  env = process.env,
+  homeDir = os.homedir(),
+): string | undefined {
+  const codexHome = resolveCodexHome(env, homeDir);
+  if (!codexHome) return undefined;
+  return path.join(codexHome, CODEX_MODELS_CACHE_FILE);
+}
+
+export function resolveConfiguredModelCatalogPath(env = process.env): string | undefined {
+  const configuredPath = env[CODEX_MODEL_CATALOG_PATH_ENV]?.trim();
+  if (!configuredPath) return undefined;
+  try {
+    const stats = fs.statSync(configuredPath);
+    if (!stats.isFile()) return undefined;
+    return fs.realpathSync(configuredPath);
+  } catch {
+    return undefined;
+  }
+}
+
+export function readFallbackModelsCatalog(
+  env = process.env,
+  homeDir = os.homedir(),
+): ModelsCatalog | undefined {
+  const configuredPath = resolveConfiguredModelCatalogPath(env);
+  const configuredCatalog = readModelsCatalogFromPath(configuredPath);
+  if (configuredCatalog) return configuredCatalog;
+  return readModelsCatalogFromPath(resolveCodexModelsCachePath(env, homeDir));
 }
 
 export function parseCodexPersonality(
@@ -137,22 +197,27 @@ function resolvePromptEntry(
 
 export function resolveCodexPromptBody(
   modelId: string | undefined,
-  catalog: ModelsCatalog | undefined,
+  catalogs: Array<ModelsCatalog | undefined>,
   personality?: CodexPersonality,
 ): string {
   const normalizedModelId = modelId?.trim();
   if (!normalizedModelId) return "";
 
-  const exactEntry = resolvePromptEntry(catalog, normalizedModelId);
-  if (exactEntry) {
-    return buildModelInstructions(exactEntry, personality);
+  for (const catalog of catalogs) {
+    const exactEntry = resolvePromptEntry(catalog, normalizedModelId);
+    if (exactEntry) {
+      return buildModelInstructions(exactEntry, personality);
+    }
   }
 
-  if (!normalizedModelId.startsWith("gpt-")) {
-    return "";
+  for (const catalog of catalogs) {
+    const defaultEntry = resolvePromptEntry(catalog, DEFAULT_GPT_PROMPT_MODEL);
+    if (defaultEntry) {
+      return buildModelInstructions(defaultEntry, personality);
+    }
   }
 
-  return buildModelInstructions(resolvePromptEntry(catalog, DEFAULT_GPT_PROMPT_MODEL), personality);
+  return "";
 }
 
 export function injectCodexPrompt(systemPrompt: string | undefined, codexPrompt: string): string {
@@ -162,48 +227,18 @@ export function injectCodexPrompt(systemPrompt: string | undefined, codexPrompt:
   return [basePrompt, codexPrompt].filter(Boolean).join("\n\n").trim();
 }
 
-type AgentProfilePromptPayload = {
-  name?: string;
-  developerInstructions?: string;
-};
-
-export function readAgentProfilePromptPayload(
-  env = process.env,
-): AgentProfilePromptPayload | undefined {
-  const raw = env[CODEX_AGENT_PROFILE_JSON_ENV]?.trim();
-  if (!raw) return undefined;
-  try {
-    const parsed = JSON.parse(raw) as AgentProfilePromptPayload;
-    if (!parsed || typeof parsed !== "object") return undefined;
-    return parsed;
-  } catch {
-    return undefined;
-  }
-}
-
-export function buildAgentProfilePromptBlock(
-  payload: AgentProfilePromptPayload | undefined,
-): string {
-  const developerInstructions = payload?.developerInstructions?.trim();
-  if (!developerInstructions) return "";
-  return developerInstructions;
-}
-
 export function registerCodexPrompt(pi: ExtensionAPI) {
-  const modelsCatalog = readModelsCatalog();
-  const profilePrompt = buildAgentProfilePromptBlock(readAgentProfilePromptPayload());
-  if (!modelsCatalog && !profilePrompt) return;
+  const bundledCatalog = readModelsCatalog();
+  const fallbackCatalog = readFallbackModelsCatalog();
+  if (!bundledCatalog && !fallbackCatalog) return;
 
   pi.on("before_agent_start", async (event, ctx) => {
     const codexPersonality = readCodexPersonality();
     const codexPrompt = buildCodexPrompt(
-      resolveCodexPromptBody(ctx.model?.id, modelsCatalog, codexPersonality),
+      resolveCodexPromptBody(ctx.model?.id, [bundledCatalog, fallbackCatalog], codexPersonality),
     );
     return {
-      systemPrompt: injectCodexPrompt(
-        injectCodexPrompt(event.systemPrompt, codexPrompt),
-        profilePrompt,
-      ),
+      systemPrompt: injectCodexPrompt(event.systemPrompt, codexPrompt),
     };
   });
 }

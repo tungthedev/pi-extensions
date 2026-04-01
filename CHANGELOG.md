@@ -2,6 +2,17 @@
 
 All notable changes to `@tungthedev/pi-extensions` will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- Updated `codex-system-prompt` to resolve prompts from the bundled catalog first, `PI_CODEX_MODEL_CATALOG_PATH` second, and `~/.codex/models_cache.json` third, before falling back to the `gpt-5.4` prompt for any unknown model.
+
+### Fixed
+
+- Correctly parse Codex `models_cache.json` catalogs, including cache metadata fields and the shared `models` array format.
+- Removed `PI_CODEX_AGENT_PROFILE_JSON` handling from `codex-system-prompt` so prompt injection no longer depends on agent profile bootstrap payloads.
+
 ## [1.1.0] - 2026-03-31
 
 ### Changed

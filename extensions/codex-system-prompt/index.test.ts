@@ -9,9 +9,12 @@ import {
   injectCodexPrompt,
   parseCodexPersonality,
   readCodexPersonality,
-  readAgentProfilePromptPayload,
+  readFallbackModelsCatalog,
+  readModelsCatalog,
   resolveCodexHome,
+  resolveCodexModelsCachePath,
   resolveCodexPromptBody,
+  resolveConfiguredModelCatalogPath,
 } from "./index.ts";
 
 test("resolveCodexHome uses CODEX_HOME when it points to a directory", async () => {
@@ -36,21 +39,125 @@ test("readCodexPersonality reads personality from CODEX_HOME config.toml", async
   assert.equal(readCodexPersonality({ CODEX_HOME: tempDir }, "/Users/test"), "friendly");
 });
 
-test("resolveCodexPromptBody uses exact model match and template default personality", () => {
-  const prompt = resolveCodexPromptBody("gpt-5.4", {
-    models: [
+test("resolveConfiguredModelCatalogPath uses PI_CODEX_MODEL_CATALOG_PATH when it points to a file", async () => {
+  const fs = await import("node:fs/promises");
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-model-catalog-"));
+  const catalogPath = path.join(tempDir, "catalog.json");
+  await fs.writeFile(catalogPath, '{"models":[]}');
+
+  assert.equal(
+    resolveConfiguredModelCatalogPath({ PI_CODEX_MODEL_CATALOG_PATH: catalogPath }),
+    await fs.realpath(catalogPath),
+  );
+});
+
+test("resolveCodexModelsCachePath points to models_cache.json under codex home", async () => {
+  const fs = await import("node:fs/promises");
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-model-cache-home-"));
+  const codexHome = path.join(tempDir, ".codex");
+  await fs.mkdir(codexHome);
+
+  assert.equal(
+    resolveCodexModelsCachePath({ CODEX_HOME: codexHome }, "/Users/test"),
+    path.join(await fs.realpath(codexHome), "models_cache.json"),
+  );
+});
+
+test("readFallbackModelsCatalog prefers configured catalog, then ~/.codex/models_cache.json", async () => {
+  const fs = await import("node:fs/promises");
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-fallback-catalog-"));
+  const configuredCatalogPath = path.join(tempDir, "configured.json");
+  const codexHome = path.join(tempDir, ".codex");
+  await fs.mkdir(codexHome);
+  await fs.writeFile(configuredCatalogPath, JSON.stringify({ models: [{ slug: "configured-model" }] }));
+  await fs.writeFile(
+    path.join(codexHome, "models_cache.json"),
+    JSON.stringify({ models: [{ slug: "cache-model" }] }),
+  );
+
+  assert.deepEqual(
+    readFallbackModelsCatalog(
+      { PI_CODEX_MODEL_CATALOG_PATH: configuredCatalogPath, CODEX_HOME: codexHome },
+      "/Users/test",
+    ),
+    {
+      fetched_at: undefined,
+      etag: undefined,
+      client_version: undefined,
+      models: [{ slug: "configured-model" }],
+    },
+  );
+
+  await fs.writeFile(configuredCatalogPath, "not-json");
+
+  assert.deepEqual(
+    readFallbackModelsCatalog(
+      { PI_CODEX_MODEL_CATALOG_PATH: configuredCatalogPath, CODEX_HOME: codexHome },
+      "/Users/test",
+    ),
+    {
+      fetched_at: undefined,
+      etag: undefined,
+      client_version: undefined,
+      models: [{ slug: "cache-model" }],
+    },
+  );
+});
+
+test("readModelsCatalog parses codex models_cache.json metadata and models array", async () => {
+  const fs = await import("node:fs/promises");
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-models-cache-format-"));
+  const catalogPath = path.join(tempDir, "models_cache.json");
+  await fs.writeFile(
+    catalogPath,
+    JSON.stringify({
+      fetched_at: "2026-03-25T01:12:09.045949Z",
+      etag: 'W/"abc"',
+      client_version: "0.0.0",
+      models: [
+        { slug: "gpt-5.4", base_instructions: "prompt" },
+        null,
+      ],
+    }),
+  );
+
+  assert.deepEqual(readModelsCatalog(catalogPath), {
+    fetched_at: "2026-03-25T01:12:09.045949Z",
+    etag: 'W/"abc"',
+    client_version: "0.0.0",
+    models: [{ slug: "gpt-5.4", base_instructions: "prompt" }],
+  });
+});
+
+test("readModelsCatalog rejects json without a models array", async () => {
+  const fs = await import("node:fs/promises");
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-models-cache-invalid-"));
+  const catalogPath = path.join(tempDir, "models_cache.json");
+  await fs.writeFile(catalogPath, JSON.stringify({ fetched_at: "2026-03-25T01:12:09.045949Z" }));
+
+  assert.equal(readModelsCatalog(catalogPath), undefined);
+});
+
+test("resolveCodexPromptBody uses exact model match from primary catalog", () => {
+  const prompt = resolveCodexPromptBody(
+    "gpt-5.4",
+    [
       {
-        slug: "gpt-5.4",
-        base_instructions: "fallback base",
-        model_messages: {
-          instructions_template: "Header\n\n{{ personality }}\n\nBody",
-          instructions_variables: {
-            personality_default: "Default personality",
+        models: [
+          {
+            slug: "gpt-5.4",
+            base_instructions: "fallback base",
+            model_messages: {
+              instructions_template: "Header\n\n{{ personality }}\n\nBody",
+              instructions_variables: {
+                personality_default: "Default personality",
+              },
+            },
           },
-        },
+        ],
       },
     ],
-  });
+  );
 
   assert.equal(prompt, "Header\n\nDefault personality\n\nBody");
 });
@@ -58,52 +165,45 @@ test("resolveCodexPromptBody uses exact model match and template default persona
 test("resolveCodexPromptBody uses configured personality variant when present", () => {
   const prompt = resolveCodexPromptBody(
     "gpt-5.4",
-    {
-      models: [
-        {
-          slug: "gpt-5.4",
-          base_instructions: "fallback base",
-          model_messages: {
-            instructions_template: "Header\n\n{{ personality }}\n\nBody",
-            instructions_variables: {
-              personality_default: "Default personality",
-              personality_friendly: "Friendly personality",
-              personality_pragmatic: "Pragmatic personality",
+    [
+      {
+        models: [
+          {
+            slug: "gpt-5.4",
+            base_instructions: "fallback base",
+            model_messages: {
+              instructions_template: "Header\n\n{{ personality }}\n\nBody",
+              instructions_variables: {
+                personality_default: "Default personality",
+                personality_friendly: "Friendly personality",
+                personality_pragmatic: "Pragmatic personality",
+              },
             },
           },
-        },
-      ],
-    },
+        ],
+      },
+    ],
     "friendly",
   );
 
   assert.equal(prompt, "Header\n\nFriendly personality\n\nBody");
 });
 
-test("resolveCodexPromptBody falls back unknown gpt models to gpt-5.4", () => {
-  const prompt = resolveCodexPromptBody("gpt-6-experimental", {
-    models: [
-      {
-        slug: "gpt-5.4",
-        base_instructions: "gpt-5.4 prompt",
-      },
-    ],
-  });
+test("resolveCodexPromptBody uses secondary fallback catalog when bundled catalog misses model", () => {
+  const prompt = resolveCodexPromptBody("claude-sonnet", [
+    { models: [{ slug: "gpt-5.4", base_instructions: "bundled gpt-5.4 prompt" }] },
+    { models: [{ slug: "claude-sonnet", base_instructions: "secondary exact prompt" }] },
+  ]);
 
-  assert.equal(prompt, "gpt-5.4 prompt");
+  assert.equal(prompt, "secondary exact prompt");
 });
 
-test("resolveCodexPromptBody skips codex prompt for non-gpt unknown models", () => {
-  const prompt = resolveCodexPromptBody("claude-sonnet", {
-    models: [
-      {
-        slug: "gpt-5.4",
-        base_instructions: "gpt-5.4 prompt",
-      },
-    ],
-  });
+test("resolveCodexPromptBody falls back to gpt-5.4 for unknown models of any family", () => {
+  const prompt = resolveCodexPromptBody("claude-sonnet", [
+    { models: [{ slug: "gpt-5.4", base_instructions: "gpt-5.4 prompt" }] },
+  ]);
 
-  assert.equal(prompt, "");
+  assert.equal(prompt, "gpt-5.4 prompt");
 });
 
 test("injectCodexPrompt appends once and is idempotent", () => {
@@ -120,18 +220,4 @@ test("injectCodexPrompt handles empty existing prompt", () => {
 
   assert.equal(injectCodexPrompt(undefined, codexPrompt), codexPrompt);
   assert.equal(injectCodexPrompt("", codexPrompt), codexPrompt);
-});
-
-test("readAgentProfilePromptPayload returns parsed profile bootstrap data", () => {
-  const payload = readAgentProfilePromptPayload({
-    PI_CODEX_AGENT_PROFILE_JSON: JSON.stringify({
-      name: "explorer",
-      developerInstructions: "You are an explorer.",
-    }),
-  });
-
-  assert.deepEqual(payload, {
-    name: "explorer",
-    developerInstructions: "You are an explorer.",
-  });
 });
