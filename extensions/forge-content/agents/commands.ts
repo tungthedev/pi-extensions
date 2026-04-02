@@ -1,14 +1,25 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
+import { readTungthedevSettings } from "../../settings/config.ts";
 import { applyForgeMode, FORGE_MODE_NAMES, getForgeModeDefinition, isForgeModeName, type ForgeModeName } from "./modes.ts";
 import { setForgeRuntimeMode, type ForgeRuntimeState } from "../runtime-state.ts";
 
 export type ForgeModeState = ForgeRuntimeState;
 
-function setMode(pi: ExtensionAPI, ctx: ExtensionContext, state: ForgeModeState, mode: ForgeModeName): void {
+async function setMode(pi: ExtensionAPI, ctx: ExtensionContext, state: ForgeModeState, mode: ForgeModeName): Promise<void> {
   setForgeRuntimeMode(state, mode);
-  applyForgeMode(pi, ctx, mode);
-  ctx.ui.notify(`Switched to ${getForgeModeDefinition(mode).label} mode`, "info");
+
+  const settings = await readTungthedevSettings();
+  if (settings.toolSet === "forge") {
+    applyForgeMode(pi, ctx, mode);
+    ctx.ui.notify(`Switched to ${getForgeModeDefinition(mode).label} mode`, "info");
+    return;
+  }
+
+  ctx.ui.notify(
+    `Saved ${getForgeModeDefinition(mode).label} mode. Switch the Tungthedev tool set to Forge to apply it.`,
+    "info",
+  );
 }
 
 export function registerForgeModeCommands(pi: ExtensionAPI, state: ForgeModeState): void {
@@ -16,7 +27,7 @@ export function registerForgeModeCommands(pi: ExtensionAPI, state: ForgeModeStat
     pi.registerCommand(mode, {
       description: `Switch to ${getForgeModeDefinition(mode).label} mode`,
       handler: async (_args, ctx) => {
-        setMode(pi, ctx, state, mode);
+        await setMode(pi, ctx, state, mode);
       },
     });
   }
@@ -35,7 +46,7 @@ export function registerForgeModeCommands(pi: ExtensionAPI, state: ForgeModeStat
         return;
       }
 
-      setMode(pi, ctx, state, requestedMode);
+      await setMode(pi, ctx, state, requestedMode);
     },
   });
 }

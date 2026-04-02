@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createListSkillsTool, discoverAvailableSkills, findAvailableSkill } from "./index.ts";
+import { buildSkillsPromptInjection, createSkillTool, discoverAvailableSkills, findAvailableSkill } from "./index.ts";
 
 function writeSkillFile(filePath: string, name: string, description: string) {
   mkdirSync(path.dirname(filePath), { recursive: true });
@@ -86,7 +86,7 @@ test("discoverAvailableSkills follows documented skill discovery locations", asy
   }
 });
 
-test("list_skills tool returns discovered skills with metadata", async () => {
+test("buildSkillsPromptInjection includes only skill name and description", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "pi-list-skills-"));
   const home = path.join(root, "home");
   const agentDir = path.join(home, ".pi", "agent");
@@ -106,25 +106,58 @@ test("list_skills tool returns discovered skills with metadata", async () => {
   process.env.PI_CODING_AGENT_DIR = agentDir;
 
   try {
-    const tool = createListSkillsTool();
-    const result = await tool.execute("tool-call-1", {}, undefined, undefined, {
+    const { skills } = await discoverAvailableSkills({ cwd, agentDir });
+    const injected = buildSkillsPromptInjection(skills);
+
+    assert.match(injected, /<available_skills>/);
+    assert.match(injected, /<skill name="review-helper">Helps review code<\/skill>/);
+    assert.doesNotMatch(injected, /review-helper[\s\S]*SKILL\.md/);
+    assert.doesNotMatch(injected, /base_dir/);
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    if (previousAgentDir === undefined) {
+      delete process.env.PI_CODING_AGENT_DIR;
+    } else {
+      process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("skill tool returns skill_details wrapper without arguments field", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "pi-skill-tool-"));
+  const home = path.join(root, "home");
+  const agentDir = path.join(home, ".pi", "agent");
+  const cwd = path.join(root, "workspace");
+
+  mkdirSync(cwd, { recursive: true });
+  mkdirSync(agentDir, { recursive: true });
+  writeSkillFile(
+    path.join(agentDir, "skills", "review-helper", "SKILL.md"),
+    "review-helper",
+    "Helps review code",
+  );
+
+  const previousHome = process.env.HOME;
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  process.env.HOME = home;
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+
+  try {
+    const tool = createSkillTool();
+    const result = await tool.execute("tool-call-1", { name: "review-helper" }, undefined, undefined, {
       cwd,
     } as never);
 
     const content = result.content?.[0];
     assert.equal(content?.type, "text");
-    const parsed = JSON.parse(content?.text ?? "{}");
-    assert.deepEqual(parsed.skills, [
-      {
-        name: "review-helper",
-        description: "Helps review code",
-        source: "user",
-        file_path: path.join(agentDir, "skills", "review-helper", "SKILL.md"),
-        base_dir: path.join(agentDir, "skills", "review-helper"),
-        disable_model_invocation: false,
-      },
-    ]);
-    assert.deepEqual(parsed.diagnostics, []);
+    assert.match(content?.text ?? "", /^<skill_details name="review-helper">/);
+    assert.doesNotMatch(content?.text ?? "", /^<loaded_skill/m);
+    assert.match(content?.text ?? "", /Base directory for this skill:/);
   } finally {
     if (previousHome === undefined) {
       delete process.env.HOME;

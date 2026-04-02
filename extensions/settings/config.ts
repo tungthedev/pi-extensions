@@ -6,9 +6,12 @@ const SETTINGS_FILE = "settings.json";
 const TUNGTHEDEV_NAMESPACE = "tungthedev/pi";
 
 export type SystemPromptPack = "codex" | "forge" | null;
+export type ToolSetPack = "codex" | "forge";
+export const DEFAULT_TOOL_SET: ToolSetPack = "codex";
 
 export type TungthedevSettings = {
   systemPrompt: SystemPromptPack;
+  toolSet: ToolSetPack;
 };
 
 type SettingsRoot = Record<string, unknown>;
@@ -21,6 +24,10 @@ function normalizeSystemPrompt(value: unknown): SystemPromptPack {
   return value === "codex" || value === "forge" || value === null ? value : null;
 }
 
+function normalizeToolSet(value: unknown): ToolSetPack {
+  return value === "forge" ? "forge" : DEFAULT_TOOL_SET;
+}
+
 export function parseTungthedevSettings(root: unknown): TungthedevSettings {
   const namespace =
     root && typeof root === "object" && !Array.isArray(root)
@@ -31,9 +38,14 @@ export function parseTungthedevSettings(root: unknown): TungthedevSettings {
     namespace && typeof namespace === "object" && !Array.isArray(namespace)
       ? (namespace as SettingsRoot).systemPrompt
       : undefined;
+  const toolSet =
+    namespace && typeof namespace === "object" && !Array.isArray(namespace)
+      ? (namespace as SettingsRoot).toolSet
+      : undefined;
 
   return {
     systemPrompt: normalizeSystemPrompt(systemPrompt),
+    toolSet: normalizeToolSet(toolSet),
   };
 }
 
@@ -81,8 +93,8 @@ export async function readTungthedevSettings(filePath = getGlobalPiSettingsPath(
   return readTungthedevSettingsFromFile(filePath);
 }
 
-export async function writeSystemPromptSetting(
-  systemPrompt: SystemPromptPack,
+async function writeTungthedevSettings(
+  updater: (namespace: SettingsRoot) => SettingsRoot,
   filePath = getGlobalPiSettingsPath(),
 ): Promise<void> {
   const root = await readSettingsRoot(filePath, true);
@@ -92,8 +104,27 @@ export async function writeSystemPromptSetting(
       ? { ...(currentNamespace as SettingsRoot) }
       : {};
 
-  namespace.systemPrompt = systemPrompt;
-  root[TUNGTHEDEV_NAMESPACE] = namespace;
+  root[TUNGTHEDEV_NAMESPACE] = updater(namespace);
 
   await writeSettingsRoot(filePath, root);
+}
+
+export async function writeSystemPromptSetting(
+  systemPrompt: SystemPromptPack,
+  filePath = getGlobalPiSettingsPath(),
+): Promise<void> {
+  await writeTungthedevSettings((namespace) => ({
+    ...namespace,
+    systemPrompt,
+  }), filePath);
+}
+
+export async function writeToolSetSetting(
+  toolSet: ToolSetPack,
+  filePath = getGlobalPiSettingsPath(),
+): Promise<void> {
+  await writeTungthedevSettings((namespace) => ({
+    ...namespace,
+    toolSet,
+  }), filePath);
 }

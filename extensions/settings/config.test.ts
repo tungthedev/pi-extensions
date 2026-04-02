@@ -7,29 +7,48 @@ import test from "node:test";
 import {
   parseTungthedevSettings,
   readTungthedevSettingsFromFile,
+  writeToolSetSetting,
   writeSystemPromptSetting,
 } from "./config.ts";
 
-test("parseTungthedevSettings accepts codex, forge, and null", () => {
+test("parseTungthedevSettings accepts prompt-pack values and tool-set values", () => {
   assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": { systemPrompt: "codex" } }), {
     systemPrompt: "codex",
+    toolSet: "codex",
   });
-  assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": { systemPrompt: "forge" } }), {
-    systemPrompt: "forge",
-  });
-  assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": { systemPrompt: null } }), {
+  assert.deepEqual(
+    parseTungthedevSettings({ "tungthedev/pi": { systemPrompt: "forge", toolSet: "forge" } }),
+    {
+      systemPrompt: "forge",
+      toolSet: "forge",
+    },
+  );
+  assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": { systemPrompt: null, toolSet: "codex" } }), {
     systemPrompt: null,
+    toolSet: "codex",
   });
 });
 
-test("parseTungthedevSettings falls back to null for invalid values", () => {
-  assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": { systemPrompt: "weird" } }), {
+test("parseTungthedevSettings falls back to codex for invalid tool-set values", () => {
+  assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": { toolSet: "weird" } }), {
     systemPrompt: null,
+    toolSet: "codex",
   });
   assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": "broken" }), {
     systemPrompt: null,
+    toolSet: "codex",
   });
-  assert.deepEqual(parseTungthedevSettings(undefined), { systemPrompt: null });
+  assert.deepEqual(parseTungthedevSettings(undefined), {
+    systemPrompt: null,
+    toolSet: "codex",
+  });
+});
+
+test("parseTungthedevSettings falls back to null for invalid system prompt values", () => {
+  assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": { systemPrompt: "weird", toolSet: "forge" } }), {
+    systemPrompt: null,
+    toolSet: "forge",
+  });
 });
 
 test("readTungthedevSettingsFromFile fails closed on malformed json", async () => {
@@ -39,6 +58,7 @@ test("readTungthedevSettingsFromFile fails closed on malformed json", async () =
 
   assert.deepEqual(await readTungthedevSettingsFromFile(settingsPath), {
     systemPrompt: null,
+    toolSet: "codex",
   });
 });
 
@@ -69,6 +89,29 @@ test("writeSystemPromptSetting preserves unrelated root settings", async () => {
   assert.deepEqual(updated["tungthedev/pi"], { systemPrompt: "forge" });
 });
 
+test("writeToolSetSetting preserves unrelated package settings", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-tung-settings-"));
+  const settingsPath = path.join(tempDir, "settings.json");
+
+  await writeFile(
+    settingsPath,
+    `${JSON.stringify(
+      {
+        "tungthedev/pi": { systemPrompt: "forge" },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  await writeToolSetSetting("forge", settingsPath);
+
+  const updated = JSON.parse(await readFile(settingsPath, "utf8")) as Record<string, unknown>;
+
+  assert.deepEqual(updated["tungthedev/pi"], { systemPrompt: "forge", toolSet: "forge" });
+});
+
 test("writeSystemPromptSetting stores null when clearing the setting", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-tung-settings-"));
   const settingsPath = path.join(tempDir, "settings.json");
@@ -77,4 +120,14 @@ test("writeSystemPromptSetting stores null when clearing the setting", async () 
 
   const updated = JSON.parse(await readFile(settingsPath, "utf8")) as Record<string, unknown>;
   assert.deepEqual(updated["tungthedev/pi"], { systemPrompt: null });
+});
+
+test("writeToolSetSetting stores the selected tool set", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-tung-settings-"));
+  const settingsPath = path.join(tempDir, "settings.json");
+
+  await writeToolSetSetting("forge", settingsPath);
+
+  const updated = JSON.parse(await readFile(settingsPath, "utf8")) as Record<string, unknown>;
+  assert.deepEqual(updated["tungthedev/pi"], { toolSet: "forge" });
 });

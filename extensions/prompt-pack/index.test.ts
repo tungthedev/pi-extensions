@@ -9,8 +9,8 @@ import promptPackExtension, {
 } from "./index.ts";
 
 test("resolvePromptPack returns null for missing or invalid settings", () => {
-  assert.equal(resolvePromptPack({ systemPrompt: null }), null);
-  assert.equal(resolvePromptPack({ systemPrompt: "codex" }), "codex");
+  assert.equal(resolvePromptPack({ systemPrompt: null, toolSet: "codex" }), null);
+  assert.equal(resolvePromptPack({ systemPrompt: "codex", toolSet: "codex" }), "codex");
 });
 
 test("injectSelectedPromptPack appends Forge prompt to the base prompt", () => {
@@ -25,7 +25,7 @@ test("injectSelectedPromptPack appends Forge prompt to the base prompt", () => {
 
 test("handlePromptPackBeforeAgentStart returns no-op for null settings", async () => {
   const deps: PromptPackDeps = {
-    readSettings: async () => ({ systemPrompt: null }),
+    readSettings: async () => ({ systemPrompt: null, toolSet: "codex" }),
     buildCodexPromptForModel: () => "",
     buildForgePromptForContext: () => "",
   };
@@ -42,7 +42,7 @@ test("handlePromptPackBeforeAgentStart returns no-op for null settings", async (
 
 test("handlePromptPackBeforeAgentStart injects the Codex prompt for codex selection", async () => {
   const deps: PromptPackDeps = {
-    readSettings: async () => ({ systemPrompt: "codex" }),
+    readSettings: async () => ({ systemPrompt: "codex", toolSet: "codex" }),
     buildCodexPromptForModel: () => "Codex block",
     buildForgePromptForContext: () => "Forge block",
   };
@@ -59,7 +59,7 @@ test("handlePromptPackBeforeAgentStart injects the Codex prompt for codex select
 
 test("handlePromptPackBeforeAgentStart injects the Forge prompt for forge selection", async () => {
   const deps: PromptPackDeps = {
-    readSettings: async () => ({ systemPrompt: "forge" }),
+    readSettings: async () => ({ systemPrompt: "forge", toolSet: "forge" }),
     buildCodexPromptForModel: () => "Codex block",
     buildForgePromptForContext: () => "Forge block",
   };

@@ -7,7 +7,6 @@ import {
   type ExtensionAPI,
   type ResourceDiagnostic,
   type Skill,
-  type Theme,
   type ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
@@ -17,10 +16,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import {
-  renderEmptySlot,
   renderFallbackResult,
-  renderLines,
-  titleLine,
 } from "../codex-content/renderers/common.ts";
 
 interface SkillEntry {
@@ -39,7 +35,6 @@ function legacySkillSource(skill: Pick<Skill, "sourceInfo">): string {
 
 type SkillParams = {
   name: string;
-  arguments?: string;
 };
 
 type DiscoveredSkills = {
@@ -324,99 +319,34 @@ function formatToolError(message: string) {
   };
 }
 
-function formatSkillsList(skills: Skill[], diagnostics: ResourceDiagnostic[]): string {
-  return JSON.stringify(
-    {
-      skills: skills.map((skill) => ({
-        name: skill.name,
-        description: skill.description,
-        source: legacySkillSource(skill),
-        file_path: skill.filePath,
-        base_dir: skill.baseDir,
-        disable_model_invocation: skill.disableModelInvocation,
-      })),
-      diagnostics: diagnostics.map((diagnostic) => ({
-        type: diagnostic.type,
-        message: diagnostic.message,
-        ...(diagnostic.path ? { path: diagnostic.path } : {}),
-        ...(diagnostic.collision ? { collision: diagnostic.collision } : {}),
-      })),
-    },
-    null,
-    2,
-  );
-}
-
-type ListSkillsPayload = {
-  skills?: Array<{
-    name?: string;
-    file_path?: string;
-  }>;
-};
-
-function parseListSkillsPayload(result: {
-  content?: Array<{ type?: string; text?: string }>;
-}): ListSkillsPayload {
-  const content = result.content?.[0];
-  if (!content || content.type !== "text" || !content.text) return {};
-
-  try {
-    return JSON.parse(content.text) as ListSkillsPayload;
-  } catch {
-    return {};
-  }
-}
-
-function treeLine(theme: Pick<Theme, "fg">, text: string, branch: "mid" | "last"): string {
-  const prefix = branch === "last" ? "└ " : "├ ";
-  return `${theme.fg("dim", prefix)}${theme.fg("toolOutput", text)}`;
-}
-
-function skillTreeLine(
-  theme: Pick<Theme, "fg">,
-  skillName: string,
-  filePath: string,
-  branch: "mid" | "last",
-): string {
-  const prefix = branch === "last" ? "└ " : "├ ";
-  return `${theme.fg("dim", prefix)}${theme.fg("accent", skillName)}${theme.fg("toolOutput", ` - ${filePath}`)}`;
-}
-
-export function buildListSkillsLines(
-  theme: Theme,
-  payload: ListSkillsPayload,
-  expanded: boolean,
-): string[] {
-  const skills = (payload.skills ?? []).filter(
-    (skill): skill is { name: string; file_path: string } =>
-      typeof skill.name === "string" &&
-      skill.name.length > 0 &&
-      typeof skill.file_path === "string" &&
-      skill.file_path.length > 0,
-  );
-  const title = [titleLine(theme, "text", "List Skills")];
-
-  if (skills.length === 0) {
-    title.push(treeLine(theme, "No skills found", "last"));
-    return title;
+export function buildSkillsPromptInjection(skills: Skill[]): string {
+  const visibleSkills = skills.filter((skill) => !skill.disableModelInvocation);
+  if (visibleSkills.length === 0) {
+    return "";
   }
 
-  const visibleCount = expanded ? skills.length : Math.min(skills.length, 2);
-  const visibleSkills = skills.slice(0, visibleCount);
-  const hiddenCount = skills.length - visibleSkills.length;
+  const lines = [
+    "The following skills provide specialized instructions for specific tasks.",
+    'Use the `skill` tool to load the full instructions when a task matches one of these descriptions.',
+    "",
+    "<available_skills>",
+  ];
 
-  for (const [index, skill] of visibleSkills.entries()) {
-    const isLastVisibleRow = index === visibleSkills.length - 1 && hiddenCount === 0;
-    title.push(
-      skillTreeLine(theme, skill.name, skill.file_path, isLastVisibleRow ? "last" : "mid"),
-    );
+  for (const skill of visibleSkills) {
+    lines.push(`  <skill name="${escapeXml(skill.name)}">${escapeXml(skill.description)}</skill>`);
   }
 
-  if (!expanded && hiddenCount > 0) {
-    title.push(treeLine(theme, `... +${hiddenCount} more skills (Ctrl+O to expand)`, "last"));
-  }
+  lines.push("</available_skills>");
+  return lines.join("\n");
+}
 
-  return title;
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 export function createSkillTool(): ToolDefinition {
@@ -433,11 +363,6 @@ export function createSkillTool(): ToolDefinition {
       name: Type.String({
         description: "The name of the skill to load (must match one of the available skills).",
       }),
-      arguments: Type.Optional(
-        Type.String({
-          description: "Optional arguments to pass to the skill.",
-        }),
-      ),
     }),
     async execute(_toolCallId, rawParams, _signal, _onUpdate, ctx) {
       const params = rawParams as SkillParams;
@@ -459,7 +384,7 @@ export function createSkillTool(): ToolDefinition {
 
       const { body } = parseFrontmatter(rawContent);
       const parts: string[] = [
-        `<loaded_skill name="${skill.name}">`,
+        `<skill_details name="${skill.name}">`,
         body,
         "",
         `Base directory for this skill: file://${skill.baseDir}`,
@@ -475,7 +400,7 @@ export function createSkillTool(): ToolDefinition {
         parts.push("</skill_files>");
       }
 
-      parts.push("</loaded_skill>");
+      parts.push("</skill_details>");
 
       return {
         content: [{ type: "text" as const, text: parts.join("\n") }],
@@ -498,7 +423,7 @@ export function createSkillTool(): ToolDefinition {
       if (!content || content.type !== "text") {
         return new Text("(no output)", 0, 0);
       }
-      if (content.text.startsWith("<loaded_skill")) {
+      if (content.text.startsWith("<skill_details")) {
         return new Text("skill loaded", 0, 0);
       }
       return renderFallbackResult(result);
@@ -506,37 +431,18 @@ export function createSkillTool(): ToolDefinition {
   };
 }
 
-export function createListSkillsTool(): ToolDefinition {
-  return {
-    name: "list_skills",
-    label: "List Skills",
-    description:
-      "List all skills discoverable from the current project and global Pi configuration.\n\n" +
-      "Follows Pi's documented skill discovery rules, including global directories, project directories, " +
-      "ancestor .agents/skills directories, package-provided skills, and settings-defined skill paths.",
-    parameters: Type.Object({}),
-    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-      const { skills, diagnostics } = await discoverAvailableSkills({ cwd: ctx.cwd });
-      return {
-        content: [{ type: "text" as const, text: formatSkillsList(skills, diagnostics) }],
-        details: {
-          count: skills.length,
-          diagnostics: diagnostics.length,
-        },
-      };
-    },
-    renderCall() {
-      return renderEmptySlot();
-    },
-    renderResult(result, options, theme) {
-      return renderLines(
-        buildListSkillsLines(theme, parseListSkillsPayload(result), options.expanded),
-      );
-    },
-  };
-}
-
 export default function skillExtension(pi: ExtensionAPI) {
+  pi.on("before_agent_start", async (event, ctx) => {
+    const { skills } = await discoverAvailableSkills({ cwd: ctx.cwd });
+    const injected = buildSkillsPromptInjection(skills);
+    if (!injected) {
+      return;
+    }
+
+    return {
+      systemPrompt: [event.systemPrompt.trim(), injected].filter(Boolean).join("\n\n"),
+    };
+  });
+
   pi.registerTool(createSkillTool());
-  pi.registerTool(createListSkillsTool());
 }

@@ -2,12 +2,15 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-cod
 
 import {
   readTungthedevSettings,
+  writeToolSetSetting,
   writeSystemPromptSetting,
   type SystemPromptPack,
+  type ToolSetPack,
   type TungthedevSettings,
 } from "./config.ts";
 import {
   formatSystemPromptPackLabel,
+  formatToolSetLabel,
   openTungthedevSettingsUi,
   parseSettingsCommand,
 } from "./ui.ts";
@@ -15,9 +18,10 @@ import {
 export type TungthedevCommandDeps = {
   readSettings: () => Promise<TungthedevSettings>;
   writeSystemPrompt: (value: SystemPromptPack) => Promise<void>;
+  writeToolSet: (value: ToolSetPack) => Promise<void>;
   openSettingsUi: (
     ctx: ExtensionCommandContext,
-    options: { focus?: "systemPrompt" },
+    options: { focus?: "systemPrompt" | "toolSet" },
   ) => Promise<void>;
 };
 
@@ -25,11 +29,13 @@ function createDefaultDeps(): TungthedevCommandDeps {
   return {
     readSettings: () => readTungthedevSettings(),
     writeSystemPrompt: (value) => writeSystemPromptSetting(value),
+    writeToolSet: (value) => writeToolSetSetting(value),
     openSettingsUi: (ctx, options) =>
       openTungthedevSettingsUi(ctx, {
         focus: options.focus,
         readSettings: () => readTungthedevSettings(),
         writeSystemPrompt: (value) => writeSystemPromptSetting(value),
+        writeToolSet: (value) => writeToolSetSetting(value),
       }),
   };
 }
@@ -52,8 +58,19 @@ export async function handleTungthedevCommand(
     return;
   }
 
+  if (action.action === "set-tool-set") {
+    await deps.writeToolSet(action.value);
+    ctx.ui.notify(`Tool set: ${formatToolSetLabel(action.value)}`, "info");
+    return;
+  }
+
   await deps.openSettingsUi(ctx, {
-    focus: action.action === "open-system-prompt" ? "systemPrompt" : undefined,
+    focus:
+      action.action === "open-system-prompt"
+        ? "systemPrompt"
+        : action.action === "open-tool-set"
+          ? "toolSet"
+          : undefined,
   });
 }
 

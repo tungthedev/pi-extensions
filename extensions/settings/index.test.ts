@@ -26,13 +26,23 @@ test("parseSettingsCommand opens root settings UI when no args are provided", ()
   assert.deepEqual(parseSettingsCommand(""), { action: "open-root" });
 });
 
+test("parseSettingsCommand handles direct tool-set writes", () => {
+  assert.deepEqual(parseSettingsCommand("tool-set forge"), {
+    action: "set-tool-set",
+    value: "forge",
+  });
+});
+
 test("handleTungthedevCommand writes the selected system prompt pack directly", async () => {
   const writes: Array<"codex" | "forge" | null> = [];
   const notifications: string[] = [];
   const deps: TungthedevCommandDeps = {
-    readSettings: async () => ({ systemPrompt: null }),
+    readSettings: async () => ({ systemPrompt: null, toolSet: "codex" }),
     writeSystemPrompt: async (value) => {
       writes.push(value);
+    },
+    writeToolSet: async () => {
+      throw new Error("writeToolSet should not run");
     },
     openSettingsUi: async () => {
       throw new Error("settings UI should not open for direct writes");
@@ -52,12 +62,44 @@ test("handleTungthedevCommand writes the selected system prompt pack directly", 
   assert.deepEqual(notifications, ["System prompt pack: Codex"]);
 });
 
+test("handleTungthedevCommand writes the selected tool set directly", async () => {
+  const writes: Array<"codex" | "forge"> = [];
+  const notifications: string[] = [];
+  const deps: TungthedevCommandDeps = {
+    readSettings: async () => ({ systemPrompt: null, toolSet: "codex" }),
+    writeSystemPrompt: async () => {
+      throw new Error("writeSystemPrompt should not run");
+    },
+    writeToolSet: async (value) => {
+      writes.push(value);
+    },
+    openSettingsUi: async () => {
+      throw new Error("settings UI should not open for direct writes");
+    },
+  };
+
+  await handleTungthedevCommand("tool-set forge", {
+    hasUI: true,
+    ui: {
+      notify(message: string) {
+        notifications.push(message);
+      },
+    },
+  } as never, deps);
+
+  assert.deepEqual(writes, ["forge"]);
+  assert.deepEqual(notifications, ["Tool set: Forge"]);
+});
+
 test("handleTungthedevCommand opens the package settings UI for root invocations", async () => {
   let openedFocus: string | undefined;
   const deps: TungthedevCommandDeps = {
-    readSettings: async () => ({ systemPrompt: "forge" }),
+    readSettings: async () => ({ systemPrompt: "forge", toolSet: "codex" }),
     writeSystemPrompt: async () => {
       throw new Error("writeSystemPrompt should not run");
+    },
+    writeToolSet: async () => {
+      throw new Error("writeToolSet should not run");
     },
     openSettingsUi: async (_ctx, options) => {
       openedFocus = options.focus;
