@@ -190,12 +190,4 @@ export function registerForgeTodoTools(pi: ExtensionAPI): void {
     },
   });
 
-  pi.registerCommand("forge-todos", {
-    description: "Show current Forge todo items",
-    handler: async (_args, ctx) => {
-      state.snapshot = reconstructSnapshot(ctx);
-      syncForgeTodoUi(ctx, state.snapshot.items);
-      ctx.ui.notify(buildTodoReadText(state.snapshot.items), "info");
-    },
-  });
 }
