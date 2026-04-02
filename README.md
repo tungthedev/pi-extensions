@@ -8,8 +8,10 @@ A collection of Pi packages:
 - `web-search` — Adds Gemini-backed `web_search` and `web_extract` tools for grounded web research.
 - `cloudflare-crawl` — Adds a Cloudflare Browser Rendering-backed `crawl_page` tool for actual page content fetching with foreground wait or background notification modes.
 - `codex-content` — Overrides default tools with Codex-style compatibility tools and TUI rendering.
-- `codex-system-prompt` — Injects Codex-specific system prompt and collaboration mode instructions before agent start.
-- `codex-subagents` — Adds Codex-style subagent tools for spawning, resuming, messaging, and waiting on child agents.
+- `prompt-pack` — Selects and injects the configured system prompt pack for this package.
+- `forge-content` — Adds Forge modes, resources, workflow helpers, and prompt-building support.
+- `settings` — Adds the `/tungthedev` package settings command and package-scoped config UI.
+- `subagents` — Adds persistent subagent tools for spawning, resuming, messaging, and waiting on child agents.
 
 ## Compatibility
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import settingsExtension, {
@@ -78,4 +79,16 @@ test("settings extension registers the /tungthedev command", () => {
   } as never);
 
   assert.equal(registeredName, "tungthedev");
+});
+
+test("package manifest ships prompt-pack and settings extensions", async () => {
+  const pkg = JSON.parse(
+    await readFile(new URL("../../package.json", import.meta.url), "utf8"),
+  ) as {
+    pi: { extensions: string[] };
+  };
+
+  assert(pkg.pi.extensions.includes("./extensions/prompt-pack/index.ts"));
+  assert(pkg.pi.extensions.includes("./extensions/settings/index.ts"));
+  assert(!pkg.pi.extensions.includes("./extensions/codex-system-prompt/index.ts"));
 });
