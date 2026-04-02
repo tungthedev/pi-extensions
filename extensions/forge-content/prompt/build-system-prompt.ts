@@ -8,8 +8,6 @@ export type ForgePromptOptions = {
   baseSystemPrompt?: string;
   cwd: string;
   activeTools: Array<{ name: string; description: string }>;
-  mode: string;
-  modeInstructions?: string;
   shell?: string;
   homeDir?: string;
   currentDate?: string;
@@ -23,11 +21,9 @@ export function buildForgePrompt(options: ForgePromptOptions): string {
   const sections = [
     options.baseSystemPrompt?.trim(),
     readForgeSystemPrompt(),
-    options.modeInstructions?.trim(),
     buildForgeRuntimeContext({
       cwd: options.cwd,
       activeTools: options.activeTools,
-      mode: options.mode,
       shell: options.shell,
       homeDir: options.homeDir,
       currentDate: options.currentDate,

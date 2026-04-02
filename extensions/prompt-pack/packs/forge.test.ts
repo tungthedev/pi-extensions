@@ -1,14 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createForgeRuntimeState, setForgeRuntimeMode } from "../../forge-content/runtime-state.ts";
-
 import { buildSelectedForgePrompt } from "./forge.ts";
 
-test("buildSelectedForgePrompt includes Forge instructions and the live mode", () => {
-  const state = createForgeRuntimeState();
-  setForgeRuntimeMode(state, "muse");
-
+test("buildSelectedForgePrompt does not include inner mode markup", () => {
   const prompt = buildSelectedForgePrompt(
     {
       getActiveTools: () => ["shell"],
@@ -17,10 +12,10 @@ test("buildSelectedForgePrompt includes Forge instructions and the live mode", (
     {
       cwd: "/tmp/project",
     } as never,
-    state,
   );
 
   assert.match(prompt, /You are Forge, an expert software engineering assistant/);
-  assert.match(prompt, /<operating_mode>muse<\/operating_mode>/);
+  assert.doesNotMatch(prompt, /<operating_mode>/);
+  assert.doesNotMatch(prompt, /modeInstructions|muse|sage/);
   assert.match(prompt, /- shell: Executes shell commands\./);
 });

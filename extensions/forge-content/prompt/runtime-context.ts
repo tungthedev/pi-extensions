@@ -6,7 +6,6 @@ type ActiveToolInfo = {
 export type ForgeRuntimeContextOptions = {
   cwd: string;
   activeTools: ActiveToolInfo[];
-  mode: string;
   shell?: string;
   homeDir?: string;
   currentDate?: string;
@@ -30,7 +29,6 @@ export function buildForgeRuntimeContext(options: ForgeRuntimeContextOptions): s
 
   return [
     "<forge_runtime>",
-    `  <operating_mode>${options.mode}</operating_mode>`,
     `  <current_date>${date}</current_date>`,
     `  <current_working_directory>${options.cwd}</current_working_directory>`,
     options.shell ? `  <default_shell>${options.shell}</default_shell>` : undefined,
