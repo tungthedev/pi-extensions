@@ -81,7 +81,6 @@ export async function openTungthedevSettingsUi(
       () => done(undefined),
       {
         enableSearch: false,
-        initialQuery: options.focus === "systemPrompt" ? "system prompt" : undefined,
       },
     );
 
