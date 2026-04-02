@@ -4,28 +4,46 @@ import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 
-export const CODEX_SUBAGENT_TOOL_NAMES = [
+export const SUBAGENT_TOOL_NAMES = [
   "spawn_agent",
   "send_input",
   "wait_agent",
   "close_agent",
 ] as const;
-export const CODEX_SUBAGENT_RESERVED_TOOL_NAMES = [
+export const SUBAGENT_RESERVED_TOOL_NAMES = [
   "spawn_agent",
   "send_input",
   "wait_agent",
   "close_agent",
 ] as const;
-export const CODEX_SUBAGENT_CHILD_ENV = "PI_CODEX_SUBAGENT_CHILD";
-export const CODEX_AGENT_PROFILE_NAME_ENV = "PI_CODEX_AGENT_PROFILE_NAME";
-export const CODEX_AGENT_PROFILE_JSON_ENV = "PI_CODEX_AGENT_PROFILE_JSON";
+export const SUBAGENT_CHILD_ENV = "PI_SUBAGENT_CHILD";
+export const LEGACY_SUBAGENT_CHILD_ENV = "PI_CODEX_SUBAGENT_CHILD";
+export const AGENT_PROFILE_NAME_ENV = "PI_AGENT_PROFILE_NAME";
+export const LEGACY_AGENT_PROFILE_NAME_ENV = "PI_CODEX_AGENT_PROFILE_NAME";
+export const AGENT_PROFILE_JSON_ENV = "PI_AGENT_PROFILE_JSON";
+export const LEGACY_AGENT_PROFILE_JSON_ENV = "PI_CODEX_AGENT_PROFILE_JSON";
 
-export const PROJECT_ROOT = process.env.PI_CODEX_PROJECT_ROOT || process.cwd();
+export const CODEX_SUBAGENT_TOOL_NAMES = SUBAGENT_TOOL_NAMES;
+export const CODEX_SUBAGENT_RESERVED_TOOL_NAMES = SUBAGENT_RESERVED_TOOL_NAMES;
+export const CODEX_SUBAGENT_CHILD_ENV = LEGACY_SUBAGENT_CHILD_ENV;
+export const CODEX_AGENT_PROFILE_NAME_ENV = LEGACY_AGENT_PROFILE_NAME_ENV;
+export const CODEX_AGENT_PROFILE_JSON_ENV = LEGACY_AGENT_PROFILE_JSON_ENV;
+
+export const PROJECT_ROOT =
+  process.env.PI_SUBAGENT_PROJECT_ROOT || process.env.PI_CODEX_PROJECT_ROOT || process.cwd();
 const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const EXTENSION_ENTRY = path.join(EXTENSION_DIR, "..", "child-entry.ts");
 export const RPC_COMMAND_TIMEOUT_MS = 5_000;
 export const CHILD_EXIT_GRACE_MS = 1_000;
 export const SUBAGENT_ENTRY_TYPES = {
+  create: "subagent:create",
+  update: "subagent:update",
+  attach: "subagent:attach",
+  detach: "subagent:detach",
+  close: "subagent:close",
+} as const;
+
+export const LEGACY_SUBAGENT_ENTRY_TYPES = {
   create: "codex-subagent:create",
   update: "codex-subagent:update",
   attach: "codex-subagent:attach",
@@ -33,7 +51,9 @@ export const SUBAGENT_ENTRY_TYPES = {
   close: "codex-subagent:close",
 } as const;
 
-export type SubagentEntryType = (typeof SUBAGENT_ENTRY_TYPES)[keyof typeof SUBAGENT_ENTRY_TYPES];
+export type SubagentEntryType =
+  | (typeof SUBAGENT_ENTRY_TYPES)[keyof typeof SUBAGENT_ENTRY_TYPES]
+  | (typeof LEGACY_SUBAGENT_ENTRY_TYPES)[keyof typeof LEGACY_SUBAGENT_ENTRY_TYPES];
 export type DurableChildStatus = "live_running" | "live_idle" | "detached" | "failed" | "closed";
 export type AgentToolStatus = "running" | "idle" | "detached" | "failed" | "closed" | "timeout";
 

@@ -29,6 +29,12 @@ test("parseBundledRoleAsset extracts developer instructions and role settings", 
   });
 });
 
+test("built-in explorer role includes bundled developer instructions", () => {
+  const explorer = resolveBuiltInAgentProfiles({ includeHidden: true }).profiles.get("explorer");
+  assert.ok(explorer);
+  assert.match(explorer?.developerInstructions ?? "", /^You are Sage, an expert codebase research and exploration assistant/m);
+});
+
 test("applySpawnAgentProfile defaults to default profile and preserves explicit overrides when unlocked", () => {
   const applied = applySpawnAgentProfile({
     profiles: resolveBuiltInAgentProfiles({ includeHidden: true }).profiles,

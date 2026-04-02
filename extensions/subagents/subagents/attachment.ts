@@ -8,11 +8,14 @@ import type { ChildProfileBootstrap } from "./profiles-apply.ts";
 import type { LiveChildAttachment } from "./types.ts";
 
 import {
-  CODEX_AGENT_PROFILE_JSON_ENV,
-  CODEX_AGENT_PROFILE_NAME_ENV,
-  CODEX_SUBAGENT_CHILD_ENV,
+  AGENT_PROFILE_JSON_ENV,
+  AGENT_PROFILE_NAME_ENV,
   EXTENSION_ENTRY,
+  LEGACY_AGENT_PROFILE_JSON_ENV,
+  LEGACY_AGENT_PROFILE_NAME_ENV,
+  LEGACY_SUBAGENT_CHILD_ENV,
   PROJECT_ROOT,
+  SUBAGENT_CHILD_ENV,
 } from "./types.ts";
 
 export function resolveChildSessionDir(
@@ -55,14 +58,22 @@ export function createLiveAttachment(options: {
     env: {
       ...process.env,
       FORCE_COLOR: "0",
+      PI_SUBAGENT_PROJECT_ROOT: PROJECT_ROOT,
       PI_CODEX_PROJECT_ROOT: PROJECT_ROOT,
       ...(options.profileBootstrap?.name
-        ? { [CODEX_AGENT_PROFILE_NAME_ENV]: options.profileBootstrap.name }
+        ? {
+            [AGENT_PROFILE_NAME_ENV]: options.profileBootstrap.name,
+            [LEGACY_AGENT_PROFILE_NAME_ENV]: options.profileBootstrap.name,
+          }
         : {}),
       ...(options.profileBootstrap
-        ? { [CODEX_AGENT_PROFILE_JSON_ENV]: JSON.stringify(options.profileBootstrap) }
+        ? {
+            [AGENT_PROFILE_JSON_ENV]: JSON.stringify(options.profileBootstrap),
+            [LEGACY_AGENT_PROFILE_JSON_ENV]: JSON.stringify(options.profileBootstrap),
+          }
         : {}),
-      [CODEX_SUBAGENT_CHILD_ENV]: "1",
+      [SUBAGENT_CHILD_ENV]: "1",
+      [LEGACY_SUBAGENT_CHILD_ENV]: "1",
     },
     stdio: ["pipe", "pipe", "pipe"],
   });

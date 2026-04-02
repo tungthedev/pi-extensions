@@ -7,7 +7,7 @@ import test from "node:test";
 import { resolveChildSessionDir } from "./attachment.ts";
 
 test("resolveChildSessionDir stores child sessions under ~/.pi/subagents/sessions", () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), "codex-subagent-home-"));
+  const root = mkdtempSync(path.join(os.tmpdir(), "subagent-home-"));
   const homeDir = path.join(root, "home");
 
   try {
@@ -19,4 +19,3 @@ test("resolveChildSessionDir stores child sessions under ~/.pi/subagents/session
     rmSync(root, { recursive: true, force: true });
   }
 });
-

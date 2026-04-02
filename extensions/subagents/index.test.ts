@@ -9,7 +9,7 @@ import {
   buildSendInputContent,
   buildSpawnAgentContent,
   buildWaitAgentContent,
-  CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
+  SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
   deriveDurableStatusFromState,
   extractLastAssistantText,
   flattenCollabItems,
@@ -126,7 +126,7 @@ test("rebuildDurableRegistry reconstructs the latest durable record and closes s
   const records = rebuildDurableRegistry([
     {
       type: "custom",
-      customType: "codex-subagent:create",
+      customType: "subagent:create",
       data: {
         record: {
           agentId: "agent-1",
@@ -139,7 +139,7 @@ test("rebuildDurableRegistry reconstructs the latest durable record and closes s
     },
     {
       type: "custom",
-      customType: "codex-subagent:update",
+      customType: "subagent:update",
       data: {
         record: {
           agentId: "agent-1",
@@ -407,7 +407,7 @@ test("formatSubagentNotificationMessage wraps model-visible subagent status payl
     last_assistant_text: "child done",
   });
 
-  assert.equal(CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE, "codex-subagent-notification");
+  assert.equal(SUBAGENT_NOTIFICATION_CUSTOM_TYPE, "subagent-notification");
   assert.match(message, /^<subagent_notification>\n/);
   assert.match(message, /\n<\/subagent_notification>$/);
 
@@ -418,6 +418,26 @@ test("formatSubagentNotificationMessage wraps model-visible subagent status payl
     durable_status: "live_idle",
     last_assistant_text: "child done",
   });
+});
+
+test("rebuildDurableRegistry still accepts legacy codex entry types", () => {
+  const records = rebuildDurableRegistry([
+    {
+      type: "custom",
+      customType: "codex-subagent:create",
+      data: {
+        record: {
+          agentId: "agent-legacy",
+          cwd: "/tmp/project",
+          status: "live_idle",
+          createdAt: "2026-03-17T00:00:00.000Z",
+          updatedAt: "2026-03-17T00:00:00.000Z",
+        },
+      },
+    },
+  ] as never);
+
+  assert.equal(records.get("agent-legacy")?.agentId, "agent-legacy");
 });
 
 test("parseSubagentNotificationMessage extracts wrapped notification payloads", () => {

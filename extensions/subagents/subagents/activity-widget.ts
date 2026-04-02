@@ -4,7 +4,7 @@ import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 import { getSubagentDisplayName } from "./rendering.ts";
 
-export const SUBAGENT_ACTIVITY_WIDGET_KEY = "codex-subagents:activity-widget";
+export const SUBAGENT_ACTIVITY_WIDGET_KEY = "subagents:activity-widget";
 
 const MAX_COLUMNS = 3;
 const MAX_VISIBLE_ROWS = 3;

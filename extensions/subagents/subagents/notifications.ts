@@ -1,6 +1,8 @@
 import type { AgentSnapshot } from "./types.ts";
 
-export const CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE = "codex-subagent-notification";
+export const SUBAGENT_NOTIFICATION_CUSTOM_TYPE = "subagent-notification";
+export const LEGACY_SUBAGENT_NOTIFICATION_CUSTOM_TYPE = "codex-subagent-notification";
+export const CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE = LEGACY_SUBAGENT_NOTIFICATION_CUSTOM_TYPE;
 
 export function getSubagentNotificationDeliveryOptions(parentIsStreaming: boolean):
   | { deliverAs: "steer" }

@@ -42,9 +42,11 @@ import { generateUniqueSubagentName, resolveSubagentName } from "./naming.ts";
 import {
   buildWaitAgentContent,
   CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
+  LEGACY_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
   formatSubagentNotificationMessage,
   getSubagentNotificationDeliveryOptions,
   parseSubagentNotificationMessage,
+  SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
 } from "./notifications.ts";
 import { rebuildDurableRegistry } from "./persistence.ts";
 import { applySpawnAgentProfile, resolveRequestedAgentType } from "./profiles-apply.ts";
@@ -74,10 +76,15 @@ import {
 import { extractLastAssistantText, isResumable } from "./session.ts";
 import { deriveDurableStatusFromState } from "./state.ts";
 import {
+  AGENT_PROFILE_JSON_ENV,
+  AGENT_PROFILE_NAME_ENV,
   CHILD_EXIT_GRACE_MS,
   CODEX_SUBAGENT_CHILD_ENV,
   CODEX_SUBAGENT_RESERVED_TOOL_NAMES,
   CODEX_SUBAGENT_TOOL_NAMES,
+  SUBAGENT_CHILD_ENV,
+  SUBAGENT_RESERVED_TOOL_NAMES,
+  SUBAGENT_TOOL_NAMES,
   SUBAGENT_ENTRY_TYPES,
 } from "./types.ts";
 
@@ -701,7 +708,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
 
     pi.sendMessage(
       {
-        customType: CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
+        customType: SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
         content: formatSubagentNotificationMessage(snapshot),
         display: true,
         details: snapshot,
@@ -726,7 +733,48 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   };
 
   pi.registerMessageRenderer<AgentSnapshot>(
-    CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
+    SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
+    (message, { expanded }, theme) => {
+      const messageContent = typeof message.content === "string" ? message.content : undefined;
+      const snapshot =
+        extractSnapshotDetails(
+          message.details as AgentSnapshot | { status?: AgentSnapshot } | undefined,
+        ) ?? parseSubagentNotificationMessage(messageContent);
+      if (!snapshot) {
+        return new Text(messageContent ?? "", 0, 0);
+      }
+
+      const displayName = getSubagentDisplayName(snapshot);
+      const statusColor =
+        snapshot.status === "idle"
+          ? "success"
+          : snapshot.status === "failed"
+            ? "error"
+            : snapshot.status === "timeout"
+              ? "warning"
+              : "muted";
+      const summary =
+        snapshot.last_error ??
+        summarizeSubagentReply(
+          snapshot.last_assistant_text,
+          expanded ? 600 : MAX_SUBAGENT_NOTIFICATION_PREVIEW_CHARS,
+        );
+      let detail = `${theme.fg("accent", displayName)}${theme.fg("muted", ": ")}${theme.fg(statusColor, getSubagentCompletionLabel(snapshot.status))}`;
+      if (summary) {
+        detail += `${theme.fg("muted", " - ")}${theme.fg("toolOutput", summary)}`;
+      }
+
+      return new Text(
+        `${theme.bold(theme.fg("text", "• Agent finished"))}` +
+          `\n  ${theme.fg("muted", "└ ")}${detail}`,
+        0,
+        0,
+      );
+    },
+  );
+
+  pi.registerMessageRenderer<AgentSnapshot>(
+    LEGACY_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
     (message, { expanded }, theme) => {
       const messageContent = typeof message.content === "string" ? message.content : undefined;
       const snapshot =
@@ -1879,6 +1927,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     },
   });
 
+  void SUBAGENT_RESERVED_TOOL_NAMES;
   void CODEX_SUBAGENT_RESERVED_TOOL_NAMES;
 }
 
@@ -1907,6 +1956,12 @@ export {
   buildSendInputContent,
   buildSpawnAgentContent,
   buildWaitAgentContent,
+  AGENT_PROFILE_JSON_ENV,
+  AGENT_PROFILE_NAME_ENV,
+  SUBAGENT_CHILD_ENV,
+  SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
+  SUBAGENT_RESERVED_TOOL_NAMES,
+  SUBAGENT_TOOL_NAMES,
   CODEX_SUBAGENT_CHILD_ENV,
   CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
   CODEX_SUBAGENT_RESERVED_TOOL_NAMES,
@@ -1928,3 +1983,5 @@ export {
   resolveCodexConfigPath,
 } from "./profiles.ts";
 export { applySpawnAgentProfile, resolveRequestedAgentType } from "./profiles-apply.ts";
+
+export const registerSubagentTools = registerCodexSubagentTools;

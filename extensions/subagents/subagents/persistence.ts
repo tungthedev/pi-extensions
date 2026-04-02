@@ -6,10 +6,13 @@ import type {
 } from "./types.ts";
 
 import { normalizeReconstructedStatus } from "./state.ts";
-import { SUBAGENT_ENTRY_TYPES } from "./types.ts";
+import { LEGACY_SUBAGENT_ENTRY_TYPES, SUBAGENT_ENTRY_TYPES } from "./types.ts";
 
 function isRegistryEntryType(value: unknown): value is SubagentEntryType {
-  return Object.values(SUBAGENT_ENTRY_TYPES).includes(value as SubagentEntryType);
+  return (
+    (Object.values(SUBAGENT_ENTRY_TYPES) as string[]).includes(value as string) ||
+    (Object.values(LEGACY_SUBAGENT_ENTRY_TYPES) as string[]).includes(value as string)
+  );
 }
 
 function isDurableChildRecord(value: unknown): value is DurableChildRecord {

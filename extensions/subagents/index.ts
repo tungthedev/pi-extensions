@@ -1,11 +1,13 @@
 /**
- * Adds Codex-style subagent tools for spawning and managing child agents.
+ * Adds persistent subagent tools for spawning and managing child agents.
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { CODEX_SUBAGENT_CHILD_ENV, registerCodexSubagentTools } from "./subagents/index.ts";
+import { CODEX_SUBAGENT_CHILD_ENV, SUBAGENT_CHILD_ENV, registerSubagentTools } from "./subagents/index.ts";
 
 export {
+  AGENT_PROFILE_JSON_ENV,
+  AGENT_PROFILE_NAME_ENV,
   applySpawnAgentProfile,
   buildSpawnAgentTypeDescription,
   buildSendInputContent,
@@ -16,6 +18,10 @@ export {
   CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
   CODEX_SUBAGENT_RESERVED_TOOL_NAMES,
   CODEX_SUBAGENT_TOOL_NAMES,
+  SUBAGENT_CHILD_ENV,
+  SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
+  SUBAGENT_RESERVED_TOOL_NAMES,
+  SUBAGENT_TOOL_NAMES,
   childSnapshot,
   deriveDurableStatusFromState,
   flattenCollabItems,
@@ -64,8 +70,8 @@ export type {
 } from "./subagents/index.ts";
 export type { DurableChildStatus } from "./subagents/types.ts";
 
-export default function codexSubagents(pi: ExtensionAPI) {
-  if (process.env[CODEX_SUBAGENT_CHILD_ENV] !== "1") {
-    registerCodexSubagentTools(pi);
+export default function subagentsExtension(pi: ExtensionAPI) {
+  if (process.env[SUBAGENT_CHILD_ENV] !== "1" && process.env[CODEX_SUBAGENT_CHILD_ENV] !== "1") {
+    registerSubagentTools(pi);
   }
 }
