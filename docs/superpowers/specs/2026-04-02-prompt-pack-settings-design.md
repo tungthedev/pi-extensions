@@ -68,6 +68,7 @@ The UI should be implemented as a package settings surface, not as a one-off sys
 ### Behavior
 
 - The chosen value is written to global Pi settings only.
+- A successful settings change takes effect on the next user turn without requiring `/reload`.
 - A successful change shows a notification indicating the selected prompt pack.
 - Invalid direct command arguments show a warning and do not write config.
 - If the setting is missing or invalid, prompt injection is disabled.
@@ -102,6 +103,7 @@ Responsibilities after refactor:
 
 - Keep mode state, tools, workflow, resources, and Forge commands.
 - Export and reuse Forge prompt-building helpers.
+- Share live Forge runtime state with `prompt-pack`, especially the currently selected Forge mode.
 - Stop injecting the Forge prompt directly in `before_agent_start`.
 
 ### 4. Existing Codex Prompt Logic
@@ -133,6 +135,7 @@ type TungthedevSettings = {
 ### Read Semantics
 
 - Read from `~/.pi/agent/settings.json`.
+- Read the effective package setting fresh for prompt injection so command-driven changes apply on the next turn without restart or reload.
 - Parse the root object defensively.
 - Read `settings["tungthedev/pi"]` only if it is an object.
 - Read `systemPrompt` only if it is `"codex"`, `"forge"`, or `null`.
@@ -223,7 +226,9 @@ Implementation notes:
 
 - Remove the `before_agent_start` prompt injection handler from `extensions/forge-content/index.ts`.
 - Keep `buildForgePrompt()` as the source of Forge prompt composition.
-- Reuse `getActiveToolInfos()` from `forge-content` directly, or extract it if needed by `prompt-pack`.
+- Extract shared Forge runtime helpers so both `forge-content` and `prompt-pack` read the same live state.
+- The shared runtime surface must expose the current Forge mode and active tool snapshot used for prompt construction.
+- `/forge`, `/sage`, `/muse`, and `/forge-mode ...` must update that shared state before the next `before_agent_start` run so the Forge prompt reflects the current mode.
 
 ### D. `codex-system-prompt` deprecation
 
