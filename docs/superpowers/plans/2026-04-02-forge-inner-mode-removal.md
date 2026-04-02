@@ -77,24 +77,26 @@ import test from "node:test";
 
 import registerForgeContentExtension from "./index.ts";
 
-test("forge-content applies one static Forge preset when toolSet is forge", async () => {
-  const activeToolSets: string[][] = [];
+test("forge-content no longer registers inner mode commands", async () => {
+  const commands: string[] = [];
   const handlers = new Map<string, Function[]>();
 
   registerForgeContentExtension({
     on(event: string, handler: Function) {
       handlers.set(event, [...(handlers.get(event) ?? []), handler]);
     },
-    registerCommand() {
-      throw new Error("forge-content should not register slash commands");
+    registerCommand(name: string) {
+      commands.push(name);
     },
-    setActiveTools(tools: string[]) {
-      activeToolSets.push(tools);
-    },
+    setActiveTools() {},
   } as never);
 
   assert.equal(handlers.has("session_start"), true);
   assert.equal(handlers.has("before_agent_start"), true);
+  assert.equal(commands.includes("forge"), false);
+  assert.equal(commands.includes("sage"), false);
+  assert.equal(commands.includes("muse"), false);
+  assert.equal(commands.includes("forge-mode"), false);
 });
 ```
 
