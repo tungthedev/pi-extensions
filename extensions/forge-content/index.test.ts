@@ -5,13 +5,16 @@ import registerForgeContentExtension from "./index.ts";
 
 test("forge-content no longer registers inner mode commands", async () => {
   const commands: string[] = [];
+  const tools: string[] = [];
   const handlers = new Map<string, Function[]>();
 
   registerForgeContentExtension({
     on(event: string, handler: Function) {
       handlers.set(event, [...(handlers.get(event) ?? []), handler]);
     },
-    registerTool() {},
+    registerTool(definition: { name: string }) {
+      tools.push(definition.name);
+    },
     registerCommand(name: string) {
       commands.push(name);
     },
@@ -24,4 +27,5 @@ test("forge-content no longer registers inner mode commands", async () => {
   assert.equal(commands.includes("sage"), false);
   assert.equal(commands.includes("muse"), false);
   assert.equal(commands.includes("forge-mode"), false);
+  assert.equal(tools.includes("shell"), false);
 });

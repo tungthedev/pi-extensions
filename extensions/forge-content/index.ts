@@ -8,7 +8,6 @@ import { registerForgeWorkflow } from "./workflow/index.ts";
 const STATIC_FORGE_TOOL_SET = [
   "read",
   "write",
-  "shell",
   "fs_search",
   "patch",
   "followup",

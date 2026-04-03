@@ -8,10 +8,12 @@ const TUNGTHEDEV_NAMESPACE = "tungthedev/pi";
 export type SystemPromptPack = "codex" | "forge" | null;
 export type ToolSetPack = "codex" | "forge";
 export const DEFAULT_TOOL_SET: ToolSetPack = "codex";
+export const DEFAULT_CUSTOM_SHELL_TOOL = true;
 
 export type TungthedevSettings = {
   systemPrompt: SystemPromptPack;
   toolSet: ToolSetPack;
+  customShellTool: boolean;
 };
 
 type SettingsRoot = Record<string, unknown>;
@@ -28,6 +30,10 @@ function normalizeToolSet(value: unknown): ToolSetPack {
   return value === "forge" ? "forge" : DEFAULT_TOOL_SET;
 }
 
+function normalizeCustomShellTool(value: unknown): boolean {
+  return typeof value === "boolean" ? value : DEFAULT_CUSTOM_SHELL_TOOL;
+}
+
 export function parseTungthedevSettings(root: unknown): TungthedevSettings {
   const namespace =
     root && typeof root === "object" && !Array.isArray(root)
@@ -42,10 +48,15 @@ export function parseTungthedevSettings(root: unknown): TungthedevSettings {
     namespace && typeof namespace === "object" && !Array.isArray(namespace)
       ? (namespace as SettingsRoot).toolSet
       : undefined;
+  const customShellTool =
+    namespace && typeof namespace === "object" && !Array.isArray(namespace)
+      ? (namespace as SettingsRoot).customShellTool
+      : undefined;
 
   return {
     systemPrompt: normalizeSystemPrompt(systemPrompt),
     toolSet: normalizeToolSet(toolSet),
+    customShellTool: normalizeCustomShellTool(customShellTool),
   };
 }
 
@@ -104,6 +115,7 @@ async function writeTungthedevSettings(
       ? { ...(currentNamespace as SettingsRoot) }
       : {};
 
+  delete namespace.skillListInjection;
   root[TUNGTHEDEV_NAMESPACE] = updater(namespace);
 
   await writeSettingsRoot(filePath, root);
@@ -126,5 +138,15 @@ export async function writeToolSetSetting(
   await writeTungthedevSettings((namespace) => ({
     ...namespace,
     toolSet,
+  }), filePath);
+}
+
+export async function writeCustomShellToolSetting(
+  customShellTool: boolean,
+  filePath = getGlobalPiSettingsPath(),
+): Promise<void> {
+  await writeTungthedevSettings((namespace) => ({
+    ...namespace,
+    customShellTool,
   }), filePath);
 }

@@ -2,22 +2,62 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 
+import type { AskUserParams, RequestUserInputDetails } from "../../ask-user/index.ts";
+import { executeAskUserRequest } from "../../ask-user/index.ts";
+
+type FollowupParams = {
+  question: string;
+  multiple?: boolean;
+  option1?: string;
+  option2?: string;
+  option3?: string;
+  option4?: string;
+  option5?: string;
+};
+
 type FollowupDetails = {
   question: string;
   answer?: string;
   interrupted?: boolean;
 };
 
-function collectOptions(params: {
-  option1?: string;
-  option2?: string;
-  option3?: string;
-  option4?: string;
-  option5?: string;
-}): string[] {
+function collectOptions(params: FollowupParams): string[] {
   return [params.option1, params.option2, params.option3, params.option4, params.option5].filter(
     (value): value is string => Boolean(value?.trim()),
   );
+}
+
+export function buildAskUserParamsFromFollowup(params: FollowupParams): AskUserParams {
+  const options = collectOptions(params);
+  if (options.length === 0) {
+    return { question: params.question };
+  }
+
+  if (params.multiple) {
+    return {
+      question: `${params.question}\nOptions: ${options.map((value, index) => `${index + 1}. ${value}`).join("  ")}`,
+    };
+  }
+
+  return {
+    question: params.question,
+    options,
+    allow_text_input: false,
+  };
+}
+
+export function buildFollowupDetails(
+  question: string,
+  details: RequestUserInputDetails,
+): FollowupDetails {
+  const firstAnswer = Object.values(details.answers)[0];
+  const answer = firstAnswer?.label?.trim() || firstAnswer?.answers[0]?.trim();
+
+  return {
+    question,
+    answer: answer || undefined,
+    interrupted: details.interrupted,
+  };
 }
 
 export function registerForgeFollowupTool(pi: ExtensionAPI): void {
@@ -46,32 +86,18 @@ export function registerForgeFollowupTool(pi: ExtensionAPI): void {
         };
       }
 
-      const options = collectOptions(params);
-      let answer: string | undefined;
-      let interrupted = false;
-
-      if (options.length > 0 && !params.multiple) {
-        answer = await ctx.ui.select("Follow-up", options);
-        interrupted = answer === undefined;
-      } else if (options.length > 0 && params.multiple) {
-        const prompt = `${params.question}\nOptions: ${options.map((value, index) => `${index + 1}. ${value}`).join("  ")}`;
-        answer = await ctx.ui.input("Follow-up", prompt);
-        interrupted = answer === undefined;
-      } else {
-        answer = await ctx.ui.input("Follow-up", params.question);
-        interrupted = answer === undefined;
-      }
+      const askUserResult = await executeAskUserRequest(ctx, buildAskUserParamsFromFollowup(params));
+      const details = buildFollowupDetails(params.question, askUserResult.details);
 
       return {
         content: [
-          { type: "text", text: interrupted ? "Follow-up cancelled" : `Follow-up answer: ${answer}` },
+          {
+            type: "text",
+            text: details.interrupted ? "Follow-up cancelled" : `Follow-up answer: ${details.answer}`,
+          },
         ],
-        details: {
-          question: params.question,
-          answer,
-          interrupted,
-        } satisfies FollowupDetails,
-        isError: interrupted,
+        details,
+        isError: details.interrupted,
       };
     },
     renderCall(args, theme) {

@@ -3,21 +3,22 @@ import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agen
 import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 
-import { renderBashResult } from "../renderers/bash.ts";
-import { renderEmptySlot, renderFallbackResult } from "../renderers/common.ts";
+import { renderBashResult } from "../codex-content/renderers/bash.ts";
+import { renderEmptySlot, renderFallbackResult } from "../codex-content/renderers/common.ts";
 import {
   execCommand,
-  getShellEnv,
   resolveAbsolutePath,
+  trimToBudget,
+} from "../codex-content/tools/runtime.ts";
+import {
+  getShellEnv,
+  readConfiguredShellPath,
   resolveShellInvocation,
   splitLeadingCdCommand,
   stripTrailingBackgroundOperator,
-  trimToBudget,
 } from "./runtime.ts";
 
-export { resolveShellInvocation };
-
-type ShellCommandParams = {
+type ShellParams = {
   command?: string;
   workdir?: string;
   timeout_ms?: number;
@@ -32,7 +33,7 @@ type NormalizedShellInput = {
 
 type ToolResult<TDetails> = AgentToolResult<TDetails> & { isError?: boolean };
 
-function normalizeShellInput(cwd: string, params: ShellCommandParams): NormalizedShellInput {
+function normalizeShellInput(cwd: string, params: ShellParams): NormalizedShellInput {
   let workdir = resolveAbsolutePath(cwd, params.workdir ?? ".");
   let command = String(params.command ?? "").trim();
   const notes: string[] = [];
@@ -102,10 +103,10 @@ function formatShellOutput(
   return trimToBudget(sections.join("\n")).text;
 }
 
-export function registerShellCommandTool(pi: ExtensionAPI): void {
+export function registerShellTool(pi: ExtensionAPI): void {
   pi.registerTool({
-    name: "shell_command",
-    label: "shell_command",
+    name: "shell",
+    label: "shell",
     description:
       "Runs a shell command and returns its output. Always set the workdir param when possible.",
     parameters: Type.Object({
@@ -143,8 +144,10 @@ export function registerShellCommandTool(pi: ExtensionAPI): void {
         return buildShellErrorResult(params.command, normalized.workdir, workdirError);
       }
 
+      const configuredShellPath = await readConfiguredShellPath();
       const invocation = resolveShellInvocation(normalized.command, {
         login: params.login,
+        configuredShellPath,
       });
       const result = await execCommand(invocation.shell, invocation.shellArgs, normalized.workdir, {
         env: getShellEnv(),

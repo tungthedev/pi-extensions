@@ -4,14 +4,7 @@ import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 
-import { resolveAbsolutePathWithVariants } from "../../codex-content/compatibility-tools/runtime.ts";
-
-type PatchParams = {
-  file_path: string;
-  old_string: string;
-  new_string: string;
-  replace_all?: boolean;
-};
+import { resolveAbsolutePathWithVariants } from "../../codex-content/tools/runtime.ts";
 
 type PatchResultDetails = {
   filePath: string;

@@ -1,24 +1,20 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { getPiBinDir } from "../codex-content/tools/runtime.ts";
 import {
-  execCommand,
-  getPiAgentDir,
-  getPiBinDir,
   getShellEnv,
-  normalizeRipgrepGlob,
-  resolveAbsolutePath,
-  resolveAbsolutePathWithVariants,
-  resolvePiManagedToolPath,
-  resolvePiToolPath,
+  readConfiguredShellPath,
   resolveShellInvocation,
+  splitLeadingCdCommand,
+  stripTrailingBackgroundOperator,
 } from "./runtime.ts";
 
 async function withTempDir(run: (dir: string) => Promise<void>) {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "codex-tools-"));
+  const dir = await mkdtemp(path.join(os.tmpdir(), "pi-shell-settings-"));
   try {
     await run(dir);
   } finally {
@@ -49,6 +45,35 @@ async function withEnv(
     }
   }
 }
+
+test("readConfiguredShellPath reads shellPath from the global Pi settings file", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-shell-settings-"));
+  const settingsPath = path.join(tempDir, "settings.json");
+
+  try {
+    await writeFile(
+      settingsPath,
+      `${JSON.stringify({ shellPath: "C:\\cygwin64\\bin\\bash.exe" }, null, 2)}\n`,
+      "utf8",
+    );
+
+    assert.equal(await readConfiguredShellPath(settingsPath), "C:\\cygwin64\\bin\\bash.exe");
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("readConfiguredShellPath ignores malformed settings files", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-shell-settings-"));
+  const settingsPath = path.join(tempDir, "settings.json");
+
+  try {
+    await writeFile(settingsPath, "{not-json", "utf8");
+    assert.equal(await readConfiguredShellPath(settingsPath), undefined);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
 
 test("resolveShellInvocation uses supported user shells and falls back for unknown shells", () => {
   assert.deepEqual(
@@ -111,49 +136,19 @@ test("resolveShellInvocation uses supported user shells and falls back for unkno
   );
 });
 
-test("execCommand preserves timeout exit codes and partial stdout", async () => {
-  const result = await execCommand(
-    process.execPath,
-    ["-e", "process.stdout.write('ready\\n'); setTimeout(() => {}, 1000);"],
-    process.cwd(),
-    { timeoutMs: 50 },
+test("resolveShellInvocation prefers configured shellPath from settings", () => {
+  assert.deepEqual(
+    resolveShellInvocation("echo hi", {
+      configuredShellPath: "C:\\cygwin64\\bin\\bash.exe",
+      userShell: "/opt/homebrew/bin/nu",
+      login: true,
+      shellExists: (shellPath) => shellPath === "C:\\cygwin64\\bin\\bash.exe",
+    }),
+    {
+      shell: "C:\\cygwin64\\bin\\bash.exe",
+      shellArgs: ["-lc", "echo hi"],
+    },
   );
-
-  assert.equal(result.exitCode, 124);
-  assert.match(result.stdout, /ready/);
-  assert.match(result.stderr, /Command timed out after 50ms/);
-});
-
-test("resolveAbsolutePath expands home references and strips the @ prefix", () => {
-  assert.equal(
-    resolveAbsolutePath("/workspace", "@~/sample.txt"),
-    path.join(os.homedir(), "sample.txt"),
-  );
-
-  assert.equal(
-    resolveAbsolutePath("/workspace", "@~\\nested\\sample.txt"),
-    path.join(os.homedir(), "nested", "sample.txt"),
-  );
-});
-
-test("normalizeRipgrepGlob converts Windows separators to ripgrep glob separators", () => {
-  assert.equal(normalizeRipgrepGlob("src\\**\\*.ts"), "src/**/*.ts");
-});
-
-test("resolvePiToolPath prefers Pi's managed bin directory", async () => {
-  await withTempDir(async (dir) => {
-    await withEnv("PI_CODING_AGENT_DIR", dir, async () => {
-      const binDir = getPiBinDir();
-      const toolPath = path.join(binDir, process.platform === "win32" ? "rg.exe" : "rg");
-
-      assert.equal(getPiAgentDir(), dir);
-      await mkdir(binDir, { recursive: true });
-      await writeFile(toolPath, "");
-
-      assert.equal(resolvePiManagedToolPath("rg"), toolPath);
-      assert.equal(resolvePiToolPath("rg"), toolPath);
-    });
-  });
 });
 
 test("getShellEnv prepends Pi's managed bin directory to PATH once", async () => {
@@ -171,13 +166,16 @@ test("getShellEnv prepends Pi's managed bin directory to PATH once", async () =>
   });
 });
 
-test("resolveAbsolutePathWithVariants falls back to macOS-style unicode variants", async () => {
-  await withTempDir(async (dir) => {
-    const nfdName = "Cafe\u0301.txt";
-    const actualPath = path.join(dir, nfdName);
-    await writeFile(actualPath, "hello\n");
+test("splitLeadingCdCommand parses a leading cd chain", () => {
+  assert.deepEqual(splitLeadingCdCommand('cd "./nested dir" && npm test'), {
+    workdir: "./nested dir",
+    command: "npm test",
+  });
+});
 
-    const resolved = resolveAbsolutePathWithVariants(dir, "Café.txt");
-    assert.equal(resolved.normalize("NFC"), actualPath.normalize("NFC"));
+test("stripTrailingBackgroundOperator removes a trailing background marker", () => {
+  assert.deepEqual(stripTrailingBackgroundOperator("npm run dev &"), {
+    command: "npm run dev",
+    stripped: true,
   });
 });

@@ -7,15 +7,18 @@ export type SettingsCommandAction =
   | { action: "open-root" }
   | { action: "open-system-prompt" }
   | { action: "open-tool-set" }
+  | { action: "open-custom-shell-tool" }
   | { action: "set-system-prompt"; value: SystemPromptPack }
   | { action: "set-tool-set"; value: ToolSetPack }
+  | { action: "set-custom-shell-tool"; value: boolean }
   | { action: "invalid"; message: string };
 
 export type OpenSettingsUiOptions = {
-  focus?: "systemPrompt" | "toolSet";
+  focus?: "systemPrompt" | "toolSet" | "customShellTool";
   readSettings: () => Promise<TungthedevSettings>;
   writeSystemPrompt: (value: SystemPromptPack) => Promise<void>;
   writeToolSet: (value: ToolSetPack) => Promise<void>;
+  writeCustomShellTool: (value: boolean) => Promise<void>;
 };
 
 const SYSTEM_PROMPT_LABELS: Record<"None" | "Codex" | "Forge", SystemPromptPack> = {
@@ -29,6 +32,11 @@ const TOOL_SET_LABELS: Record<"Codex" | "Forge", ToolSetPack> = {
   Forge: "forge",
 };
 
+const CUSTOM_SHELL_TOOL_LABELS: Record<"Enabled" | "Disabled", boolean> = {
+  Enabled: true,
+  Disabled: false,
+};
+
 export function formatSystemPromptPackLabel(value: SystemPromptPack): "None" | "Codex" | "Forge" {
   if (value === "codex") return "Codex";
   if (value === "forge") return "Forge";
@@ -37,6 +45,10 @@ export function formatSystemPromptPackLabel(value: SystemPromptPack): "None" | "
 
 export function formatToolSetLabel(value: ToolSetPack): "Codex" | "Forge" {
   return value === "forge" ? "Forge" : "Codex";
+}
+
+export function formatCustomShellToolLabel(value: boolean): "Enabled" | "Disabled" {
+  return value ? "Enabled" : "Disabled";
 }
 
 export function parseSettingsCommand(args: string): SettingsCommandAction {
@@ -57,6 +69,17 @@ export function parseSettingsCommand(args: string): SettingsCommandAction {
       return { action: "set-tool-set", value: parts[1] };
     }
     return { action: "invalid", message: `Unknown tool set: ${parts[1]}` };
+  }
+
+  if (parts[0] === "custom-shell-tool") {
+    if (parts.length === 1) return { action: "open-custom-shell-tool" };
+    if (parts[1] === "on" || parts[1] === "enabled") {
+      return { action: "set-custom-shell-tool", value: true };
+    }
+    if (parts[1] === "off" || parts[1] === "disabled") {
+      return { action: "set-custom-shell-tool", value: false };
+    }
+    return { action: "invalid", message: `Unknown custom shell tool value: ${parts[1]}` };
   }
 
   {
@@ -83,6 +106,12 @@ export async function openTungthedevSettingsUi(
       label: "Tool set",
       currentValue: formatToolSetLabel(settings.toolSet),
       values: ["Codex", "Forge"],
+    },
+    {
+      id: "customShellTool",
+      label: "Custom shell tool",
+      currentValue: formatCustomShellToolLabel(settings.customShellTool),
+      values: ["Enabled", "Disabled"],
     },
   ];
 
@@ -120,6 +149,21 @@ export async function openTungthedevSettingsUi(
             currentValue: formatToolSetLabel(nextValue),
           };
           ctx.ui.notify(`Tool set: ${formatToolSetLabel(nextValue)}`, "info");
+          return;
+        }
+
+        if (id === "customShellTool") {
+          const nextValue =
+            CUSTOM_SHELL_TOOL_LABELS[newValue as keyof typeof CUSTOM_SHELL_TOOL_LABELS];
+          if (nextValue === undefined) return;
+
+          await options.writeCustomShellTool(nextValue);
+          const itemIndex = items.findIndex((item) => item.id === id);
+          items[itemIndex] = {
+            ...items[itemIndex],
+            currentValue: formatCustomShellToolLabel(nextValue),
+          };
+          ctx.ui.notify(`Custom shell tool: ${formatCustomShellToolLabel(nextValue)}`, "info");
         }
       },
       () => done(undefined),

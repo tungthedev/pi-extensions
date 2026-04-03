@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-cod
 
 import {
   readTungthedevSettings,
+  writeCustomShellToolSetting,
   writeToolSetSetting,
   writeSystemPromptSetting,
   type SystemPromptPack,
@@ -19,9 +20,10 @@ export type TungthedevCommandDeps = {
   readSettings: () => Promise<TungthedevSettings>;
   writeSystemPrompt: (value: SystemPromptPack) => Promise<void>;
   writeToolSet: (value: ToolSetPack) => Promise<void>;
+  writeCustomShellTool: (value: boolean) => Promise<void>;
   openSettingsUi: (
     ctx: ExtensionCommandContext,
-    options: { focus?: "systemPrompt" | "toolSet" },
+    options: { focus?: "systemPrompt" | "toolSet" | "customShellTool" },
   ) => Promise<void>;
 };
 
@@ -30,12 +32,14 @@ function createDefaultDeps(): TungthedevCommandDeps {
     readSettings: () => readTungthedevSettings(),
     writeSystemPrompt: (value) => writeSystemPromptSetting(value),
     writeToolSet: (value) => writeToolSetSetting(value),
+    writeCustomShellTool: (value) => writeCustomShellToolSetting(value),
     openSettingsUi: (ctx, options) =>
       openTungthedevSettingsUi(ctx, {
         focus: options.focus,
         readSettings: () => readTungthedevSettings(),
         writeSystemPrompt: (value) => writeSystemPromptSetting(value),
         writeToolSet: (value) => writeToolSetSetting(value),
+        writeCustomShellTool: (value) => writeCustomShellToolSetting(value),
       }),
   };
 }
@@ -64,13 +68,21 @@ export async function handleTungthedevCommand(
     return;
   }
 
+  if (action.action === "set-custom-shell-tool") {
+    await deps.writeCustomShellTool(action.value);
+    ctx.ui.notify(`Custom shell tool: ${action.value ? "Enabled" : "Disabled"}`, "info");
+    return;
+  }
+
   await deps.openSettingsUi(ctx, {
     focus:
       action.action === "open-system-prompt"
         ? "systemPrompt"
         : action.action === "open-tool-set"
           ? "toolSet"
-          : undefined,
+          : action.action === "open-custom-shell-tool"
+            ? "customShellTool"
+            : undefined,
   });
 }
 

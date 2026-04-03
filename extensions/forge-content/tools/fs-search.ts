@@ -8,7 +8,7 @@ import {
   resolveAbsolutePathWithVariants,
   resolvePiToolPath,
   trimToBudget,
-} from "../../codex-content/compatibility-tools/runtime.ts";
+} from "../../codex-content/tools/runtime.ts";
 
 export type ForgeSearchOutputMode = "content" | "files_with_matches" | "count";
 

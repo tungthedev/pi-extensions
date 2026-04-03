@@ -7,7 +7,6 @@ import { registerFindFilesTool } from "./find-files.ts";
 import { registerGrepFilesTool } from "./grep-files.ts";
 import { registerListDirTool } from "./list-dir.ts";
 import { registerReadFileTool } from "./read-file.ts";
-import { registerShellCommandTool } from "./shell-command.ts";
 import { registerViewImageTool } from "./view-image.ts";
 
 const REPLACED_BUILTIN_TOOL_NAMES = new Set([
@@ -15,13 +14,11 @@ const REPLACED_BUILTIN_TOOL_NAMES = new Set([
   "grep",
   "find",
   "ls",
-  "bash",
   "edit",
   "write",
 ]);
 
 const FORGE_TOOL_SET_TOOL_NAMES = new Set([
-  "shell",
   "fs_search",
   "patch",
   "followup",
@@ -69,7 +66,24 @@ export function registerCodexCompatibilityTools(pi: ExtensionAPI) {
   registerListDirTool(pi);
   registerFindFilesTool(pi);
   registerGrepFilesTool(pi);
-  registerShellCommandTool(pi);
   registerApplyPatchTool(pi);
   registerViewImageTool(pi);
 }
+
+export {
+  buildLineRecords,
+  isSecretFilePath,
+  readIndentationBlock,
+} from "./read-file.ts";
+export {
+  formatListDirectoryOutput,
+  listDirectoryEntries,
+  scanDirectoryEntries,
+} from "./list-dir.ts";
+export { findMatchingFiles, formatFindFilesOutput } from "./find-files.ts";
+export { findContentMatches, formatGrepFilesOutput } from "./grep-files.ts";
+export {
+  execCommand,
+  resolveAbsolutePath,
+  resolveAbsolutePathWithVariants,
+} from "./runtime.ts";
