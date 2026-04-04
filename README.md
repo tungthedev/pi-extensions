@@ -5,6 +5,7 @@ A collection of Pi packages:
 - `ext-manager` — An in-app extension manager. Trigger with `/extmgr`
 - `editor` — Replaces Pi's default editor with a boxed composer and an extensible status row.
 - `mermaid` — Renders Mermaid code blocks inline in chat and opens a full diagram viewer on demand.
+- `read` — Adds a standalone `read_file` tool with Pi-native read behavior and compact Codex-style call rendering.
 - `web-search` — Adds Gemini-backed `web_search` and `web_extract` tools for grounded web research.
 - `cloudflare-crawl` — Adds a Cloudflare Browser Rendering-backed `crawl_page` tool for actual page content fetching with foreground wait or background notification modes.
 - `codex-content` — Overrides default tools with Codex-style compatibility tools and TUI rendering.

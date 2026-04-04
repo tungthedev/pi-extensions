@@ -6,7 +6,6 @@ import { registerApplyPatchTool } from "./apply-patch.ts";
 import { registerFindFilesTool } from "./find-files.ts";
 import { registerGrepFilesTool } from "./grep-files.ts";
 import { registerListDirTool } from "./list-dir.ts";
-import { registerReadFileTool } from "./read-file.ts";
 import { registerViewImageTool } from "./view-image.ts";
 
 const REPLACED_BUILTIN_TOOL_NAMES = new Set([
@@ -62,7 +61,6 @@ export function registerCodexCompatibilityTools(pi: ExtensionAPI) {
 
   registerCodexWorkflowTools(pi);
 
-  registerReadFileTool(pi);
   registerListDirTool(pi);
   registerFindFilesTool(pi);
   registerGrepFilesTool(pi);
@@ -70,11 +68,6 @@ export function registerCodexCompatibilityTools(pi: ExtensionAPI) {
   registerViewImageTool(pi);
 }
 
-export {
-  buildLineRecords,
-  isSecretFilePath,
-  readIndentationBlock,
-} from "./read-file.ts";
 export {
   formatListDirectoryOutput,
   listDirectoryEntries,
