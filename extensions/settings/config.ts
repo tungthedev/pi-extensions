@@ -5,8 +5,8 @@ import { dirname, join } from "node:path";
 const SETTINGS_FILE = "settings.json";
 const TUNGTHEDEV_NAMESPACE = "tungthedev/pi";
 
-export type ToolSetPack = "codex" | "forge";
-export const DEFAULT_TOOL_SET: ToolSetPack = "codex";
+export type ToolSetPack = "pi" | "codex" | "forge";
+export const DEFAULT_TOOL_SET: ToolSetPack = "pi";
 export const DEFAULT_CUSTOM_SHELL_TOOL = true;
 export const DEFAULT_SYSTEM_MD_PROMPT = false;
 
@@ -22,16 +22,12 @@ export function getGlobalPiSettingsPath(agentDir = getAgentDir()): string {
   return join(agentDir, SETTINGS_FILE);
 }
 
-function normalizeLegacyContentPack(value: unknown): ToolSetPack | undefined {
-  return value === "codex" || value === "forge" ? value : undefined;
-}
-
-function normalizeToolSet(value: unknown, legacySystemPrompt: unknown): ToolSetPack {
-  if (value === "codex" || value === "forge") {
+function normalizeToolSet(value: unknown): ToolSetPack {
+  if (value === "pi" || value === "codex" || value === "forge") {
     return value;
   }
 
-  return normalizeLegacyContentPack(legacySystemPrompt) ?? DEFAULT_TOOL_SET;
+  return DEFAULT_TOOL_SET;
 }
 
 function normalizeCustomShellTool(value: unknown): boolean {
@@ -48,10 +44,6 @@ export function parseTungthedevSettings(root: unknown): TungthedevSettings {
       ? (root as SettingsRoot)[TUNGTHEDEV_NAMESPACE]
       : undefined;
 
-  const legacySystemPrompt =
-    namespace && typeof namespace === "object" && !Array.isArray(namespace)
-      ? (namespace as SettingsRoot).systemPrompt
-      : undefined;
   const toolSet =
     namespace && typeof namespace === "object" && !Array.isArray(namespace)
       ? (namespace as SettingsRoot).toolSet
@@ -66,7 +58,7 @@ export function parseTungthedevSettings(root: unknown): TungthedevSettings {
       : undefined;
 
   return {
-    toolSet: normalizeToolSet(toolSet, legacySystemPrompt),
+    toolSet: normalizeToolSet(toolSet),
     customShellTool: normalizeCustomShellTool(customShellTool),
     systemMdPrompt: normalizeSystemMdPrompt(systemMdPrompt),
   };

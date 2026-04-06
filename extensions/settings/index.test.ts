@@ -8,7 +8,7 @@ import { buildTungthedevSettingItems, parseSettingsCommand } from "./ui.ts";
 test("parseSettingsCommand rejects the removed system-prompt setting", () => {
   assert.deepEqual(parseSettingsCommand("system-prompt forge"), {
     action: "invalid",
-    message: "System prompts now follow the selected tool set. Use: tool-set codex|forge",
+    message: "System prompts now follow the selected tool set. Use: tool-set pi|codex|forge",
   });
 });
 
@@ -17,9 +17,9 @@ test("parseSettingsCommand opens root settings UI when no args are provided", ()
 });
 
 test("parseSettingsCommand handles direct tool-set writes", () => {
-  assert.deepEqual(parseSettingsCommand("tool-set forge"), {
+  assert.deepEqual(parseSettingsCommand("tool-set pi"), {
     action: "set-tool-set",
-    value: "forge",
+    value: "pi",
   });
 });
 
@@ -53,24 +53,26 @@ test("parseSettingsCommand rejects removed skill list injection setting", () => 
 
 test("buildTungthedevSettingItems includes descriptions for each setting", () => {
   const items = buildTungthedevSettingItems({
-    toolSet: "codex",
+    toolSet: "pi",
     customShellTool: true,
     systemMdPrompt: true,
   });
 
   assert.equal(items.length, 3);
   assert.equal(items[0]?.label, "Tool set");
-  assert.match(items[0]?.description ?? "", /Codex or Forge tool and prompt behavior/);
+  assert.equal(items[0]?.currentValue, "Pi");
+  assert.deepEqual(items[0]?.values, ["Pi", "Codex", "Forge"]);
+  assert.match(items[0]?.description ?? "", /Pi, Codex, or Forge tool and prompt behavior/);
   assert.match(items[1]?.description ?? "", /package shell tool/);
   assert.match(items[2]?.description ?? "", /overrides the active Pi, Codex, or Forge system prompt/);
 });
 
 test("handleTungthedevCommand writes the selected tool set directly", async () => {
-  const writes: Array<"codex" | "forge"> = [];
+  const writes: Array<"pi" | "codex" | "forge"> = [];
   const notifications: string[] = [];
   const deps: TungthedevCommandDeps = {
     readSettings: async () => ({
-      toolSet: "codex",
+      toolSet: "pi",
       customShellTool: true,
       systemMdPrompt: true,
     }),
@@ -89,7 +91,7 @@ test("handleTungthedevCommand writes the selected tool set directly", async () =
   };
 
   await handleTungthedevCommand(
-    "tool-set forge",
+    "tool-set pi",
     {
       hasUI: true,
       ui: {
@@ -101,8 +103,8 @@ test("handleTungthedevCommand writes the selected tool set directly", async () =
     deps,
   );
 
-  assert.deepEqual(writes, ["forge"]);
-  assert.deepEqual(notifications, ["Tool set: Forge"]);
+  assert.deepEqual(writes, ["pi"]);
+  assert.deepEqual(notifications, ["Tool set: Pi"]);
 });
 
 test("handleTungthedevCommand writes the selected custom shell setting directly", async () => {

@@ -13,6 +13,11 @@ import {
 } from "./config.ts";
 
 test("parseTungthedevSettings accepts tool-set values", () => {
+  assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": { toolSet: "pi" } }), {
+    toolSet: "pi",
+    customShellTool: true,
+    systemMdPrompt: false,
+  });
   assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": { toolSet: "codex" } }), {
     toolSet: "codex",
     customShellTool: true,
@@ -33,14 +38,14 @@ test("parseTungthedevSettings accepts tool-set values", () => {
   );
 });
 
-test("parseTungthedevSettings migrates legacy systemPrompt to tool set", () => {
+test("parseTungthedevSettings ignores legacy systemPrompt and falls back to pi", () => {
   assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": { systemPrompt: "forge" } }), {
-    toolSet: "forge",
+    toolSet: "pi",
     customShellTool: true,
     systemMdPrompt: false,
   });
   assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": { systemPrompt: "codex" } }), {
-    toolSet: "codex",
+    toolSet: "pi",
     customShellTool: true,
     systemMdPrompt: false,
   });
@@ -48,25 +53,25 @@ test("parseTungthedevSettings migrates legacy systemPrompt to tool set", () => {
 
 test("parseTungthedevSettings accepts system-md prompt toggle values", () => {
   assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": { systemMdPrompt: false } }), {
-    toolSet: "codex",
+    toolSet: "pi",
     customShellTool: true,
     systemMdPrompt: false,
   });
 });
 
-test("parseTungthedevSettings falls back to codex for invalid tool-set values", () => {
+test("parseTungthedevSettings falls back to pi for missing or invalid tool-set values", () => {
   assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": { toolSet: "weird" } }), {
-    toolSet: "codex",
+    toolSet: "pi",
     customShellTool: true,
     systemMdPrompt: false,
   });
   assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": "broken" }), {
-    toolSet: "codex",
+    toolSet: "pi",
     customShellTool: true,
     systemMdPrompt: false,
   });
   assert.deepEqual(parseTungthedevSettings(undefined), {
-    toolSet: "codex",
+    toolSet: "pi",
     customShellTool: true,
     systemMdPrompt: false,
   });
@@ -74,7 +79,7 @@ test("parseTungthedevSettings falls back to codex for invalid tool-set values", 
 
 test("parseTungthedevSettings falls back to enabled for invalid custom shell values", () => {
   assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": { customShellTool: "nope" } }), {
-    toolSet: "codex",
+    toolSet: "pi",
     customShellTool: true,
     systemMdPrompt: false,
   });
@@ -82,7 +87,7 @@ test("parseTungthedevSettings falls back to enabled for invalid custom shell val
 
 test("parseTungthedevSettings falls back to disabled for invalid system-md values", () => {
   assert.deepEqual(parseTungthedevSettings({ "tungthedev/pi": { systemMdPrompt: "nope" } }), {
-    toolSet: "codex",
+    toolSet: "pi",
     customShellTool: true,
     systemMdPrompt: false,
   });
@@ -94,7 +99,7 @@ test("readTungthedevSettingsFromFile fails closed on malformed json", async () =
   await writeFile(settingsPath, "{not-json", "utf8");
 
   assert.deepEqual(await readTungthedevSettingsFromFile(settingsPath), {
-    toolSet: "codex",
+    toolSet: "pi",
     customShellTool: true,
     systemMdPrompt: false,
   });
@@ -154,10 +159,10 @@ test("writeToolSetSetting stores the selected tool set", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-tung-settings-"));
   const settingsPath = path.join(tempDir, "settings.json");
 
-  await writeToolSetSetting("forge", settingsPath);
+  await writeToolSetSetting("pi", settingsPath);
 
   const updated = JSON.parse(await readFile(settingsPath, "utf8")) as Record<string, unknown>;
-  assert.deepEqual(updated["tungthedev/pi"], { toolSet: "forge" });
+  assert.deepEqual(updated["tungthedev/pi"], { toolSet: "pi" });
 });
 
 test("writeCustomShellToolSetting stores the selected custom shell toggle", async () => {

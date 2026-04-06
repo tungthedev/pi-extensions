@@ -21,7 +21,8 @@ export type OpenSettingsUiOptions = {
   writeSystemMdPrompt: (value: boolean) => Promise<void>;
 };
 
-const TOOL_SET_LABELS: Record<"Codex" | "Forge", ToolSetPack> = {
+const TOOL_SET_LABELS: Record<"Pi" | "Codex" | "Forge", ToolSetPack> = {
+  Pi: "pi",
   Codex: "codex",
   Forge: "forge",
 };
@@ -36,8 +37,10 @@ const SYSTEM_MD_PROMPT_LABELS: Record<"Enabled" | "Disabled", boolean> = {
   Disabled: false,
 };
 
-export function formatToolSetLabel(value: ToolSetPack): "Codex" | "Forge" {
-  return value === "forge" ? "Forge" : "Codex";
+export function formatToolSetLabel(value: ToolSetPack): "Pi" | "Codex" | "Forge" {
+  if (value === "forge") return "Forge";
+  if (value === "codex") return "Codex";
+  return "Pi";
 }
 
 export function formatCustomShellToolLabel(value: boolean): "Enabled" | "Disabled" {
@@ -54,9 +57,9 @@ export function buildTungthedevSettingItems(settings: TungthedevSettings): Setti
       id: "toolSet",
       label: "Tool set",
       description:
-        "Selects the Codex or Forge tool and prompt behavior for this package.",
+        "Selects the Pi, Codex, or Forge tool and prompt behavior for this package. Pi keeps native Pi tools only.",
       currentValue: formatToolSetLabel(settings.toolSet),
-      values: ["Codex", "Forge"],
+      values: ["Pi", "Codex", "Forge"],
     },
     {
       id: "customShellTool",
@@ -83,13 +86,13 @@ export function parseSettingsCommand(args: string): SettingsCommandAction {
   if (parts[0] === "system-prompt") {
     return {
       action: "invalid",
-      message: "System prompts now follow the selected tool set. Use: tool-set codex|forge",
+      message: "System prompts now follow the selected tool set. Use: tool-set pi|codex|forge",
     };
   }
 
   if (parts[0] === "content-pack" || parts[0] === "tool-set") {
     if (parts.length === 1) return { action: "open-tool-set" };
-    if (parts[1] === "codex" || parts[1] === "forge") {
+    if (parts[1] === "pi" || parts[1] === "codex" || parts[1] === "forge") {
       return { action: "set-tool-set", value: parts[1] };
     }
     return { action: "invalid", message: `Unknown tool set: ${parts[1]}` };
