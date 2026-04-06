@@ -2,23 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import settingsExtension, {
-  handleTungthedevCommand,
-  type TungthedevCommandDeps,
-} from "./index.ts";
-import { parseSettingsCommand } from "./ui.ts";
+import settingsExtension, { handleTungthedevCommand, type TungthedevCommandDeps } from "./index.ts";
+import { buildTungthedevSettingItems, parseSettingsCommand } from "./ui.ts";
 
-test("parseSettingsCommand handles direct system-prompt writes", () => {
+test("parseSettingsCommand rejects the removed system-prompt setting", () => {
   assert.deepEqual(parseSettingsCommand("system-prompt forge"), {
-    action: "set-system-prompt",
-    value: "forge",
-  });
-});
-
-test("parseSettingsCommand handles none alias", () => {
-  assert.deepEqual(parseSettingsCommand("system-prompt none"), {
-    action: "set-system-prompt",
-    value: null,
+    action: "invalid",
+    message: "System prompts now follow the selected tool set. Use: tool-set codex|forge",
   });
 });
 
@@ -33,9 +23,23 @@ test("parseSettingsCommand handles direct tool-set writes", () => {
   });
 });
 
+test("parseSettingsCommand keeps content-pack as a compatibility alias", () => {
+  assert.deepEqual(parseSettingsCommand("content-pack forge"), {
+    action: "set-tool-set",
+    value: "forge",
+  });
+});
+
 test("parseSettingsCommand handles direct custom shell tool writes", () => {
   assert.deepEqual(parseSettingsCommand("custom-shell-tool off"), {
     action: "set-custom-shell-tool",
+    value: false,
+  });
+});
+
+test("parseSettingsCommand handles direct system-md writes", () => {
+  assert.deepEqual(parseSettingsCommand("system-md off"), {
+    action: "set-system-md-prompt",
     value: false,
   });
 });
@@ -47,40 +51,18 @@ test("parseSettingsCommand rejects removed skill list injection setting", () => 
   });
 });
 
-test("handleTungthedevCommand writes the selected system prompt pack directly", async () => {
-  const writes: Array<"codex" | "forge" | null> = [];
-  const notifications: string[] = [];
-  const deps: TungthedevCommandDeps = {
-    readSettings: async () => ({
-      systemPrompt: null,
-      toolSet: "codex",
-      customShellTool: true,
-    }),
-    writeSystemPrompt: async (value) => {
-      writes.push(value);
-    },
-    writeToolSet: async () => {
-      throw new Error("writeToolSet should not run");
-    },
-    writeCustomShellTool: async () => {
-      throw new Error("writeCustomShellTool should not run");
-    },
-    openSettingsUi: async () => {
-      throw new Error("settings UI should not open for direct writes");
-    },
-  };
+test("buildTungthedevSettingItems includes descriptions for each setting", () => {
+  const items = buildTungthedevSettingItems({
+    toolSet: "codex",
+    customShellTool: true,
+    systemMdPrompt: true,
+  });
 
-  await handleTungthedevCommand("system-prompt codex", {
-    hasUI: true,
-    ui: {
-      notify(message: string) {
-        notifications.push(message);
-      },
-    },
-  } as never, deps);
-
-  assert.deepEqual(writes, ["codex"]);
-  assert.deepEqual(notifications, ["System prompt pack: Codex"]);
+  assert.equal(items.length, 3);
+  assert.equal(items[0]?.label, "Tool set");
+  assert.match(items[0]?.description ?? "", /Codex or Forge tool and prompt behavior/);
+  assert.match(items[1]?.description ?? "", /package shell tool/);
+  assert.match(items[2]?.description ?? "", /overrides the active Pi, Codex, or Forge system prompt/);
 });
 
 test("handleTungthedevCommand writes the selected tool set directly", async () => {
@@ -88,32 +70,36 @@ test("handleTungthedevCommand writes the selected tool set directly", async () =
   const notifications: string[] = [];
   const deps: TungthedevCommandDeps = {
     readSettings: async () => ({
-      systemPrompt: null,
       toolSet: "codex",
       customShellTool: true,
+      systemMdPrompt: true,
     }),
-    writeSystemPrompt: async () => {
-      throw new Error("writeSystemPrompt should not run");
-    },
     writeToolSet: async (value) => {
       writes.push(value);
     },
     writeCustomShellTool: async () => {
       throw new Error("writeCustomShellTool should not run");
     },
+    writeSystemMdPrompt: async () => {
+      throw new Error("writeSystemMdPrompt should not run");
+    },
     openSettingsUi: async () => {
       throw new Error("settings UI should not open for direct writes");
     },
   };
 
-  await handleTungthedevCommand("tool-set forge", {
-    hasUI: true,
-    ui: {
-      notify(message: string) {
-        notifications.push(message);
+  await handleTungthedevCommand(
+    "tool-set forge",
+    {
+      hasUI: true,
+      ui: {
+        notify(message: string) {
+          notifications.push(message);
+        },
       },
-    },
-  } as never, deps);
+    } as never,
+    deps,
+  );
 
   assert.deepEqual(writes, ["forge"]);
   assert.deepEqual(notifications, ["Tool set: Forge"]);
@@ -124,17 +110,57 @@ test("handleTungthedevCommand writes the selected custom shell setting directly"
   const notifications: string[] = [];
   const deps: TungthedevCommandDeps = {
     readSettings: async () => ({
-      systemPrompt: null,
       toolSet: "codex",
       customShellTool: true,
+      systemMdPrompt: true,
     }),
-    writeSystemPrompt: async () => {
-      throw new Error("writeSystemPrompt should not run");
-    },
     writeToolSet: async () => {
       throw new Error("writeToolSet should not run");
     },
     writeCustomShellTool: async (value) => {
+      writes.push(value);
+    },
+    writeSystemMdPrompt: async () => {
+      throw new Error("writeSystemMdPrompt should not run");
+    },
+    openSettingsUi: async () => {
+      throw new Error("settings UI should not open for direct writes");
+    },
+  };
+
+  await handleTungthedevCommand(
+    "custom-shell-tool off",
+    {
+      hasUI: true,
+      ui: {
+        notify(message: string) {
+          notifications.push(message);
+        },
+      },
+    } as never,
+    deps,
+  );
+
+  assert.deepEqual(writes, [false]);
+  assert.deepEqual(notifications, ["Custom shell tool: Disabled"]);
+});
+
+test("handleTungthedevCommand writes the selected system-md setting directly", async () => {
+  const writes: boolean[] = [];
+  const notifications: string[] = [];
+  const deps: TungthedevCommandDeps = {
+    readSettings: async () => ({
+      toolSet: "codex",
+      customShellTool: true,
+      systemMdPrompt: true,
+    }),
+    writeToolSet: async () => {
+      throw new Error("writeToolSet should not run");
+    },
+    writeCustomShellTool: async () => {
+      throw new Error("writeCustomShellTool should not run");
+    },
+    writeSystemMdPrompt: async (value) => {
       writes.push(value);
     },
     openSettingsUi: async () => {
@@ -142,35 +168,39 @@ test("handleTungthedevCommand writes the selected custom shell setting directly"
     },
   };
 
-  await handleTungthedevCommand("custom-shell-tool off", {
-    hasUI: true,
-    ui: {
-      notify(message: string) {
-        notifications.push(message);
+  await handleTungthedevCommand(
+    "system-md off",
+    {
+      hasUI: true,
+      ui: {
+        notify(message: string) {
+          notifications.push(message);
+        },
       },
-    },
-  } as never, deps);
+    } as never,
+    deps,
+  );
 
   assert.deepEqual(writes, [false]);
-  assert.deepEqual(notifications, ["Custom shell tool: Disabled"]);
+  assert.deepEqual(notifications, ["System.md prompt: Disabled"]);
 });
 
 test("handleTungthedevCommand opens the package settings UI for root invocations", async () => {
   let openedFocus: string | undefined;
   const deps: TungthedevCommandDeps = {
     readSettings: async () => ({
-      systemPrompt: "forge",
       toolSet: "codex",
       customShellTool: true,
+      systemMdPrompt: true,
     }),
-    writeSystemPrompt: async () => {
-      throw new Error("writeSystemPrompt should not run");
-    },
     writeToolSet: async () => {
       throw new Error("writeToolSet should not run");
     },
     writeCustomShellTool: async () => {
       throw new Error("writeCustomShellTool should not run");
+    },
+    writeSystemMdPrompt: async () => {
+      throw new Error("writeSystemMdPrompt should not run");
     },
     openSettingsUi: async (_ctx, options) => {
       openedFocus = options.focus;
@@ -194,16 +224,19 @@ test("settings extension registers the /tungthedev command", () => {
   assert.equal(registeredName, "tungthedev");
 });
 
-test("package manifest ships prompt-pack and settings extensions", async () => {
+test("package manifest ships merged prompt extensions and settings", async () => {
   const pkg = JSON.parse(
     await readFile(new URL("../../package.json", import.meta.url), "utf8"),
   ) as {
     pi: { extensions: string[] };
   };
 
-  assert(pkg.pi.extensions.includes("./extensions/prompt-pack/index.ts"));
+  assert(pkg.pi.extensions.includes("./extensions/codex-content/index.ts"));
+  assert(pkg.pi.extensions.includes("./extensions/forge-content/index.ts"));
+  assert(pkg.pi.extensions.includes("./extensions/system-md/index.ts"));
   assert(pkg.pi.extensions.includes("./extensions/shell/index.ts"));
   assert(pkg.pi.extensions.includes("./extensions/settings/index.ts"));
+  assert(!pkg.pi.extensions.includes("./extensions/prompt-pack/index.ts"));
   assert(!pkg.pi.extensions.includes("./extensions/skill/index.ts"));
   assert(!pkg.pi.extensions.includes("./extensions/codex-system-prompt/index.ts"));
 });

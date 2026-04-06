@@ -17,29 +17,60 @@ const REPLACED_BUILTIN_TOOL_NAMES = new Set([
   "write",
 ]);
 
+const CODEX_TOOL_SET_TOOL_NAMES = new Set([
+  "update_plan",
+  "read_plan",
+  "request_user_input",
+  "list_dir",
+  "find_files",
+  "grep_files",
+  "apply_patch",
+  "view_image",
+]);
+
 const FORGE_TOOL_SET_TOOL_NAMES = new Set([
   "fs_search",
   "patch",
   "followup",
-  "todo_write",
-  "todo_read",
+  "todos_write",
+  "todos_read",
 ]);
 
-async function applyCompatibilityToolOverrides(pi: ExtensionAPI): Promise<void> {
-  const settings = await readTungthedevSettings();
-  if (settings.toolSet !== "codex") {
-    return;
+export function syncCodexToolSet(
+  allToolNames: string[],
+  toolSet: string,
+): string[] | undefined {
+  if (toolSet === "forge") {
+    return undefined;
   }
 
-  const activeToolNames = pi
-    .getAllTools()
-    .map((tool) => tool.name)
-    .filter(
+  const availableToolNames = Array.from(new Set(allToolNames));
+
+  if (toolSet === "codex") {
+    return availableToolNames.filter(
       (toolName) =>
         !REPLACED_BUILTIN_TOOL_NAMES.has(toolName) && !FORGE_TOOL_SET_TOOL_NAMES.has(toolName),
     );
+  }
 
-  pi.setActiveTools(activeToolNames);
+  return availableToolNames.filter(
+    (toolName) =>
+      !CODEX_TOOL_SET_TOOL_NAMES.has(toolName) && !FORGE_TOOL_SET_TOOL_NAMES.has(toolName),
+  );
+}
+
+async function applyCompatibilityToolOverrides(pi: ExtensionAPI): Promise<void> {
+  const settings = await readTungthedevSettings();
+  const nextActiveTools = syncCodexToolSet(
+    pi.getAllTools().map((tool) => tool.name),
+    settings.toolSet,
+  );
+
+  if (!nextActiveTools) {
+    return;
+  }
+
+  pi.setActiveTools(nextActiveTools);
 }
 
 function registerToolOverrideHandlers(pi: ExtensionAPI): void {

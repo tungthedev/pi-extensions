@@ -4,18 +4,22 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { setSystemMdPromptEnabledForTests } from "../system-md/state.ts";
 import {
   buildCodexPrompt,
+  handleCodexSystemPromptBeforeAgentStart,
   injectCodexPrompt,
   parseCodexPersonality,
   readCodexPersonality,
   readFallbackModelsCatalog,
   readModelsCatalog,
+  registerCodexSystemPrompt,
   resolveCodexHome,
   resolveCodexModelsCachePath,
   resolveCodexPromptBody,
   resolveConfiguredModelCatalogPath,
-} from "./codex.ts";
+  type CodexSystemPromptDeps,
+} from "./system-prompt.ts";
 
 test("resolveCodexHome uses CODEX_HOME when it points to a directory", async () => {
   const tempDir = await import("node:fs/promises").then((fs) =>
@@ -69,7 +73,10 @@ test("readFallbackModelsCatalog prefers configured catalog, then ~/.codex/models
   const configuredCatalogPath = path.join(tempDir, "configured.json");
   const codexHome = path.join(tempDir, ".codex");
   await fs.mkdir(codexHome);
-  await fs.writeFile(configuredCatalogPath, JSON.stringify({ models: [{ slug: "configured-model" }] }));
+  await fs.writeFile(
+    configuredCatalogPath,
+    JSON.stringify({ models: [{ slug: "configured-model" }] }),
+  );
   await fs.writeFile(
     path.join(codexHome, "models_cache.json"),
     JSON.stringify({ models: [{ slug: "cache-model" }] }),
@@ -146,4 +153,104 @@ test("injectCodexPrompt appends once and is idempotent", () => {
 
   assert.match(once, /^Existing system prompt\n\nBase Codex prompt/m);
   assert.equal(twice, once);
+});
+
+test("handleCodexSystemPromptBeforeAgentStart returns no-op when Codex prompt is not selected", async () => {
+  const deps: CodexSystemPromptDeps = {
+    readSettings: async () => ({
+      toolSet: "forge",
+      customShellTool: true,
+      systemMdPrompt: true,
+    }),
+    buildPromptForModel: () => "Codex block",
+  };
+
+  const result = await handleCodexSystemPromptBeforeAgentStart(
+    { systemPrompt: "Base" } as never,
+    { model: { id: "gpt-5.4" } } as never,
+    deps,
+  );
+
+  assert.equal(result, undefined);
+});
+
+test("handleCodexSystemPromptBeforeAgentStart returns no-op when system-md is enabled", async () => {
+  const deps: CodexSystemPromptDeps = {
+    readSettings: async () => ({
+      toolSet: "codex",
+      customShellTool: true,
+      systemMdPrompt: true,
+    }),
+    buildPromptForModel: () => "Codex block",
+  };
+
+  setSystemMdPromptEnabledForTests(true);
+
+  try {
+    const result = await handleCodexSystemPromptBeforeAgentStart(
+      { systemPrompt: "Base" } as never,
+      { model: { id: "gpt-5.4" } } as never,
+      deps,
+    );
+
+    assert.equal(result, undefined);
+  } finally {
+    setSystemMdPromptEnabledForTests(false);
+  }
+});
+
+test("handleCodexSystemPromptBeforeAgentStart still injects when system-md is loaded but disabled in settings", async () => {
+  const deps: CodexSystemPromptDeps = {
+    readSettings: async () => ({
+      toolSet: "codex",
+      customShellTool: true,
+      systemMdPrompt: false,
+    }),
+    buildPromptForModel: () => "Codex block",
+  };
+
+  setSystemMdPromptEnabledForTests(true);
+
+  try {
+    const result = await handleCodexSystemPromptBeforeAgentStart(
+      { systemPrompt: "Base" } as never,
+      { model: { id: "gpt-5.4" } } as never,
+      deps,
+    );
+
+    assert.deepEqual(result, { systemPrompt: "Base\n\nCodex block" });
+  } finally {
+    setSystemMdPromptEnabledForTests(false);
+  }
+});
+
+test("handleCodexSystemPromptBeforeAgentStart injects the selected Codex prompt", async () => {
+  const deps: CodexSystemPromptDeps = {
+    readSettings: async () => ({
+      toolSet: "codex",
+      customShellTool: true,
+      systemMdPrompt: true,
+    }),
+    buildPromptForModel: () => "Codex block",
+  };
+
+  const result = await handleCodexSystemPromptBeforeAgentStart(
+    { systemPrompt: "Base" } as never,
+    { model: { id: "gpt-5.4" } } as never,
+    deps,
+  );
+
+  assert.deepEqual(result, { systemPrompt: "Base\n\nCodex block" });
+});
+
+test("registerCodexSystemPrompt registers before_agent_start", () => {
+  let eventName: string | undefined;
+
+  registerCodexSystemPrompt({
+    on(name: string) {
+      eventName = name;
+    },
+  } as never);
+
+  assert.equal(eventName, "before_agent_start");
 });

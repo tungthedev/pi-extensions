@@ -3,43 +3,42 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-cod
 import {
   readTungthedevSettings,
   writeCustomShellToolSetting,
+  writeSystemMdPromptSetting,
   writeToolSetSetting,
-  writeSystemPromptSetting,
-  type SystemPromptPack,
   type ToolSetPack,
   type TungthedevSettings,
 } from "./config.ts";
 import {
-  formatSystemPromptPackLabel,
   formatToolSetLabel,
+  formatSystemMdPromptLabel,
   openTungthedevSettingsUi,
   parseSettingsCommand,
 } from "./ui.ts";
 
 export type TungthedevCommandDeps = {
   readSettings: () => Promise<TungthedevSettings>;
-  writeSystemPrompt: (value: SystemPromptPack) => Promise<void>;
   writeToolSet: (value: ToolSetPack) => Promise<void>;
   writeCustomShellTool: (value: boolean) => Promise<void>;
+  writeSystemMdPrompt: (value: boolean) => Promise<void>;
   openSettingsUi: (
     ctx: ExtensionCommandContext,
-    options: { focus?: "systemPrompt" | "toolSet" | "customShellTool" },
+    options: { focus?: "toolSet" | "customShellTool" | "systemMdPrompt" },
   ) => Promise<void>;
 };
 
 function createDefaultDeps(): TungthedevCommandDeps {
   return {
     readSettings: () => readTungthedevSettings(),
-    writeSystemPrompt: (value) => writeSystemPromptSetting(value),
     writeToolSet: (value) => writeToolSetSetting(value),
     writeCustomShellTool: (value) => writeCustomShellToolSetting(value),
+    writeSystemMdPrompt: (value) => writeSystemMdPromptSetting(value),
     openSettingsUi: (ctx, options) =>
       openTungthedevSettingsUi(ctx, {
         focus: options.focus,
         readSettings: () => readTungthedevSettings(),
-        writeSystemPrompt: (value) => writeSystemPromptSetting(value),
         writeToolSet: (value) => writeToolSetSetting(value),
         writeCustomShellTool: (value) => writeCustomShellToolSetting(value),
+        writeSystemMdPrompt: (value) => writeSystemMdPromptSetting(value),
       }),
   };
 }
@@ -56,12 +55,6 @@ export async function handleTungthedevCommand(
     return;
   }
 
-  if (action.action === "set-system-prompt") {
-    await deps.writeSystemPrompt(action.value);
-    ctx.ui.notify(`System prompt pack: ${formatSystemPromptPackLabel(action.value)}`, "info");
-    return;
-  }
-
   if (action.action === "set-tool-set") {
     await deps.writeToolSet(action.value);
     ctx.ui.notify(`Tool set: ${formatToolSetLabel(action.value)}`, "info");
@@ -74,14 +67,20 @@ export async function handleTungthedevCommand(
     return;
   }
 
+  if (action.action === "set-system-md-prompt") {
+    await deps.writeSystemMdPrompt(action.value);
+    ctx.ui.notify(`System.md prompt: ${formatSystemMdPromptLabel(action.value)}`, "info");
+    return;
+  }
+
   await deps.openSettingsUi(ctx, {
     focus:
-      action.action === "open-system-prompt"
-        ? "systemPrompt"
-        : action.action === "open-tool-set"
-          ? "toolSet"
-          : action.action === "open-custom-shell-tool"
-            ? "customShellTool"
+      action.action === "open-tool-set"
+        ? "toolSet"
+        : action.action === "open-custom-shell-tool"
+          ? "customShellTool"
+          : action.action === "open-system-md-prompt"
+            ? "systemMdPrompt"
             : undefined,
   });
 }

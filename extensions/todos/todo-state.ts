@@ -1,55 +1,46 @@
-export const FORGE_TODO_STATUSES = [
-  "pending",
-  "in_progress",
-  "completed",
-  "cancelled",
-] as const;
+export const TODO_STATUSES = ["pending", "in_progress", "completed", "cancelled"] as const;
 
-export type ForgeTodoStatus = (typeof FORGE_TODO_STATUSES)[number];
+export type TodoStatus = (typeof TODO_STATUSES)[number];
 
-export type ForgeTodoItem = {
+export type TodoItem = {
   id: string;
   content: string;
-  status: Exclude<ForgeTodoStatus, "cancelled">;
+  status: Exclude<TodoStatus, "cancelled">;
 };
 
-export type ForgeTodoUpdate = {
+export type TodoUpdate = {
   content: string;
-  status: ForgeTodoStatus;
+  status: TodoStatus;
 };
 
-export type ForgeTodoSnapshot = {
-  items: ForgeTodoItem[];
+export type TodoSnapshot = {
+  items: TodoItem[];
   nextId: number;
 };
 
-export type ForgeTodoWriteDetails = ForgeTodoSnapshot & {
+export type TodoWriteDetails = TodoSnapshot & {
   action: "todo_write";
+  updatedItems?: TodoItem[];
 };
 
-export function createEmptyForgeTodoSnapshot(): ForgeTodoSnapshot {
+export function createEmptyTodoSnapshot(): TodoSnapshot {
   return {
     items: [],
     nextId: 1,
   };
 }
 
-function normalizeTodoContent(content: string): string {
+export function normalizeTodoContent(content: string): string {
   return content.trim().replace(/\s+/g, " ");
 }
 
-export function applyForgeTodoUpdates(
-  snapshot: ForgeTodoSnapshot,
-  updates: ForgeTodoUpdate[],
-): ForgeTodoSnapshot {
+export function applyTodoUpdates(snapshot: TodoSnapshot, updates: TodoUpdate[]): TodoSnapshot {
   const items = [...snapshot.items];
   let nextId = snapshot.nextId;
 
   for (const update of updates) {
     const content = normalizeTodoContent(update.content);
-    if (!content) {
-      continue;
-    }
+    if (!content) continue;
 
     const index = items.findIndex((item) => item.content === content);
 
@@ -89,13 +80,10 @@ export function applyForgeTodoUpdates(
     }
   }
 
-  return {
-    items,
-    nextId,
-  };
+  return { items, nextId };
 }
 
-export function formatForgeTodoSummary(items: ForgeTodoItem[]): string {
+export function formatTodoSummary(items: TodoItem[]): string {
   if (items.length === 0) {
     return "No todos";
   }
@@ -103,20 +91,15 @@ export function formatForgeTodoSummary(items: ForgeTodoItem[]): string {
   return items.map((item) => `[${item.status}] #${item.id} ${item.content}`).join("\n");
 }
 
-export function countForgeTodoProgress(items: ForgeTodoItem[]): {
-  completed: number;
-  total: number;
-} {
+export function countTodoProgress(items: TodoItem[]): { completed: number; total: number } {
   return {
     completed: items.filter((item) => item.status === "completed").length,
     total: items.length,
   };
 }
 
-export function restoreForgeTodoSnapshot(
-  detailsList: Array<ForgeTodoWriteDetails | undefined>,
-): ForgeTodoSnapshot {
-  let snapshot = createEmptyForgeTodoSnapshot();
+export function restoreTodoSnapshot(detailsList: Array<TodoWriteDetails | undefined>): TodoSnapshot {
+  let snapshot = createEmptyTodoSnapshot();
   for (const details of detailsList) {
     if (!details) continue;
     snapshot = {

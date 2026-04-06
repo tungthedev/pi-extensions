@@ -1,8 +1,17 @@
+import type {
+  BeforeAgentStartEvent,
+  ExtensionAPI,
+  ExtensionContext,
+} from "@mariozechner/pi-coding-agent";
+
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const BUNDLED_MODELS_CATALOG_PATH = new URL("../assets/models.json", import.meta.url);
+import { readTungthedevSettings, type TungthedevSettings } from "../settings/config.ts";
+import { isSystemMdPromptEnabled } from "../system-md/state.ts";
+
+const BUNDLED_MODELS_CATALOG_PATH = new URL("./assets/codex-models.json", import.meta.url);
 const DEFAULT_GPT_PROMPT_MODEL = "gpt-5.4";
 const PERSONALITY_PLACEHOLDER = "{{ personality }}";
 const CODEX_HOME_ENV = "CODEX_HOME";
@@ -34,6 +43,18 @@ type ModelInstructionsVariables = {
   personality_pragmatic?: string;
 };
 
+export type CodexSystemPromptDeps = {
+  readSettings: () => Promise<TungthedevSettings>;
+  buildPromptForModel: (modelId: string | undefined) => string;
+};
+
+function createDefaultDeps(): CodexSystemPromptDeps {
+  return {
+    readSettings: () => readTungthedevSettings(),
+    buildPromptForModel: (modelId) => buildSelectedCodexPrompt(modelId),
+  };
+}
+
 function parseModelsCatalog(raw: string): ModelsCatalog | undefined {
   try {
     const parsed = JSON.parse(raw) as ModelsCatalog;
@@ -64,7 +85,9 @@ function readModelsCatalogFromPath(filePath: string | URL | undefined): ModelsCa
   }
 }
 
-export function readModelsCatalog(assetPath: string | URL = BUNDLED_MODELS_CATALOG_PATH): ModelsCatalog | undefined {
+export function readModelsCatalog(
+  assetPath: string | URL = BUNDLED_MODELS_CATALOG_PATH,
+): ModelsCatalog | undefined {
   return readModelsCatalogFromPath(assetPath);
 }
 
@@ -89,7 +112,10 @@ export function resolveCodexHome(env = process.env, homeDir = os.homedir()): str
   return path.join(normalizedHomeDir, ".codex");
 }
 
-export function resolveCodexConfigPath(env = process.env, homeDir = os.homedir()): string | undefined {
+export function resolveCodexConfigPath(
+  env = process.env,
+  homeDir = os.homedir(),
+): string | undefined {
   const codexHome = resolveCodexHome(env, homeDir);
   if (!codexHome) return undefined;
   return path.join(codexHome, CODEX_CONFIG_FILE);
@@ -126,7 +152,9 @@ export function readFallbackModelsCatalog(
   return readModelsCatalogFromPath(resolveCodexModelsCachePath(env, homeDir));
 }
 
-export function parseCodexPersonality(configToml: string | undefined): CodexPersonality | undefined {
+export function parseCodexPersonality(
+  configToml: string | undefined,
+): CodexPersonality | undefined {
   const match = configToml?.match(
     /^[ \t]*personality[ \t]*=[ \t]*"(none|friendly|pragmatic)"[ \t]*(?:#.*)?$/m,
   );
@@ -214,7 +242,9 @@ export function buildSelectedCodexPrompt(modelId: string | undefined): string {
   const bundledCatalog = readModelsCatalog();
   const fallbackCatalog = readFallbackModelsCatalog();
   const personality = readCodexPersonality();
-  return buildCodexPrompt(resolveCodexPromptBody(modelId, [bundledCatalog, fallbackCatalog], personality));
+  return buildCodexPrompt(
+    resolveCodexPromptBody(modelId, [bundledCatalog, fallbackCatalog], personality),
+  );
 }
 
 export function injectCodexPrompt(systemPrompt: string | undefined, codexPrompt: string): string {
@@ -222,4 +252,32 @@ export function injectCodexPrompt(systemPrompt: string | undefined, codexPrompt:
   if (!codexPrompt) return basePrompt;
   if (basePrompt.includes(codexPrompt)) return basePrompt;
   return [basePrompt, codexPrompt].filter(Boolean).join("\n\n").trim();
+}
+
+export async function handleCodexSystemPromptBeforeAgentStart(
+  event: BeforeAgentStartEvent,
+  ctx: ExtensionContext,
+  deps: CodexSystemPromptDeps = createDefaultDeps(),
+): Promise<{ systemPrompt: string } | undefined> {
+  const settings = await deps.readSettings();
+  if (isSystemMdPromptEnabled() && settings.systemMdPrompt) {
+    return undefined;
+  }
+
+  if (settings.toolSet !== "codex") {
+    return undefined;
+  }
+
+  return {
+    systemPrompt: injectCodexPrompt(event.systemPrompt, deps.buildPromptForModel(ctx.model?.id)),
+  };
+}
+
+export function registerCodexSystemPrompt(
+  pi: ExtensionAPI,
+  deps: CodexSystemPromptDeps = createDefaultDeps(),
+): void {
+  pi.on("before_agent_start", async (event, ctx) =>
+    handleCodexSystemPromptBeforeAgentStart(event, ctx, deps),
+  );
 }

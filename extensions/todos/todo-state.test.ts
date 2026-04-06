@@ -2,16 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  applyForgeTodoUpdates,
-  createEmptyForgeTodoSnapshot,
-  restoreForgeTodoSnapshot,
-  type ForgeTodoWriteDetails,
+  applyTodoUpdates,
+  createEmptyTodoSnapshot,
+  restoreTodoSnapshot,
+  type TodoWriteDetails,
 } from "./todo-state.ts";
 
-test("applyForgeTodoUpdates creates, updates, and removes todo items by content", () => {
-  let snapshot = createEmptyForgeTodoSnapshot();
+test("applyTodoUpdates creates, updates, and removes todo items by content", () => {
+  let snapshot = createEmptyTodoSnapshot();
 
-  snapshot = applyForgeTodoUpdates(snapshot, [
+  snapshot = applyTodoUpdates(snapshot, [
     { content: "Research existing auth flow", status: "pending" },
     { content: "Implement token refresh", status: "in_progress" },
   ]);
@@ -21,7 +21,7 @@ test("applyForgeTodoUpdates creates, updates, and removes todo items by content"
     ["2", "Implement token refresh", "in_progress"],
   ]);
 
-  snapshot = applyForgeTodoUpdates(snapshot, [
+  snapshot = applyTodoUpdates(snapshot, [
     { content: "Research existing auth flow", status: "completed" },
     { content: "Implement token refresh", status: "cancelled" },
   ]);
@@ -29,8 +29,8 @@ test("applyForgeTodoUpdates creates, updates, and removes todo items by content"
   assert.deepEqual(snapshot.items.map((item) => [item.id, item.content, item.status]), [["1", "Research existing auth flow", "completed"]]);
 });
 
-test("applyForgeTodoUpdates keeps at most one in_progress item", () => {
-  const snapshot = applyForgeTodoUpdates(createEmptyForgeTodoSnapshot(), [
+test("applyTodoUpdates keeps at most one in_progress item", () => {
+  const snapshot = applyTodoUpdates(createEmptyTodoSnapshot(), [
     { content: "First", status: "in_progress" },
     { content: "Second", status: "in_progress" },
   ]);
@@ -41,8 +41,8 @@ test("applyForgeTodoUpdates keeps at most one in_progress item", () => {
   ]);
 });
 
-test("restoreForgeTodoSnapshot returns the last persisted snapshot", () => {
-  const details: ForgeTodoWriteDetails[] = [
+test("restoreTodoSnapshot returns the last persisted snapshot", () => {
+  const details: TodoWriteDetails[] = [
     {
       action: "todo_write",
       items: [{ id: "1", content: "Initial", status: "pending" }],
@@ -55,7 +55,7 @@ test("restoreForgeTodoSnapshot returns the last persisted snapshot", () => {
     },
   ];
 
-  const restored = restoreForgeTodoSnapshot(details);
+  const restored = restoreTodoSnapshot(details);
   assert.deepEqual(restored, {
     items: [{ id: "1", content: "Initial", status: "completed" }],
     nextId: 2,

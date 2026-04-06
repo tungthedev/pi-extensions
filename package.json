@@ -1,7 +1,7 @@
 {
   "name": "@tungthedev/pi-extensions",
   "version": "1.1.0",
-  "description": "A Pi package containing editor, mermaid, read, web-search, codex-content, prompt-pack, subagents, forge-content, shell, settings, and ext-manager extensions.",
+  "description": "A Pi package containing editor, mermaid, read, web-search, codex-content, subagents, forge-content, system-md, shell, settings, and ext-manager extensions.",
   "keywords": [
     "codex",
     "forge",
@@ -36,7 +36,7 @@
     "format:check": "oxfmt --check .",
     "lint": "oxlint extensions",
     "lint:fix": "oxlint --fix extensions",
-    "test": "bun test ./extensions/editor ./extensions/read ./extensions/web-search ./extensions/codex-content ./extensions/prompt-pack ./extensions/subagents ./extensions/ext-manager ./extensions/forge-content ./extensions/shell ./extensions/ask-user ./extensions/settings",
+    "test": "bun test ./extensions/editor ./extensions/read ./extensions/web-search ./extensions/codex-content ./extensions/subagents ./extensions/ext-manager ./extensions/forge-content ./extensions/system-md ./extensions/todos ./extensions/shell ./extensions/ask-user ./extensions/settings",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -66,7 +66,6 @@
   "packageManager": "bun@1.3.8",
   "pi": {
     "extensions": [
-      "./extensions/prompt-pack/index.ts",
       "./extensions/editor/index.ts",
       "./extensions/mermaid/index.ts",
       "./extensions/read/index.ts",
@@ -75,6 +74,7 @@
       "./extensions/codex-content/index.ts",
       "./extensions/subagents/index.ts",
       "./extensions/forge-content/index.ts",
+      "./extensions/system-md/index.ts",
       "./extensions/shell/index.ts",
       "./extensions/ext-manager/index.ts",
       "./extensions/settings/index.ts"

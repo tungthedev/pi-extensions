@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { readTungthedevSettings } from "../settings/config.ts";
 import { registerForgeResources } from "./resources/discover.ts";
+import { handleForgeSystemPromptBeforeAgentStart } from "./system-prompt.ts";
 import { registerForgeTools } from "./tools/index.ts";
 import { registerForgeWorkflow } from "./workflow/index.ts";
 
@@ -11,8 +12,8 @@ const STATIC_FORGE_TOOL_SET = [
   "fs_search",
   "patch",
   "followup",
-  "todo_write",
-  "todo_read",
+  "todos_write",
+  "todos_read",
 ];
 
 async function syncForgeToolSet(pi: ExtensionAPI): Promise<void> {
@@ -37,7 +38,8 @@ export default function registerForgeContentExtension(pi: ExtensionAPI) {
     await syncForgeToolSet(pi);
   });
 
-  pi.on("before_agent_start", async () => {
+  pi.on("before_agent_start", async (event, ctx) => {
     await syncForgeToolSet(pi);
+    return handleForgeSystemPromptBeforeAgentStart(event, ctx, pi);
   });
 }

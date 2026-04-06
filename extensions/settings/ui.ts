@@ -1,30 +1,24 @@
 import { getSettingsListTheme, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Container, SettingsList, Text, type SettingItem } from "@mariozechner/pi-tui";
 
-import type { SystemPromptPack, ToolSetPack, TungthedevSettings } from "./config.ts";
+import type { ToolSetPack, TungthedevSettings } from "./config.ts";
 
 export type SettingsCommandAction =
   | { action: "open-root" }
-  | { action: "open-system-prompt" }
   | { action: "open-tool-set" }
   | { action: "open-custom-shell-tool" }
-  | { action: "set-system-prompt"; value: SystemPromptPack }
+  | { action: "open-system-md-prompt" }
   | { action: "set-tool-set"; value: ToolSetPack }
   | { action: "set-custom-shell-tool"; value: boolean }
+  | { action: "set-system-md-prompt"; value: boolean }
   | { action: "invalid"; message: string };
 
 export type OpenSettingsUiOptions = {
-  focus?: "systemPrompt" | "toolSet" | "customShellTool";
+  focus?: "toolSet" | "customShellTool" | "systemMdPrompt";
   readSettings: () => Promise<TungthedevSettings>;
-  writeSystemPrompt: (value: SystemPromptPack) => Promise<void>;
   writeToolSet: (value: ToolSetPack) => Promise<void>;
   writeCustomShellTool: (value: boolean) => Promise<void>;
-};
-
-const SYSTEM_PROMPT_LABELS: Record<"None" | "Codex" | "Forge", SystemPromptPack> = {
-  None: null,
-  Codex: "codex",
-  Forge: "forge",
+  writeSystemMdPrompt: (value: boolean) => Promise<void>;
 };
 
 const TOOL_SET_LABELS: Record<"Codex" | "Forge", ToolSetPack> = {
@@ -37,11 +31,10 @@ const CUSTOM_SHELL_TOOL_LABELS: Record<"Enabled" | "Disabled", boolean> = {
   Disabled: false,
 };
 
-export function formatSystemPromptPackLabel(value: SystemPromptPack): "None" | "Codex" | "Forge" {
-  if (value === "codex") return "Codex";
-  if (value === "forge") return "Forge";
-  return "None";
-}
+const SYSTEM_MD_PROMPT_LABELS: Record<"Enabled" | "Disabled", boolean> = {
+  Enabled: true,
+  Disabled: false,
+};
 
 export function formatToolSetLabel(value: ToolSetPack): "Codex" | "Forge" {
   return value === "forge" ? "Forge" : "Codex";
@@ -51,19 +44,50 @@ export function formatCustomShellToolLabel(value: boolean): "Enabled" | "Disable
   return value ? "Enabled" : "Disabled";
 }
 
+export function formatSystemMdPromptLabel(value: boolean): "Enabled" | "Disabled" {
+  return value ? "Enabled" : "Disabled";
+}
+
+export function buildTungthedevSettingItems(settings: TungthedevSettings): SettingItem[] {
+  return [
+    {
+      id: "toolSet",
+      label: "Tool set",
+      description:
+        "Selects the Codex or Forge tool and prompt behavior for this package.",
+      currentValue: formatToolSetLabel(settings.toolSet),
+      values: ["Codex", "Forge"],
+    },
+    {
+      id: "customShellTool",
+      label: "Custom shell tool",
+      description: "Switches between the package shell tool and Pi's built-in bash tool.",
+      currentValue: formatCustomShellToolLabel(settings.customShellTool),
+      values: ["Enabled", "Disabled"],
+    },
+    {
+      id: "systemMdPrompt",
+      label: "System.md prompt",
+      description:
+        "Loads the repo root SYSTEM.md and overrides the active Pi, Codex, or Forge system prompt when enabled.",
+      currentValue: formatSystemMdPromptLabel(settings.systemMdPrompt),
+      values: ["Enabled", "Disabled"],
+    },
+  ];
+}
+
 export function parseSettingsCommand(args: string): SettingsCommandAction {
   const parts = args.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return { action: "open-root" };
+
   if (parts[0] === "system-prompt") {
-    if (parts.length === 1) return { action: "open-system-prompt" };
-    if (parts[1] === "none") return { action: "set-system-prompt", value: null };
-    if (parts[1] === "codex" || parts[1] === "forge") {
-      return { action: "set-system-prompt", value: parts[1] };
-    }
-    return { action: "invalid", message: `Unknown system prompt pack: ${parts[1]}` };
+    return {
+      action: "invalid",
+      message: "System prompts now follow the selected tool set. Use: tool-set codex|forge",
+    };
   }
 
-  if (parts[0] === "tool-set") {
+  if (parts[0] === "content-pack" || parts[0] === "tool-set") {
     if (parts.length === 1) return { action: "open-tool-set" };
     if (parts[1] === "codex" || parts[1] === "forge") {
       return { action: "set-tool-set", value: parts[1] };
@@ -82,9 +106,18 @@ export function parseSettingsCommand(args: string): SettingsCommandAction {
     return { action: "invalid", message: `Unknown custom shell tool value: ${parts[1]}` };
   }
 
-  {
-    return { action: "invalid", message: `Unknown setting: ${parts[0]}` };
+  if (parts[0] === "system-md") {
+    if (parts.length === 1) return { action: "open-system-md-prompt" };
+    if (parts[1] === "on" || parts[1] === "enabled") {
+      return { action: "set-system-md-prompt", value: true };
+    }
+    if (parts[1] === "off" || parts[1] === "disabled") {
+      return { action: "set-system-md-prompt", value: false };
+    }
+    return { action: "invalid", message: `Unknown system-md value: ${parts[1]}` };
   }
+
+  return { action: "invalid", message: `Unknown setting: ${parts[0]}` };
 }
 
 export async function openTungthedevSettingsUi(
@@ -94,26 +127,7 @@ export async function openTungthedevSettingsUi(
   if (!ctx.hasUI) return;
 
   const settings = await options.readSettings();
-  const items: SettingItem[] = [
-    {
-      id: "systemPrompt",
-      label: "System prompt pack",
-      currentValue: formatSystemPromptPackLabel(settings.systemPrompt),
-      values: ["None", "Codex", "Forge"],
-    },
-    {
-      id: "toolSet",
-      label: "Tool set",
-      currentValue: formatToolSetLabel(settings.toolSet),
-      values: ["Codex", "Forge"],
-    },
-    {
-      id: "customShellTool",
-      label: "Custom shell tool",
-      currentValue: formatCustomShellToolLabel(settings.customShellTool),
-      values: ["Enabled", "Disabled"],
-    },
-  ];
+  const items = buildTungthedevSettingItems(settings);
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const container = new Container();
@@ -124,20 +138,6 @@ export async function openTungthedevSettingsUi(
       Math.min(items.length + 2, 12),
       getSettingsListTheme(),
       async (id, newValue) => {
-        if (id === "systemPrompt") {
-          const nextValue = SYSTEM_PROMPT_LABELS[newValue as keyof typeof SYSTEM_PROMPT_LABELS];
-          if (nextValue === undefined) return;
-
-          await options.writeSystemPrompt(nextValue);
-          const itemIndex = items.findIndex((item) => item.id === id);
-          items[itemIndex] = {
-            ...items[itemIndex],
-            currentValue: formatSystemPromptPackLabel(nextValue),
-          };
-          ctx.ui.notify(`System prompt pack: ${formatSystemPromptPackLabel(nextValue)}`, "info");
-          return;
-        }
-
         if (id === "toolSet") {
           const nextValue = TOOL_SET_LABELS[newValue as keyof typeof TOOL_SET_LABELS];
           if (nextValue === undefined) return;
@@ -164,6 +164,21 @@ export async function openTungthedevSettingsUi(
             currentValue: formatCustomShellToolLabel(nextValue),
           };
           ctx.ui.notify(`Custom shell tool: ${formatCustomShellToolLabel(nextValue)}`, "info");
+          return;
+        }
+
+        if (id === "systemMdPrompt") {
+          const nextValue =
+            SYSTEM_MD_PROMPT_LABELS[newValue as keyof typeof SYSTEM_MD_PROMPT_LABELS];
+          if (nextValue === undefined) return;
+
+          await options.writeSystemMdPrompt(nextValue);
+          const itemIndex = items.findIndex((item) => item.id === id);
+          items[itemIndex] = {
+            ...items[itemIndex],
+            currentValue: formatSystemMdPromptLabel(nextValue),
+          };
+          ctx.ui.notify(`System.md prompt: ${formatSystemMdPromptLabel(nextValue)}`, "info");
         }
       },
       () => done(undefined),

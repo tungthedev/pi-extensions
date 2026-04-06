@@ -5,15 +5,15 @@ import { dirname, join } from "node:path";
 const SETTINGS_FILE = "settings.json";
 const TUNGTHEDEV_NAMESPACE = "tungthedev/pi";
 
-export type SystemPromptPack = "codex" | "forge" | null;
 export type ToolSetPack = "codex" | "forge";
 export const DEFAULT_TOOL_SET: ToolSetPack = "codex";
 export const DEFAULT_CUSTOM_SHELL_TOOL = true;
+export const DEFAULT_SYSTEM_MD_PROMPT = false;
 
 export type TungthedevSettings = {
-  systemPrompt: SystemPromptPack;
   toolSet: ToolSetPack;
   customShellTool: boolean;
+  systemMdPrompt: boolean;
 };
 
 type SettingsRoot = Record<string, unknown>;
@@ -22,16 +22,24 @@ export function getGlobalPiSettingsPath(agentDir = getAgentDir()): string {
   return join(agentDir, SETTINGS_FILE);
 }
 
-function normalizeSystemPrompt(value: unknown): SystemPromptPack {
-  return value === "codex" || value === "forge" || value === null ? value : null;
+function normalizeLegacyContentPack(value: unknown): ToolSetPack | undefined {
+  return value === "codex" || value === "forge" ? value : undefined;
 }
 
-function normalizeToolSet(value: unknown): ToolSetPack {
-  return value === "forge" ? "forge" : DEFAULT_TOOL_SET;
+function normalizeToolSet(value: unknown, legacySystemPrompt: unknown): ToolSetPack {
+  if (value === "codex" || value === "forge") {
+    return value;
+  }
+
+  return normalizeLegacyContentPack(legacySystemPrompt) ?? DEFAULT_TOOL_SET;
 }
 
 function normalizeCustomShellTool(value: unknown): boolean {
   return typeof value === "boolean" ? value : DEFAULT_CUSTOM_SHELL_TOOL;
+}
+
+function normalizeSystemMdPrompt(value: unknown): boolean {
+  return typeof value === "boolean" ? value : DEFAULT_SYSTEM_MD_PROMPT;
 }
 
 export function parseTungthedevSettings(root: unknown): TungthedevSettings {
@@ -40,7 +48,7 @@ export function parseTungthedevSettings(root: unknown): TungthedevSettings {
       ? (root as SettingsRoot)[TUNGTHEDEV_NAMESPACE]
       : undefined;
 
-  const systemPrompt =
+  const legacySystemPrompt =
     namespace && typeof namespace === "object" && !Array.isArray(namespace)
       ? (namespace as SettingsRoot).systemPrompt
       : undefined;
@@ -52,11 +60,15 @@ export function parseTungthedevSettings(root: unknown): TungthedevSettings {
     namespace && typeof namespace === "object" && !Array.isArray(namespace)
       ? (namespace as SettingsRoot).customShellTool
       : undefined;
+  const systemMdPrompt =
+    namespace && typeof namespace === "object" && !Array.isArray(namespace)
+      ? (namespace as SettingsRoot).systemMdPrompt
+      : undefined;
 
   return {
-    systemPrompt: normalizeSystemPrompt(systemPrompt),
-    toolSet: normalizeToolSet(toolSet),
+    toolSet: normalizeToolSet(toolSet, legacySystemPrompt),
     customShellTool: normalizeCustomShellTool(customShellTool),
+    systemMdPrompt: normalizeSystemMdPrompt(systemMdPrompt),
   };
 }
 
@@ -96,11 +108,15 @@ async function writeSettingsRoot(filePath: string, root: SettingsRoot): Promise<
   }
 }
 
-export async function readTungthedevSettingsFromFile(filePath: string): Promise<TungthedevSettings> {
+export async function readTungthedevSettingsFromFile(
+  filePath: string,
+): Promise<TungthedevSettings> {
   return parseTungthedevSettings(await readSettingsRoot(filePath));
 }
 
-export async function readTungthedevSettings(filePath = getGlobalPiSettingsPath()): Promise<TungthedevSettings> {
+export async function readTungthedevSettings(
+  filePath = getGlobalPiSettingsPath(),
+): Promise<TungthedevSettings> {
   return readTungthedevSettingsFromFile(filePath);
 }
 
@@ -116,37 +132,47 @@ async function writeTungthedevSettings(
       : {};
 
   delete namespace.skillListInjection;
+  delete namespace.systemPrompt;
   root[TUNGTHEDEV_NAMESPACE] = updater(namespace);
 
   await writeSettingsRoot(filePath, root);
-}
-
-export async function writeSystemPromptSetting(
-  systemPrompt: SystemPromptPack,
-  filePath = getGlobalPiSettingsPath(),
-): Promise<void> {
-  await writeTungthedevSettings((namespace) => ({
-    ...namespace,
-    systemPrompt,
-  }), filePath);
 }
 
 export async function writeToolSetSetting(
   toolSet: ToolSetPack,
   filePath = getGlobalPiSettingsPath(),
 ): Promise<void> {
-  await writeTungthedevSettings((namespace) => ({
-    ...namespace,
-    toolSet,
-  }), filePath);
+  await writeTungthedevSettings(
+    (namespace) => ({
+      ...namespace,
+      toolSet,
+    }),
+    filePath,
+  );
 }
 
 export async function writeCustomShellToolSetting(
   customShellTool: boolean,
   filePath = getGlobalPiSettingsPath(),
 ): Promise<void> {
-  await writeTungthedevSettings((namespace) => ({
-    ...namespace,
-    customShellTool,
-  }), filePath);
+  await writeTungthedevSettings(
+    (namespace) => ({
+      ...namespace,
+      customShellTool,
+    }),
+    filePath,
+  );
+}
+
+export async function writeSystemMdPromptSetting(
+  systemMdPrompt: boolean,
+  filePath = getGlobalPiSettingsPath(),
+): Promise<void> {
+  await writeTungthedevSettings(
+    (namespace) => ({
+      ...namespace,
+      systemMdPrompt,
+    }),
+    filePath,
+  );
 }
