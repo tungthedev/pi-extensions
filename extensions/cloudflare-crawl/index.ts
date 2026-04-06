@@ -563,18 +563,7 @@ export default function cloudflareCrawl(pi: ExtensionAPI) {
     }
   };
 
-  const syncToolAvailability = () => {
-    if (hasCloudflareConfig()) {
-      return;
-    }
-
-    const activeToolNames = pi.getActiveTools();
-    if (!activeToolNames.includes(TOOL_NAME)) {
-      return;
-    }
-
-    pi.setActiveTools(activeToolNames.filter((toolName) => toolName !== TOOL_NAME));
-  };
+  const toolRegistered = hasCloudflareConfig();
 
   const shouldNotifySession = (sessionFile: string | undefined): boolean => {
     if (!sessionFile || !activeSessionFile) return true;
@@ -610,16 +599,10 @@ export default function cloudflareCrawl(pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     activeSessionFile = ctx.sessionManager.getSessionFile() ?? undefined;
-    syncToolAvailability();
   });
 
   pi.on("session_switch", async (_event, ctx) => {
     activeSessionFile = ctx.sessionManager.getSessionFile() ?? undefined;
-    syncToolAvailability();
-  });
-
-  pi.on("before_agent_start", async () => {
-    syncToolAvailability();
   });
 
   pi.on("agent_start", async () => {
@@ -641,6 +624,10 @@ export default function cloudflareCrawl(pi: ExtensionAPI) {
       return renderResultBody(details, { content: [], details }, theme, expanded);
     },
   );
+
+  if (!toolRegistered) {
+    return;
+  }
 
   pi.registerTool({
     name: TOOL_NAME,

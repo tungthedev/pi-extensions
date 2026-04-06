@@ -426,31 +426,9 @@ export function createWebExtractTool(): ToolDefinition {
 export default function webSearchPack(pi: ExtensionAPI) {
   const hasGeminiConfig = (): boolean => Boolean(resolveGeminiApiKey());
 
-  const syncToolAvailability = () => {
-    if (hasGeminiConfig()) {
-      return;
-    }
-
-    const disabled = new Set([WEB_SEARCH_TOOL_NAME, WEB_EXTRACT_TOOL_NAME]);
-    const activeToolNames = pi.getActiveTools();
-    if (!activeToolNames.some((toolName) => disabled.has(toolName))) {
-      return;
-    }
-
-    pi.setActiveTools(activeToolNames.filter((toolName) => !disabled.has(toolName)));
-  };
-
-  pi.on("session_start", async () => {
-    syncToolAvailability();
-  });
-
-  pi.on("session_switch", async () => {
-    syncToolAvailability();
-  });
-
-  pi.on("before_agent_start", async () => {
-    syncToolAvailability();
-  });
+  if (!hasGeminiConfig()) {
+    return;
+  }
 
   pi.registerTool(createWebSearchTool());
   pi.registerTool(createWebExtractTool());
