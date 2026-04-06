@@ -223,3 +223,19 @@ test("executeShellCommand marks timed out commands", async () => {
   assert.equal(result.timedOut, true);
   assert.equal(result.aborted, false);
 });
+
+test("executeShellCommand force kills processes that ignore SIGTERM after timeout", async () => {
+  const result = await executeShellCommand(
+    {
+      shell: process.execPath,
+      shellArgs: ["-e", 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000)'],
+    },
+    process.cwd(),
+    {
+      timeoutMs: 50,
+    },
+  );
+
+  assert.equal(result.timedOut, true);
+  assert.equal(result.aborted, false);
+});
