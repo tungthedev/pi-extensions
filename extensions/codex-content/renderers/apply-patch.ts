@@ -10,7 +10,7 @@ import {
   shortenPath,
   summarizeList,
 } from "../shared/text.ts";
-import { detailLine, expandHintLine, renderLines, titleLine } from "./common.ts";
+import { expandHintLine, renderLines } from "./common.ts";
 
 type ApplyPatchAffected = {
   added?: string[];
@@ -32,6 +32,9 @@ type ApplyPatchDetails = {
   affected?: ApplyPatchAffected;
   files?: ApplyPatchFile[];
 };
+
+const COLLAPSED_PREVIEW_LINES = 8;
+const EXPANDED_PREVIEW_LINES = 24;
 
 const APPLY_PATCH_ACTIONS: Record<ApplyPatchFileAction, { title: string; code: string }> = {
   added: { title: "Added", code: "A" },
@@ -80,16 +83,45 @@ function renderFileDiff(file: ApplyPatchFile): string[] {
   return renderDiff(file.diff, { filePath: file.path }).split("\n");
 }
 
+function renderHeader(
+  theme: Theme,
+  title: string,
+  suffix?: string,
+  stats?: string,
+  tone: "default" | "error" = "default",
+): string {
+  const titleText = theme.bold(title);
+  const coloredTitle = theme.fg(tone === "error" ? "error" : "toolTitle", titleText);
+  if (!suffix && !stats) return coloredTitle;
+
+  const parts = [coloredTitle];
+  if (suffix) parts.push(theme.fg("accent", suffix));
+  if (stats) parts.push(stats);
+  return parts.join(" ");
+}
+
+function renderStats(theme: Theme, diff?: string): string | undefined {
+  if (!diff) return undefined;
+  const stats = countDiff(diff);
+  return theme.fg("muted", `(+${stats.added} -${stats.removed})`);
+}
+
+function previewDetailLines(lines: string[], expanded: boolean): { visible: string[]; hidden: number } {
+  const maxLines = expanded ? EXPANDED_PREVIEW_LINES : COLLAPSED_PREVIEW_LINES;
+  const visible = lines.slice(0, maxLines);
+  return { visible, hidden: Math.max(0, lines.length - visible.length) };
+}
+
 function buildAffectedDetailLines(theme: Theme, details: ApplyPatchDetails): string[] {
   return [
     ...(details.affected?.added ?? []).map((filePath) =>
-      theme.fg("toolOutput", `A ${shortenPath(filePath)}`),
+      `${theme.fg("toolDiffAdded", "A")} ${theme.fg("toolOutput", shortenPath(filePath))}`,
     ),
     ...(details.affected?.modified ?? []).map((filePath) =>
-      theme.fg("toolOutput", `M ${shortenPath(filePath)}`),
+      `${theme.fg("toolTitle", "M")} ${theme.fg("toolOutput", shortenPath(filePath))}`,
     ),
     ...(details.affected?.deleted ?? []).map((filePath) =>
-      theme.fg("toolOutput", `D ${shortenPath(filePath)}`),
+      `${theme.fg("toolDiffRemoved", "D")} ${theme.fg("toolOutput", shortenPath(filePath))}`,
     ),
   ];
 }
@@ -102,8 +134,10 @@ function buildMultiFileDetailLines(theme: Theme, files: ApplyPatchFile[]): strin
   const lines: string[] = [];
 
   for (const [index, file] of files.entries()) {
+    const action = patchAction(file.action);
+    const stats = renderStats(theme, file.diff);
     lines.push(
-      theme.fg("toolOutput", `${patchAction(file.action).code} ${describeApplyPatchFile(file)}`),
+      `${theme.fg("toolTitle", action.title)} ${theme.fg("accent", describeApplyPatchFile(file))}${stats ? ` ${stats}` : ""}`,
     );
     lines.push(...renderFileDiff(file));
 
@@ -176,27 +210,23 @@ function renderFailedPatchResult(
   singleFile: ApplyPatchFile | undefined,
   expanded: boolean,
 ): Text {
-  const singleFileStats = singleFile?.diff ? countDiff(singleFile.diff) : undefined;
-  const singleFileStatsSuffix = singleFileStats
-    ? theme.fg("dim", ` (+${singleFileStats.added} -${singleFileStats.removed})`)
-    : "";
-  const suffix = summary.suffix
-    ? `${theme.fg("accent", summary.suffix)}${singleFileStatsSuffix}`
-    : undefined;
-  const lines = [titleLine(theme, "error", "Patch failed", suffix)];
+  const lines = [
+    renderHeader(theme, "Patch failed", summary.suffix, renderStats(theme, singleFile?.diff), "error"),
+  ];
   const allPreviews = previewLines(text, Number.MAX_SAFE_INTEGER);
-  const previews = allPreviews.slice(0, expanded ? 6 : 3);
+  const previews = allPreviews.slice(0, expanded ? 12 : 6);
 
-  for (const [index, line] of previews.entries()) {
-    lines.push(detailLine(theme, line, index === 0));
+  if (previews.length > 0) {
+    lines.push("");
+    lines.push(...previews.map((line) => theme.fg("toolOutput", line)));
   }
 
   if (previews.length === 0 && text) {
-    lines.push(detailLine(theme, firstLine(text), true));
+    lines.push("", theme.fg("toolOutput", firstLine(text)));
   }
 
   if (!expanded) {
-    const hiddenCount = Math.max(0, allPreviews.slice(0, 6).length - previews.length);
+    const hiddenCount = Math.max(0, allPreviews.length - previews.length);
     if (hiddenCount > 0) {
       lines.push(expandHintLine(theme, hiddenCount, "line"));
     }
@@ -213,23 +243,17 @@ function renderSuccessfulPatchResult(
 ): Text {
   const files = details.files ?? [];
   const singleFile = files.length === 1 ? files[0] : undefined;
-  const singleFileStats = singleFile?.diff ? countDiff(singleFile.diff) : undefined;
-  const singleFileStatsSuffix = singleFileStats
-    ? theme.fg("dim", ` (+${singleFileStats.added} -${singleFileStats.removed})`)
-    : "";
-  const suffix = summary.suffix
-    ? `${theme.fg("accent", summary.suffix)}${singleFileStatsSuffix}`
-    : undefined;
-  const lines = [titleLine(theme, "success", summary.title, suffix)];
+  const lines = [renderHeader(theme, summary.title, summary.suffix, renderStats(theme, singleFile?.diff))];
   const detailLines = buildApplyPatchDetailLines(theme, details);
+  const { visible, hidden } = previewDetailLines(detailLines, expanded);
 
-  if (expanded) {
-    lines.push(...detailLines);
-    return renderLines(lines);
+  if (visible.length > 0) {
+    lines.push("");
+    lines.push(...visible);
   }
 
-  if (detailLines.length > 0) {
-    lines.push(expandHintLine(theme, detailLines.length, "line"));
+  if (!expanded && hidden > 0) {
+    lines.push(expandHintLine(theme, hidden, "line"));
   }
 
   return renderLines(lines);

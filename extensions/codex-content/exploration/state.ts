@@ -144,7 +144,7 @@ function formatSearchTarget(args: { pattern?: string; path?: string; glob?: stri
 function formatFindTarget(args: { pattern?: string; path?: string }): string {
   const pattern = args.pattern || "*";
   const targetPath = shortenPath(args.path || ".");
-  return `Find ${pattern} in ${targetPath}`;
+  return `Search ${pattern} in ${targetPath}`;
 }
 
 function formatListTarget(args: { path?: string; dir_path?: string }): string {

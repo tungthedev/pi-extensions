@@ -1,11 +1,13 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
 import type { Dirent } from "node:fs";
 
+import { createLsToolDefinition } from "@mariozechner/pi-coding-agent";
+import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { renderEmptySlot } from "../renderers/common.ts";
+import { shortenPath } from "../shared/text.ts";
 import { MAX_LIST_DIR_SCAN_ENTRIES, resolveAbsolutePathWithVariants } from "./runtime.ts";
 
 export type ListDirectoryEntry = {
@@ -208,7 +210,21 @@ export function formatListDirectoryOutput(
   return lines.join("\n");
 }
 
+function renderListDirCall(theme: Theme, args: { dir_path?: string; limit?: number }): Text {
+  const targetPath = shortenPath(args.dir_path || ".");
+  const suffix =
+    typeof args.limit === "number" ? theme.fg("dim", ` (limit ${args.limit})`) : "";
+
+  return new Text(
+    `${theme.fg("toolTitle", theme.bold("List "))}${theme.fg("accent", targetPath)}${suffix}`,
+    0,
+    0,
+  );
+}
+
 export function registerListDirTool(pi: ExtensionAPI): void {
+  const nativeLsDefinition = createLsToolDefinition(process.cwd());
+
   pi.registerTool({
     name: "list_dir",
     label: "list_dir",
@@ -241,11 +257,20 @@ export function registerListDirTool(pi: ExtensionAPI): void {
 
       return buildListDirResult(absolutePath, scan.entries, scan.skippedCount, { offset, limit });
     },
-    renderCall() {
-      return renderEmptySlot();
+    renderCall(args, theme, _context) {
+      return renderListDirCall(theme, args);
     },
-    renderResult() {
-      return renderEmptySlot();
+    renderResult(result, options, theme, context) {
+      if (!options.expanded) {
+        return new Container();
+      }
+
+      return nativeLsDefinition.renderResult!(
+        result as never,
+        options,
+        theme,
+        context as never,
+      );
     },
   });
 }

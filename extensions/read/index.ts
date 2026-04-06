@@ -1,8 +1,10 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
 
-import { createReadTool } from "@mariozechner/pi-coding-agent";
+import { createReadTool, createReadToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+
+import { shortenPath } from "../codex-content/shared/text.ts";
 
 const READ_FILE_DESCRIPTION =
   "Read the contents of a file. Accepts absolute paths, cwd-relative paths, @-prefixed paths, and ~ home-directory paths. Supports text files and images (jpg, png, gif, webp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.";
@@ -13,19 +15,29 @@ const readFileSchema = Type.Object({
   limit: Type.Optional(Type.Number({ description: "Maximum number of lines to read" })),
 });
 
-function formatReadFileCall(args: { file_path?: string; offset?: number; limit?: number }): string {
-  const filePath = args.file_path ?? "...";
+function formatReadCall(args: { file_path?: string; offset?: number; limit?: number }): string {
+  const targetPath = shortenPath(args.file_path || ".");
   if (args.offset === undefined && args.limit === undefined) {
-    return `read ${filePath}`;
+    return `Read ${targetPath}`;
   }
 
-  const startLine = args.offset ?? 1;
-  const endLine = args.limit !== undefined ? startLine + args.limit - 1 : undefined;
-  return `read ${filePath}:${startLine}${endLine ? `-${endLine}` : ""}`;
+  const start = args.offset ?? 1;
+  const end = typeof args.limit === "number" ? start + args.limit - 1 : undefined;
+  return `Read ${targetPath}:${start}${end ? `-${end}` : ""}`;
+}
+
+function renderReadCall(theme: Theme, args: { file_path?: string; offset?: number; limit?: number }): Text {
+  const detail = formatReadCall(args).replace(/^Read\s+/, "");
+  return new Text(
+    `${theme.fg("toolTitle", theme.bold("Read "))}${theme.fg("accent", detail)}`,
+    0,
+    0,
+  );
 }
 
 export default function registerReadExtension(pi: ExtensionAPI): void {
   const nativeRead = createReadTool(process.cwd());
+  const nativeReadDefinition = createReadToolDefinition(process.cwd());
 
   pi.registerTool({
     name: "read_file",
@@ -44,11 +56,20 @@ export default function registerReadExtension(pi: ExtensionAPI): void {
         onUpdate,
       );
     },
-    renderCall(args) {
-      return new Text(formatReadFileCall(args), 0, 0);
+    renderCall(args, theme, _context) {
+      return renderReadCall(theme, args);
     },
-    renderResult() {
-      return new Container();
+    renderResult(result, options, theme, context) {
+      if (!options.expanded) {
+        return new Container();
+      }
+
+      return nativeReadDefinition.renderResult!(
+        result as never,
+        options,
+        theme,
+        context as never,
+      );
     },
   });
 }

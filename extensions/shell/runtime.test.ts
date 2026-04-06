@@ -6,6 +6,7 @@ import test from "node:test";
 
 import { getPiBinDir } from "../codex-content/tools/runtime.ts";
 import {
+  executeShellCommand,
   getShellEnv,
   readConfiguredShellPath,
   resolveShellInvocation,
@@ -178,4 +179,47 @@ test("stripTrailingBackgroundOperator removes a trailing background marker", () 
     command: "npm run dev",
     stripped: true,
   });
+});
+
+test("executeShellCommand streams stdout and stderr while preserving exit code", async () => {
+  const chunks: string[] = [];
+
+  const result = await executeShellCommand(
+    {
+      shell: process.execPath,
+      shellArgs: [
+        "-e",
+        [
+          'process.stdout.write("hello\\n")',
+          'process.stderr.write("warn\\n")',
+          "process.exit(3)",
+        ].join(";"),
+      ],
+    },
+    process.cwd(),
+    {
+      onData: (chunk) => chunks.push(chunk.toString("utf8")),
+    },
+  );
+
+  assert.equal(result.exitCode, 3);
+  assert.equal(result.timedOut, false);
+  assert.equal(result.aborted, false);
+  assert.equal(chunks.join(""), "hello\nwarn\n");
+});
+
+test("executeShellCommand marks timed out commands", async () => {
+  const result = await executeShellCommand(
+    {
+      shell: process.execPath,
+      shellArgs: ["-e", 'setTimeout(() => process.exit(0), 5000)'],
+    },
+    process.cwd(),
+    {
+      timeoutMs: 50,
+    },
+  );
+
+  assert.equal(result.timedOut, true);
+  assert.equal(result.aborted, false);
 });

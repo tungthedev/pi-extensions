@@ -1,10 +1,12 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
 
+import { createFindToolDefinition } from "@mariozechner/pi-coding-agent";
+import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { renderEmptySlot } from "../renderers/common.ts";
+import { shortenPath } from "../shared/text.ts";
 import {
   normalizeCommandOutputPaths,
   statSortedFileMatches,
@@ -111,7 +113,25 @@ function validateFindFilesOffset(matchCount: number, offset: number): void {
   }
 }
 
+function renderFindFilesCall(
+  theme: Theme,
+  args: { pattern?: string; path?: string; limit?: number },
+): Text {
+  const pattern = args.pattern || "*";
+  const targetPath = shortenPath(args.path || ".");
+  const suffix =
+    typeof args.limit === "number" ? theme.fg("dim", ` (limit ${args.limit})`) : "";
+
+  return new Text(
+    `${theme.fg("toolTitle", theme.bold("Search "))}${theme.fg("accent", `${pattern} in ${targetPath}`)}${suffix}`,
+    0,
+    0,
+  );
+}
+
 export function registerFindFilesTool(pi: ExtensionAPI): void {
+  const nativeFindDefinition = createFindToolDefinition(process.cwd());
+
   pi.registerTool({
     name: "find_files",
     label: "find_files",
@@ -145,11 +165,20 @@ export function registerFindFilesTool(pi: ExtensionAPI): void {
         },
       };
     },
-    renderCall() {
-      return renderEmptySlot();
+    renderCall(args, theme, _context) {
+      return renderFindFilesCall(theme, args);
     },
-    renderResult() {
-      return renderEmptySlot();
+    renderResult(result, options, theme, context) {
+      if (!options.expanded) {
+        return new Container();
+      }
+
+      return nativeFindDefinition.renderResult!(
+        result as never,
+        options,
+        theme,
+        context as never,
+      );
     },
   });
 }

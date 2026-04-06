@@ -67,7 +67,7 @@ test("ExplorationTracker does not duplicate items when both tool_result and tool
   assert.equal(groups.length, 1);
   assert.deepEqual(
     groups[0]?.items.map((item) => item.detail),
-    ["Find *.ts in /repo"],
+    ["Search *.ts in /repo"],
   );
 });
 
@@ -76,11 +76,11 @@ test("summarizeExplorationItems merges consecutive successful read items", () =>
     summarizeExplorationItems([
       { toolName: "read_file", detail: "Read /repo/a.ts" },
       { toolName: "read", detail: "Read /repo/b.ts" },
-      { toolName: "find_files", detail: "Find *.ts in /repo" },
+      { toolName: "find_files", detail: "Search *.ts in /repo" },
     ]),
     [
       { detail: "Read /repo/a.ts, /repo/b.ts", failed: undefined, errorPreview: undefined },
-      { detail: "Find *.ts in /repo", failed: undefined, errorPreview: undefined },
+      { detail: "Search *.ts in /repo", failed: undefined, errorPreview: undefined },
     ],
   );
 });

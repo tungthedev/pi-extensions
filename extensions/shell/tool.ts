@@ -1,16 +1,21 @@
-import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { AgentToolResult, BashToolDetails, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
+import {
+  DEFAULT_MAX_BYTES,
+  createBashToolDefinition,
+  formatSize,
+  truncateTail,
+} from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
+import { createWriteStream, type WriteStream } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { renderBashResult } from "../codex-content/renderers/bash.ts";
-import { renderEmptySlot, renderFallbackResult } from "../codex-content/renderers/common.ts";
+import { resolveAbsolutePath } from "../codex-content/tools/runtime.ts";
 import {
-  execCommand,
-  resolveAbsolutePath,
-  trimToBudget,
-} from "../codex-content/tools/runtime.ts";
-import {
+  executeShellCommand,
   getShellEnv,
   readConfiguredShellPath,
   resolveShellInvocation,
@@ -31,7 +36,19 @@ type NormalizedShellInput = {
   notes: string[];
 };
 
+type ShellToolDetails = BashToolDetails & {
+  command: string | undefined;
+  normalizedCommand?: string;
+  workdir: string;
+  exitCode?: number | null;
+  shell?: string;
+  shellArgs?: string[];
+  notes?: string[];
+};
+
 type ToolResult<TDetails> = AgentToolResult<TDetails> & { isError?: boolean };
+
+const nativeBashTool = createBashToolDefinition(process.cwd());
 
 function normalizeShellInput(cwd: string, params: ShellParams): NormalizedShellInput {
   let workdir = resolveAbsolutePath(cwd, params.workdir ?? ".");
@@ -58,7 +75,7 @@ function buildShellErrorResult(
   command: string | undefined,
   workdir: string,
   text: string,
-): ToolResult<{ command: string | undefined; workdir: string }> {
+): ToolResult<ShellToolDetails> {
   return {
     content: [{ type: "text" as const, text }],
     details: { command, workdir },
@@ -71,36 +88,87 @@ async function validateWorkdir(workdir: string): Promise<string | undefined> {
   try {
     workdirStats = await fs.stat(workdir);
   } catch {
-    return `Error: working directory does not exist: ${workdir}`;
+    return `Working directory does not exist: ${workdir}\nCannot execute shell commands.`;
   }
 
   if (!workdirStats.isDirectory()) {
-    return `Error: working directory is not a directory: ${workdir}`;
+    return `Working directory is not a directory: ${workdir}`;
   }
 
   return undefined;
 }
 
-function formatShellOutput(
-  result: { stdout: string; stderr: string; exitCode: number },
-  notes: string[],
+function getTempFilePath(): string {
+  const id = randomBytes(8).toString("hex");
+  return join(tmpdir(), `pi-shell-${id}.log`);
+}
+
+function appendTruncationNotice(
+  outputText: string,
+  truncation: ReturnType<typeof truncateTail>,
+  fullOutputPath: string,
+  fullOutput: string,
+  options: { hasCompleteOutput: boolean; totalBytes: number },
 ): string {
-  const sections = [`Exit code: ${result.exitCode}`];
-
-  if (result.stdout.trim()) {
-    sections.push("Stdout:", result.stdout.trimEnd());
-  }
-  if (result.stderr.trim()) {
-    sections.push("Stderr:", result.stderr.trimEnd());
-  }
-  if (!result.stdout.trim() && !result.stderr.trim()) {
-    sections.push("(no output)");
-  }
-  if (notes.length > 0) {
-    sections.push("Notes:", ...notes);
+  if (!options.hasCompleteOutput) {
+    return `${outputText}\n\n[Output truncated to the last ${formatSize(truncation.outputBytes)} of ${formatSize(options.totalBytes)}. Full output: ${fullOutputPath}]`;
   }
 
-  return trimToBudget(sections.join("\n")).text;
+  const startLine = truncation.totalLines - truncation.outputLines + 1;
+  const endLine = truncation.totalLines;
+
+  if (truncation.lastLinePartial) {
+    const lastLineSize = formatSize(Buffer.byteLength(fullOutput.split("\n").pop() ?? "", "utf-8"));
+    return `${outputText}\n\n[Showing last ${formatSize(truncation.outputBytes)} of line ${endLine} (line is ${lastLineSize}). Full output: ${fullOutputPath}]`;
+  }
+
+  if (truncation.truncatedBy === "lines") {
+    return `${outputText}\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines}. Full output: ${fullOutputPath}]`;
+  }
+
+  return `${outputText}\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(DEFAULT_MAX_BYTES)} limit). Full output: ${fullOutputPath}]`;
+}
+
+async function closeTempFileStream(stream: WriteStream | undefined): Promise<void> {
+  if (!stream) return;
+
+  await new Promise<void>((resolve, reject) => {
+    const onError = (error: Error) => {
+      stream.removeListener("finish", onFinish);
+      reject(error);
+    };
+    const onFinish = () => {
+      stream.removeListener("error", onError);
+      resolve();
+    };
+
+    stream.once("error", onError);
+    stream.once("finish", onFinish);
+    stream.end();
+  });
+}
+
+function buildShellDetails(
+  normalized: NormalizedShellInput,
+  params: ShellParams,
+  invocation?: { shell: string; shellArgs: string[] },
+  options: {
+    exitCode?: number | null;
+    truncation?: ReturnType<typeof truncateTail>;
+    fullOutputPath?: string;
+  } = {},
+): ShellToolDetails {
+  return {
+    command: params.command,
+    normalizedCommand: normalized.command,
+    workdir: normalized.workdir,
+    exitCode: options.exitCode,
+    shell: invocation?.shell,
+    shellArgs: invocation?.shellArgs,
+    notes: normalized.notes,
+    truncation: options.truncation,
+    fullOutputPath: options.fullOutputPath,
+  };
 }
 
 export function registerShellTool(pi: ExtensionAPI): void {
@@ -129,13 +197,13 @@ export function registerShellTool(pi: ExtensionAPI): void {
         }),
       ),
     }),
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+    async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const normalized = normalizeShellInput(ctx.cwd, params);
       if (!normalized.command) {
         return buildShellErrorResult(
           params.command,
           normalized.workdir,
-          "Error: shell command is empty after normalization.",
+          "Shell command is empty after normalization.",
         );
       }
 
@@ -149,34 +217,157 @@ export function registerShellTool(pi: ExtensionAPI): void {
         login: params.login,
         configuredShellPath,
       });
-      const result = await execCommand(invocation.shell, invocation.shellArgs, normalized.workdir, {
-        env: getShellEnv(),
-        timeoutMs: params.timeout_ms,
-        signal,
-      });
 
-      return {
-        content: [{ type: "text" as const, text: formatShellOutput(result, normalized.notes) }],
-        details: {
-          command: params.command,
-          normalizedCommand: normalized.command,
-          workdir: normalized.workdir,
-          exitCode: result.exitCode,
-          shell: invocation.shell,
-          shellArgs: invocation.shellArgs,
-          notes: normalized.notes,
-        },
-        isError: result.exitCode !== 0,
+      onUpdate?.({ content: [], details: undefined });
+
+      let tempFilePath: string | undefined;
+      let tempFileStream: WriteStream | undefined;
+      let totalBytes = 0;
+      const chunks: Buffer[] = [];
+      let chunksBytes = 0;
+      const maxChunksBytes = DEFAULT_MAX_BYTES * 2;
+      let droppedBufferedOutput = false;
+
+      const ensureTempFile = () => {
+        if (tempFilePath) return;
+
+        tempFilePath = getTempFilePath();
+        tempFileStream = createWriteStream(tempFilePath);
+        for (const chunk of chunks) {
+          tempFileStream.write(chunk);
+        }
       };
-    },
-    renderCall() {
-      return renderEmptySlot();
-    },
-    renderResult(result, { expanded, isPartial }, theme) {
-      if (isPartial) return renderFallbackResult(result);
 
-      const details = (result.details ?? {}) as { command?: string };
-      return renderBashResult(theme, { command: details.command }, result, expanded);
+      const handleData = (data: Buffer) => {
+        totalBytes += data.length;
+        if (totalBytes > DEFAULT_MAX_BYTES) {
+          ensureTempFile();
+        }
+
+        tempFileStream?.write(data);
+        chunks.push(data);
+        chunksBytes += data.length;
+        while (chunksBytes > maxChunksBytes && chunks.length > 1) {
+          const removed = chunks.shift();
+          if (!removed) break;
+          droppedBufferedOutput = true;
+          chunksBytes -= removed.length;
+        }
+
+        if (!onUpdate) return;
+
+        const fullText = Buffer.concat(chunks).toString("utf-8");
+        const truncation = truncateTail(fullText);
+        if (truncation.truncated) {
+          ensureTempFile();
+        }
+
+        onUpdate({
+          content: [{ type: "text" as const, text: truncation.content || "" }],
+          details: buildShellDetails(normalized, params, invocation, {
+            truncation: truncation.truncated ? truncation : undefined,
+            fullOutputPath: tempFilePath,
+          }),
+        });
+      };
+
+      try {
+        const execution = await executeShellCommand(invocation, normalized.workdir, {
+          env: getShellEnv(),
+          timeoutMs: params.timeout_ms,
+          signal,
+          onData: handleData,
+        });
+
+        const fullOutput = Buffer.concat(chunks).toString("utf-8");
+        const truncation = truncateTail(fullOutput);
+        if (truncation.truncated) {
+          ensureTempFile();
+        }
+        await closeTempFileStream(tempFileStream);
+
+        const details = buildShellDetails(normalized, params, invocation, {
+          exitCode: execution.exitCode,
+          truncation: truncation.truncated ? truncation : undefined,
+          fullOutputPath: tempFilePath,
+        });
+
+        let outputText = truncation.content;
+        if (truncation.truncated && tempFilePath) {
+          outputText = appendTruncationNotice(outputText, truncation, tempFilePath, fullOutput, {
+            hasCompleteOutput: !droppedBufferedOutput,
+            totalBytes,
+          });
+        }
+
+        if (execution.aborted) {
+          const text = outputText ? `${outputText}\n\nCommand aborted` : "Command aborted";
+          return {
+            content: [{ type: "text" as const, text }],
+            details,
+            isError: true,
+          };
+        }
+
+        if (execution.timedOut) {
+          const timeoutText =
+            params.timeout_ms !== undefined
+              ? `Command timed out after ${params.timeout_ms}ms`
+              : "Command timed out";
+          const text = outputText ? `${outputText}\n\n${timeoutText}` : timeoutText;
+          return {
+            content: [{ type: "text" as const, text }],
+            details,
+            isError: true,
+          };
+        }
+
+        if (execution.exitCode !== 0 && execution.exitCode !== null) {
+          const text = outputText
+            ? `${outputText}\n\nCommand exited with code ${execution.exitCode}`
+            : `Command exited with code ${execution.exitCode}`;
+          return {
+            content: [{ type: "text" as const, text }],
+            details,
+            isError: true,
+          };
+        }
+
+        return {
+          content: [{ type: "text" as const, text: outputText || "(no output)" }],
+          details,
+        };
+      } catch (error) {
+        await closeTempFileStream(tempFileStream).catch(() => undefined);
+
+        const message = error instanceof Error ? error.message : String(error);
+        const output = Buffer.concat(chunks).toString("utf-8");
+        const text = output ? `${output}\n\n${message}` : message;
+
+        return {
+          content: [{ type: "text" as const, text }],
+          details: buildShellDetails(normalized, params, invocation),
+          isError: true,
+        };
+      }
+    },
+    renderCall(args, theme, context) {
+      return nativeBashTool.renderCall!(
+        {
+          command: args.command,
+          timeout: args.timeout_ms !== undefined ? args.timeout_ms / 1000 : undefined,
+        },
+        theme,
+        context as never,
+      );
+    },
+    renderResult(result, options, theme, context) {
+      return nativeBashTool.renderResult!(
+        result as AgentToolResult<BashToolDetails | undefined>,
+        options,
+        theme,
+        context as never,
+      );
     },
   });
 }

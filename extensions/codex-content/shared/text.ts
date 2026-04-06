@@ -2,8 +2,13 @@ import type { AgentToolResult } from "@mariozechner/pi-coding-agent";
 
 import path from "node:path";
 
+function isSpecialToolPath(value: string): boolean {
+  return value === "~" || value.startsWith("~/") || value.startsWith("@");
+}
+
 export function shortenPath(value?: string): string {
   if (!value) return ".";
+  if (isSpecialToolPath(value)) return value;
 
   const cwd = process.cwd();
   const resolvedPath = path.isAbsolute(value) ? path.resolve(value) : path.resolve(cwd, value);
