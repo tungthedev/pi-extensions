@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { readTungthedevSettings, type TungthedevSettings } from "../settings/config.ts";
+import { resolveSessionToolSet } from "../settings/session.ts";
 import { isSystemMdPromptEnabled } from "../system-md/state.ts";
 
 const BUNDLED_MODELS_CATALOG_PATH = new URL("./assets/codex-models.json", import.meta.url);
@@ -264,7 +265,7 @@ export async function handleCodexSystemPromptBeforeAgentStart(
     return undefined;
   }
 
-  if (settings.toolSet !== "codex") {
+  if ((await resolveSessionToolSet(ctx.sessionManager)) !== "codex") {
     return undefined;
   }
 

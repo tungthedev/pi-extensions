@@ -1,7 +1,7 @@
 import { getSettingsListTheme, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Container, SettingsList, Text, type SettingItem } from "@mariozechner/pi-tui";
 
-import type { ToolSetPack, TungthedevSettings } from "./config.ts";
+import { formatToolSetLabel, type ToolSetPack, type TungthedevSettings } from "./config.ts";
 
 export type SettingsCommandAction =
   | { action: "open-root" }
@@ -19,6 +19,7 @@ export type OpenSettingsUiOptions = {
   writeToolSet: (value: ToolSetPack) => Promise<void>;
   writeCustomShellTool: (value: boolean) => Promise<void>;
   writeSystemMdPrompt: (value: boolean) => Promise<void>;
+  onToolSetChange?: (value: ToolSetPack) => Promise<void> | void;
 };
 
 const TOOL_SET_LABELS: Record<"Pi" | "Codex" | "Forge", ToolSetPack> = {
@@ -36,12 +37,6 @@ const SYSTEM_MD_PROMPT_LABELS: Record<"Enabled" | "Disabled", boolean> = {
   Enabled: true,
   Disabled: false,
 };
-
-export function formatToolSetLabel(value: ToolSetPack): "Pi" | "Codex" | "Forge" {
-  if (value === "forge") return "Forge";
-  if (value === "codex") return "Codex";
-  return "Pi";
-}
 
 export function formatCustomShellToolLabel(value: boolean): "Enabled" | "Disabled" {
   return value ? "Enabled" : "Disabled";
@@ -134,7 +129,7 @@ export async function openTungthedevSettingsUi(
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const container = new Container();
-    container.addChild(new Text(theme.fg("accent", theme.bold("Tungthedev Settings")), 1, 1));
+    container.addChild(new Text(theme.fg("accent", theme.bold("Pi Mode")), 1, 1));
 
     const settingsList = new SettingsList(
       items,
@@ -146,6 +141,7 @@ export async function openTungthedevSettingsUi(
           if (nextValue === undefined) return;
 
           await options.writeToolSet(nextValue);
+          await options.onToolSetChange?.(nextValue);
           const itemIndex = items.findIndex((item) => item.id === id);
           items[itemIndex] = {
             ...items[itemIndex],

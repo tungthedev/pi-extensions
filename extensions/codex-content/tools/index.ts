@@ -1,6 +1,6 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { readTungthedevSettings } from "../../settings/config.ts";
+import { resolveSessionToolSet } from "../../settings/session.ts";
 import { registerCodexWorkflowTools } from "../workflow/index.ts";
 import { registerApplyPatchTool } from "./apply-patch.ts";
 import { registerFindFilesTool } from "./find-files.ts";
@@ -59,11 +59,13 @@ export function syncCodexToolSet(
   );
 }
 
-async function applyCompatibilityToolOverrides(pi: ExtensionAPI): Promise<void> {
-  const settings = await readTungthedevSettings();
+async function applyCompatibilityToolOverrides(
+  pi: ExtensionAPI,
+  ctx: Pick<ExtensionContext, "sessionManager">,
+): Promise<void> {
   const nextActiveTools = syncCodexToolSet(
     pi.getAllTools().map((tool) => tool.name),
-    settings.toolSet,
+    await resolveSessionToolSet(ctx.sessionManager),
   );
 
   if (!nextActiveTools) {
@@ -74,16 +76,16 @@ async function applyCompatibilityToolOverrides(pi: ExtensionAPI): Promise<void> 
 }
 
 function registerToolOverrideHandlers(pi: ExtensionAPI): void {
-  pi.on("session_start", async () => {
-    await applyCompatibilityToolOverrides(pi);
+  pi.on("session_start", async (_event, ctx) => {
+    await applyCompatibilityToolOverrides(pi, ctx);
   });
 
-  pi.on("session_switch", async () => {
-    await applyCompatibilityToolOverrides(pi);
+  pi.on("session_switch", async (_event, ctx) => {
+    await applyCompatibilityToolOverrides(pi, ctx);
   });
 
-  pi.on("before_agent_start", async () => {
-    await applyCompatibilityToolOverrides(pi);
+  pi.on("before_agent_start", async (_event, ctx) => {
+    await applyCompatibilityToolOverrides(pi, ctx);
   });
 }
 

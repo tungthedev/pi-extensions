@@ -1,6 +1,6 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { readTungthedevSettings } from "../settings/config.ts";
+import { resolveSessionToolSet } from "../settings/session.ts";
 import { registerForgeResources } from "./resources/discover.ts";
 import { handleForgeSystemPromptBeforeAgentStart } from "./system-prompt.ts";
 import { registerForgeTools } from "./tools/index.ts";
@@ -16,9 +16,11 @@ const STATIC_FORGE_TOOL_SET = [
   "todos_read",
 ];
 
-async function syncForgeToolSet(pi: ExtensionAPI): Promise<void> {
-  const settings = await readTungthedevSettings();
-  if (settings.toolSet !== "forge") {
+async function syncForgeToolSet(
+  pi: ExtensionAPI,
+  ctx: Pick<ExtensionContext, "sessionManager">,
+): Promise<void> {
+  if ((await resolveSessionToolSet(ctx.sessionManager)) !== "forge") {
     return;
   }
 
@@ -30,16 +32,16 @@ export default function registerForgeContentExtension(pi: ExtensionAPI) {
   registerForgeTools(pi);
   registerForgeWorkflow(pi);
 
-  pi.on("session_start", async () => {
-    await syncForgeToolSet(pi);
+  pi.on("session_start", async (_event, ctx) => {
+    await syncForgeToolSet(pi, ctx);
   });
 
-  pi.on("session_switch", async () => {
-    await syncForgeToolSet(pi);
+  pi.on("session_switch", async (_event, ctx) => {
+    await syncForgeToolSet(pi, ctx);
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
-    await syncForgeToolSet(pi);
+    await syncForgeToolSet(pi, ctx);
     return handleForgeSystemPromptBeforeAgentStart(event, ctx, pi);
   });
 }

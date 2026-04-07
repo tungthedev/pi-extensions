@@ -11,7 +11,10 @@ import type {
 import type { EditorTheme, TUI } from "@mariozechner/pi-tui";
 
 import { CustomEditor } from "@mariozechner/pi-coding-agent";
-import { visibleWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+
+import { TOOL_SET_CHANGED_EVENT, formatToolSetLabel, type ToolSetChangedPayload } from "../settings/config.ts";
+import { resolveSessionToolSet } from "../settings/session.ts";
 
 import {
   EDITOR_BASE_LEFT_SEGMENT_KEY,
@@ -27,6 +30,7 @@ type EditorStatusState = {
   gitBranch?: string;
   modelId?: string;
   thinkingLevel?: string;
+  toolSetLabel?: string;
   usage?: ContextUsage;
 };
 
@@ -36,6 +40,24 @@ const RESERVED_SEGMENT_KEYS = new Set([
 ]);
 const HORIZONTAL = "─";
 const SHIFT_ENTER_SEQUENCES = new Set(["\u001b[13;2u", "\u001b[13;2~", "\u001b[27;2;13~"]);
+
+export function formatEditorBorderLegend(toolSetLabel?: string): string | undefined {
+  return toolSetLabel ? `Tool set: ${toolSetLabel}` : undefined;
+}
+
+export function formatTopBorderLine(width: number, legend?: string): string {
+  const innerWidth = Math.max(0, width - 2);
+  if (!legend) return `╭${HORIZONTAL.repeat(innerWidth)}╮`;
+
+  const legendText = truncateToWidth(` ${legend} `, Math.max(0, innerWidth - 1));
+  if (!legendText) return `╭${HORIZONTAL.repeat(innerWidth)}╮`;
+
+  const remaining = innerWidth - visibleWidth(legendText);
+  const leftFill = remaining > 0 ? 1 : 0;
+  const rightFill = Math.max(0, remaining - leftFill);
+
+  return `╭${HORIZONTAL.repeat(leftFill)}${legendText}${HORIZONTAL.repeat(rightFill)}╮`;
+}
 
 function formatCompactNumber(value: number): string {
   if (!Number.isFinite(value)) return "0";
@@ -59,8 +81,8 @@ function formatPercent(value: number): string {
   return Number.isInteger(rounded) ? `${rounded.toFixed(0)}%` : `${rounded.toFixed(1)}%`;
 }
 
-function colorDim(theme: Theme, text: string): string {
-  return theme.fg("dim", text);
+function colorBorder(theme: Theme, text: string): string {
+  return theme.fg("muted", text);
 }
 
 function truncateSuffix(prefix: string, suffix: string, maxWidth: number): string {
@@ -167,6 +189,8 @@ class CodexBoxedEditor extends CustomEditor {
     editorTheme: EditorTheme,
     keybindings: KeybindingsManager,
     private readonly getAppTheme: () => Theme,
+    private readonly getTopBorderLegend: () => string | undefined,
+    private readonly getToolSetLabel: () => string | undefined,
   ) {
     super(tui, editorTheme, keybindings);
   }
@@ -235,20 +259,76 @@ class CodexBoxedEditor extends CustomEditor {
     const innerWidth = Math.max(0, width - 2);
     const indicator = this.extractScrollIndicator(originalLine);
     if (indicator.length === 0) {
-      return colorDim(theme, `${corners.left}${HORIZONTAL.repeat(innerWidth)}${corners.right}`);
+      return colorBorder(theme, `${corners.left}${HORIZONTAL.repeat(innerWidth)}${corners.right}`);
     }
 
     const fill = Math.max(0, innerWidth - 2 - visibleWidth(indicator));
     return (
-      colorDim(theme, `${corners.left}${HORIZONTAL}${HORIZONTAL.repeat(fill)}`) +
+      colorBorder(theme, `${corners.left}${HORIZONTAL}${HORIZONTAL.repeat(fill)}`) +
       indicator +
-      colorDim(theme, `${HORIZONTAL}${corners.right}`)
+      colorBorder(theme, `${HORIZONTAL}${corners.right}`)
     );
   }
 
   private wrapRow(inner: string): string {
     const theme = this.getAppTheme();
-    return `${colorDim(theme, "│")}${inner}${colorDim(theme, "│")}`;
+    return `${colorBorder(theme, "│")}${inner}${colorBorder(theme, "│")}`;
+  }
+
+  private styleLegend(legendText: string): string {
+    const theme = this.getAppTheme();
+    const toolSetLabel = this.getToolSetLabel();
+    if (!toolSetLabel) {
+      return colorBorder(theme, legendText);
+    }
+
+    const segments = [
+      { text: " ", color: "muted" as const },
+      { text: "Tool set:", color: "muted" as const },
+      { text: " ", color: "muted" as const },
+      { text: toolSetLabel, color: "accent" as const },
+      { text: " ", color: "muted" as const },
+    ];
+
+    let remaining = legendText;
+    let styled = "";
+    for (const segment of segments) {
+      if (!remaining) break;
+      const slice = segment.text.slice(0, remaining.length);
+      if (!slice) continue;
+      styled += theme.fg(segment.color, slice);
+      remaining = remaining.slice(slice.length);
+    }
+
+    if (remaining) {
+      styled += colorBorder(theme, remaining);
+    }
+
+    return styled;
+  }
+
+  private buildTopBorderLine(width: number): string {
+    const theme = this.getAppTheme();
+    const innerWidth = Math.max(0, width - 2);
+    const legend = this.getTopBorderLegend();
+    if (!legend) {
+      return colorBorder(theme, `╭${HORIZONTAL.repeat(innerWidth)}╮`);
+    }
+
+    const legendText = truncateToWidth(` ${legend} `, Math.max(0, innerWidth - 1));
+    if (!legendText) {
+      return colorBorder(theme, `╭${HORIZONTAL.repeat(innerWidth)}╮`);
+    }
+
+    const remaining = innerWidth - visibleWidth(legendText);
+    const leftFill = remaining > 0 ? 1 : 0;
+    const rightFill = Math.max(0, remaining - leftFill);
+
+    return (
+      colorBorder(theme, `╭${HORIZONTAL.repeat(leftFill)}`) +
+      this.styleLegend(legendText) +
+      colorBorder(theme, `${HORIZONTAL.repeat(rightFill)}╮`)
+    );
   }
 
   override render(width: number): string[] {
@@ -261,7 +341,7 @@ class CodexBoxedEditor extends CustomEditor {
     const bottomIndex = this.findBottomBorderIndex(lines);
     const rendered: string[] = [];
 
-    rendered.push(this.buildBorderLine(width, { left: "╭", right: "╮" }, lines[0] ?? ""));
+    rendered.push(this.buildTopBorderLine(width));
 
     for (let index = 1; index < bottomIndex; index += 1) {
       rendered.push(this.wrapRow(lines[index] ?? ""));
@@ -304,6 +384,13 @@ function syncStateFromContext(
   state.usage = ctx.getContextUsage();
 }
 
+async function syncStateFromSettings(
+  state: EditorStatusState,
+  ctx: Pick<ExtensionContext, "sessionManager">,
+): Promise<void> {
+  state.toolSetLabel = formatToolSetLabel(await resolveSessionToolSet(ctx.sessionManager));
+}
+
 export function installCodexEditorUi(pi: ExtensionAPI): void {
   let statusRow: WidgetRowRegistry | null = null;
   const state: EditorStatusState = { cwd: process.cwd() };
@@ -312,7 +399,14 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
   const applyUi = (ctx: ExtensionContext) => {
     ctx.ui.setEditorComponent(
       (tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager) => {
-        return new CodexBoxedEditor(tui, editorTheme, keybindings, () => ctx.ui.theme);
+        return new CodexBoxedEditor(
+          tui,
+          editorTheme,
+          keybindings,
+          () => ctx.ui.theme,
+          () => formatEditorBorderLegend(state.toolSetLabel),
+          () => state.toolSetLabel,
+        );
       },
     );
 
@@ -349,30 +443,39 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
     );
   };
 
-  const syncContext = (ctx: ExtensionContext) => {
+  const syncContext = async (ctx: ExtensionContext) => {
     syncStateFromContext(state, ctx, pi);
+    await syncStateFromSettings(state, ctx);
     syncStatusRow(state, statusRow, externalSegments);
   };
 
   pi.on("session_start", async (_event, ctx) => {
     applyUi(ctx);
-    syncContext(ctx);
+    await syncContext(ctx);
   });
 
   pi.on("session_switch", async (_event, ctx) => {
-    syncContext(ctx);
+    await syncContext(ctx);
   });
 
   pi.on("model_select", async (_event, ctx) => {
-    syncContext(ctx);
+    await syncContext(ctx);
   });
 
   pi.on("tool_execution_end", async (_event, ctx) => {
-    syncContext(ctx);
+    await syncContext(ctx);
   });
 
   pi.on("agent_end", async (_event, ctx) => {
-    syncContext(ctx);
+    await syncContext(ctx);
+  });
+
+  pi.events.on(TOOL_SET_CHANGED_EVENT, (data: unknown) => {
+    const payload = data as ToolSetChangedPayload;
+    if (!payload?.toolSet) return;
+
+    state.toolSetLabel = formatToolSetLabel(payload.toolSet);
+    syncStatusRow(state, statusRow, externalSegments);
   });
 
   pi.events.on("editor:set-status-segment", (data: unknown) => {

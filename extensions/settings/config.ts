@@ -3,12 +3,18 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 const SETTINGS_FILE = "settings.json";
-const TUNGTHEDEV_NAMESPACE = "tungthedev/pi";
+const PI_MODE_NAMESPACE = "pi-mode";
+const LEGACY_TUNGTHEDEV_NAMESPACE = "tungthedev/pi";
 
 export type ToolSetPack = "pi" | "codex" | "forge";
+export type ToolSetChangedPayload = {
+  toolSet: ToolSetPack;
+};
+
 export const DEFAULT_TOOL_SET: ToolSetPack = "pi";
 export const DEFAULT_CUSTOM_SHELL_TOOL = true;
 export const DEFAULT_SYSTEM_MD_PROMPT = false;
+export const TOOL_SET_CHANGED_EVENT = "settings:tool-set-changed";
 
 export type TungthedevSettings = {
   toolSet: ToolSetPack;
@@ -38,11 +44,16 @@ function normalizeSystemMdPrompt(value: unknown): boolean {
   return typeof value === "boolean" ? value : DEFAULT_SYSTEM_MD_PROMPT;
 }
 
+export function formatToolSetLabel(value: ToolSetPack): "Pi" | "Codex" | "Forge" {
+  if (value === "forge") return "Forge";
+  if (value === "codex") return "Codex";
+  return "Pi";
+}
+
 export function parseTungthedevSettings(root: unknown): TungthedevSettings {
-  const namespace =
-    root && typeof root === "object" && !Array.isArray(root)
-      ? (root as SettingsRoot)[TUNGTHEDEV_NAMESPACE]
-      : undefined;
+  const namespaceRoot =
+    root && typeof root === "object" && !Array.isArray(root) ? (root as SettingsRoot) : undefined;
+  const namespace = namespaceRoot?.[PI_MODE_NAMESPACE] ?? namespaceRoot?.[LEGACY_TUNGTHEDEV_NAMESPACE];
 
   const toolSet =
     namespace && typeof namespace === "object" && !Array.isArray(namespace)
@@ -117,7 +128,7 @@ async function writeTungthedevSettings(
   filePath = getGlobalPiSettingsPath(),
 ): Promise<void> {
   const root = await readSettingsRoot(filePath, true);
-  const currentNamespace = root[TUNGTHEDEV_NAMESPACE];
+  const currentNamespace = root[PI_MODE_NAMESPACE] ?? root[LEGACY_TUNGTHEDEV_NAMESPACE];
   const namespace =
     currentNamespace && typeof currentNamespace === "object" && !Array.isArray(currentNamespace)
       ? { ...(currentNamespace as SettingsRoot) }
@@ -125,7 +136,8 @@ async function writeTungthedevSettings(
 
   delete namespace.skillListInjection;
   delete namespace.systemPrompt;
-  root[TUNGTHEDEV_NAMESPACE] = updater(namespace);
+  delete root[LEGACY_TUNGTHEDEV_NAMESPACE];
+  root[PI_MODE_NAMESPACE] = updater(namespace);
 
   await writeSettingsRoot(filePath, root);
 }

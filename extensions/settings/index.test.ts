@@ -79,6 +79,7 @@ test("handleTungthedevCommand writes the selected tool set directly", async () =
     writeToolSet: async (value) => {
       writes.push(value);
     },
+    writeSessionToolSet: async () => {},
     writeCustomShellTool: async () => {
       throw new Error("writeCustomShellTool should not run");
     },
@@ -119,6 +120,7 @@ test("handleTungthedevCommand writes the selected custom shell setting directly"
     writeToolSet: async () => {
       throw new Error("writeToolSet should not run");
     },
+    writeSessionToolSet: async () => {},
     writeCustomShellTool: async (value) => {
       writes.push(value);
     },
@@ -159,6 +161,7 @@ test("handleTungthedevCommand writes the selected system-md setting directly", a
     writeToolSet: async () => {
       throw new Error("writeToolSet should not run");
     },
+    writeSessionToolSet: async () => {},
     writeCustomShellTool: async () => {
       throw new Error("writeCustomShellTool should not run");
     },
@@ -198,6 +201,7 @@ test("handleTungthedevCommand opens the package settings UI for root invocations
     writeToolSet: async () => {
       throw new Error("writeToolSet should not run");
     },
+    writeSessionToolSet: async () => {},
     writeCustomShellTool: async () => {
       throw new Error("writeCustomShellTool should not run");
     },
@@ -214,16 +218,17 @@ test("handleTungthedevCommand opens the package settings UI for root invocations
   assert.equal(openedFocus, undefined);
 });
 
-test("settings extension registers the /tungthedev command", () => {
+test("settings extension registers the /pi-mode command", () => {
   let registeredName: string | undefined;
 
   settingsExtension({
+    on() {},
     registerCommand(name: string) {
       registeredName = name;
     },
   } as never);
 
-  assert.equal(registeredName, "tungthedev");
+  assert.equal(registeredName, "pi-mode");
 });
 
 test("package manifest ships merged prompt extensions and settings", async () => {

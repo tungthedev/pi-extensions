@@ -7,6 +7,7 @@ import type {
 import fs from "node:fs";
 
 import { readTungthedevSettings, type TungthedevSettings } from "../settings/config.ts";
+import { resolveSessionToolSet } from "../settings/session.ts";
 import { isSystemMdPromptEnabled } from "../system-md/state.ts";
 
 const FORGE_SYSTEM_PROMPT_PATH = new URL("./assets/forge-system.md", import.meta.url);
@@ -82,7 +83,7 @@ export async function handleForgeSystemPromptBeforeAgentStart(
     return undefined;
   }
 
-  if (settings.toolSet !== "forge") {
+  if ((await resolveSessionToolSet(ctx.sessionManager)) !== "forge") {
     return undefined;
   }
 
