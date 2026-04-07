@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { withFileMutationQueue } from "@mariozechner/pi-coding-agent";
+
 import { ApplyPatchError, applyPatch } from "../apply-patch.ts";
 
 async function withTempDir(run: (dir: string) => Promise<void>) {
@@ -360,6 +362,75 @@ test("applyPatch summary de-duplicates repeated file ops", async () => {
     );
     assert.equal(result.summary, "Success. Updated the following files:\nM dup.txt\n");
     assert.equal(await readFile(path.join(dir, "dup.txt"), "utf8"), "A\nb\nC\n");
+  });
+});
+
+test("applyPatch normalizes @-prefixed paths", async () => {
+  await withTempDir(async (dir) => {
+    await applyPatch(
+      `*** Begin Patch
+*** Add File: @nested/file.txt
++hello
+*** End Patch`,
+      dir,
+    );
+
+    assert.equal(await readFile(path.join(dir, "nested/file.txt"), "utf8"), "hello\n");
+  });
+});
+
+test("applyPatch normalizes ~/ paths", async () => {
+  const homeTempDir = await mkdtemp(path.join(os.homedir(), "codex-apply-patch-home-"));
+  try {
+    const targetPath = path.join(homeTempDir, "tilde.txt");
+    const homeRelativePath = path.relative(os.homedir(), targetPath).replace(/\\/g, "/");
+
+    await withTempDir(async (dir) => {
+      await applyPatch(
+        `*** Begin Patch
+*** Add File: ~/${homeRelativePath}
++tilde
+*** End Patch`,
+        dir,
+      );
+    });
+
+    assert.equal(await readFile(targetPath, "utf8"), "tilde\n");
+  } finally {
+    await rm(homeTempDir, { recursive: true, force: true });
+  }
+});
+
+test("applyPatch waits for file mutation queue before reading target files", async () => {
+  await withTempDir(async (dir) => {
+    const filePath = path.join(dir, "queued.txt");
+    await writeFile(filePath, "before\n", "utf8");
+
+    let releaseQueue!: () => void;
+    const queueHeld = new Promise<void>((resolve) => {
+      releaseQueue = resolve;
+    });
+
+    const blocker = withFileMutationQueue(filePath, async () => {
+      await queueHeld;
+      await writeFile(filePath, "blocked\n", "utf8");
+    });
+
+    const patchPromise = applyPatch(
+      `*** Begin Patch
+*** Update File: queued.txt
+@@
+-blocked
++after
+*** End Patch`,
+      dir,
+    );
+
+    releaseQueue();
+    const [, result] = await Promise.all([blocker, patchPromise]);
+
+    assert.equal(result.summary, "Success. Updated the following files:\nM queued.txt\n");
+    assert.equal(await readFile(filePath, "utf8"), "after\n");
   });
 });
 

@@ -1,102 +1,55 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { withFileMutationQueue } from "@mariozechner/pi-coding-agent";
+import { createEditToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { Type } from "@sinclair/typebox";
-import fs from "node:fs/promises";
 
-import { resolveAbsolutePathWithVariants } from "../../codex-content/tools/runtime.ts";
-
-type PatchResultDetails = {
-  filePath: string;
-  replacements: number;
-};
-
-function replaceOnce(source: string, oldString: string, newString: string): { text: string; replacements: number } {
-  const firstIndex = source.indexOf(oldString);
-  if (firstIndex === -1) {
-    throw new Error("old_string not found in file");
-  }
-  const secondIndex = source.indexOf(oldString, firstIndex + oldString.length);
-  if (secondIndex !== -1) {
-    throw new Error("old_string is not unique in file; provide more context or set replace_all to true");
+function formatPatchCallPath(args: { path?: string; file_path?: string } | undefined): string | null {
+  if (typeof args?.path === "string") {
+    return args.path;
   }
 
-  return {
-    text: `${source.slice(0, firstIndex)}${newString}${source.slice(firstIndex + oldString.length)}`,
-    replacements: 1,
-  };
-}
-
-function replaceAllOccurrences(source: string, oldString: string, newString: string): { text: string; replacements: number } {
-  let replacements = 0;
-  const text = source.replaceAll(oldString, () => {
-    replacements += 1;
-    return newString;
-  });
-  if (replacements === 0) {
-    throw new Error("old_string not found in file");
+  if (typeof args?.file_path === "string") {
+    return args.file_path;
   }
-  return { text, replacements };
+
+  return null;
 }
 
 export function registerForgePatchTool(pi: ExtensionAPI): void {
+  const baseDefinition = createEditToolDefinition(process.cwd());
+  const usesMultiEditSchema = Object.prototype.hasOwnProperty.call(
+    (baseDefinition.parameters as { properties?: Record<string, unknown> }).properties ?? {},
+    "edits",
+  );
+
   pi.registerTool({
+    ...baseDefinition,
     name: "patch",
     label: "patch",
-    description:
-      "Apply an exact text replacement to a file. Use for targeted edits after reading the surrounding code.",
-    promptSnippet: "Apply an exact text replacement to an existing file",
-    promptGuidelines: [
-      "Prefer patch over broad file rewrites for focused edits.",
-      "Read the target file before patching so the replacement context is accurate.",
-    ],
-    parameters: Type.Object({
-      file_path: Type.String({ description: "Path to the file to modify." }),
-      old_string: Type.String({ description: "Exact text to replace." }),
-      new_string: Type.String({ description: "Replacement text." }),
-      replace_all: Type.Optional(Type.Boolean({ description: "Replace all occurrences when true." })),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const filePath = resolveAbsolutePathWithVariants(ctx.cwd, params.file_path);
-      const original = await fs.readFile(filePath, "utf-8");
-      const updated = params.replace_all
-        ? replaceAllOccurrences(original, params.old_string, params.new_string)
-        : replaceOnce(original, params.old_string, params.new_string);
-
-      await withFileMutationQueue(filePath, async () => {
-        await fs.writeFile(filePath, updated.text, "utf-8");
-      });
-
-      const details: PatchResultDetails = {
-        filePath,
-        replacements: updated.replacements,
-      };
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Patched ${filePath} (${updated.replacements} replacement${updated.replacements === 1 ? "" : "s"})`,
-          },
-        ],
-        details,
-      };
+    description: usesMultiEditSchema
+      ? "Patch a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file."
+      : "Patch a file by replacing exact text. The oldText must match exactly (including whitespace). Use this for precise, surgical edits.",
+    promptSnippet: usesMultiEditSchema
+      ? "Make precise file edits with exact text replacement"
+      : "Make surgical edits to files (find exact text and replace)",
+    promptGuidelines: usesMultiEditSchema
+      ? [
+          "Use patch for precise changes (edits[].oldText must match exactly)",
+          "When changing multiple separate locations in one file, use one patch call with multiple entries in edits[] instead of multiple patch calls",
+          "Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
+          "Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
+        ]
+      : ["Use patch for precise changes (old text must match exactly)."],
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      const runtimeDefinition = createEditToolDefinition(ctx.cwd);
+      return await runtimeDefinition.execute(toolCallId, params, signal, onUpdate, ctx);
     },
-    renderCall(args, theme) {
-      return new Text(
-        `${theme.fg("toolTitle", theme.bold("patch "))}${theme.fg("accent", args.file_path)}`,
-        0,
-        0,
+    renderCall(args, theme, context) {
+      const text = context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
+      const path = formatPatchCallPath(args as { path?: string; file_path?: string } | undefined);
+      text.setText(
+        `${theme.fg("toolTitle", theme.bold("patch"))} ${path ? theme.fg("accent", path) : theme.fg("toolOutput", "...")}`,
       );
-    },
-    renderResult(result, _options, theme) {
-      const details = result.details as PatchResultDetails | undefined;
-      const text = details
-        ? `patched ${details.replacements} replacement${details.replacements === 1 ? "" : "s"}`
-        : (result.content[0]?.type === "text" ? result.content[0].text : "patched");
-      return new Text(theme.fg("success", text), 0, 0);
+      return text;
     },
   });
 }
-
-export { replaceAllOccurrences, replaceOnce };

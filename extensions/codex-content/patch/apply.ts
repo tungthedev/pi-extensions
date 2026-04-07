@@ -1,3 +1,5 @@
+import { withFileMutationQueue } from "@mariozechner/pi-coding-agent";
+
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -12,6 +14,8 @@ import type {
   UpdateFileHunk,
   VirtualFileState,
 } from "./types.ts";
+
+import { resolveAbsolutePath } from "../tools/runtime.ts";
 
 import { seekSequence } from "./matching.ts";
 import { parsePatch } from "./parser.ts";
@@ -337,7 +341,31 @@ function printSummary(affected: AffectedPaths): string {
 }
 
 function resolvePatchPath(cwd: string, targetPath: string): string {
-  return path.isAbsolute(targetPath) ? targetPath : path.resolve(cwd, targetPath);
+  return resolveAbsolutePath(cwd, targetPath);
+}
+
+function collectTouchedAbsolutePaths(cwd: string, hunks: PatchHunk[]): string[] {
+  const touchedPaths = new Set<string>();
+
+  for (const hunk of hunks) {
+    touchedPaths.add(resolvePatchPath(cwd, hunk.path));
+    if (hunk.type === "update" && hunk.movePath) {
+      touchedPaths.add(resolvePatchPath(cwd, hunk.movePath));
+    }
+  }
+
+  return [...touchedPaths].sort((left, right) => left.localeCompare(right));
+}
+
+async function withFileMutationQueues<T>(filePaths: string[], fn: () => Promise<T>): Promise<T> {
+  let run = fn;
+
+  for (const filePath of [...filePaths].reverse()) {
+    const next = run;
+    run = () => withFileMutationQueue(filePath, next);
+  }
+
+  return await run();
 }
 
 function buildMissingVirtualFileState(absolutePath: string): VirtualFileState {
@@ -675,23 +703,25 @@ export async function applyPatch(
 
   validatePatchContentForRedaction(hunks);
 
-  const virtualFiles = new Map<string, VirtualFileState>();
-  const files: ApplyPatchFileChange[] = [];
-  const touchedPaths: TouchedPaths = {
-    added: [],
-    modified: [],
-    deleted: [],
-  };
+  return await withFileMutationQueues(collectTouchedAbsolutePaths(cwd, hunks), async () => {
+    const virtualFiles = new Map<string, VirtualFileState>();
+    const files: ApplyPatchFileChange[] = [];
+    const touchedPaths: TouchedPaths = {
+      added: [],
+      modified: [],
+      deleted: [],
+    };
 
-  for (const hunk of hunks) {
-    await applyHunk(hunk, cwd, virtualFiles, touchedPaths, files);
-  }
+    for (const hunk of hunks) {
+      await applyHunk(hunk, cwd, virtualFiles, touchedPaths, files);
+    }
 
-  await commitVirtualFiles(virtualFiles);
+    await commitVirtualFiles(virtualFiles);
 
-  return {
-    summary: printSummary(touchedPaths),
-    affected: touchedPaths,
-    files,
-  };
+    return {
+      summary: printSummary(touchedPaths),
+      affected: touchedPaths,
+      files,
+    };
+  });
 }
