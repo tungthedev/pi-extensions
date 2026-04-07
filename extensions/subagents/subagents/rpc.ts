@@ -1,4 +1,4 @@
-import type { LiveChildAttachment, RpcResponse } from "./types.ts";
+import type { RpcLiveChildAttachment, RpcResponse } from "./types.ts";
 
 import { RPC_COMMAND_TIMEOUT_MS } from "./types.ts";
 
@@ -9,14 +9,14 @@ export function parseJsonLines(buffer: string): { lines: string[]; rest: string 
   return { lines, rest };
 }
 
-function writeJsonLine(attachment: LiveChildAttachment, payload: Record<string, unknown>): void {
+function writeJsonLine(attachment: RpcLiveChildAttachment, payload: Record<string, unknown>): void {
   if (attachment.process.stdin.destroyed) {
     throw new Error(`Agent ${attachment.agentId} is not accepting input`);
   }
   attachment.process.stdin.write(`${JSON.stringify(payload)}\n`);
 }
 
-export function rejectPendingResponses(attachment: LiveChildAttachment, error: Error): void {
+export function rejectPendingResponses(attachment: RpcLiveChildAttachment, error: Error): void {
   const pending = [...attachment.pendingResponses.values()];
   attachment.pendingResponses.clear();
   for (const entry of pending) {
@@ -25,7 +25,7 @@ export function rejectPendingResponses(attachment: LiveChildAttachment, error: E
 }
 
 export async function sendRpcCommand(
-  attachment: LiveChildAttachment,
+  attachment: RpcLiveChildAttachment,
   command: Record<string, unknown>,
   timeoutMs = RPC_COMMAND_TIMEOUT_MS,
 ): Promise<RpcResponse> {
@@ -60,7 +60,7 @@ export async function sendRpcCommand(
 }
 
 export function respondToUiRequest(
-  attachment: LiveChildAttachment,
+  attachment: RpcLiveChildAttachment,
   message: Record<string, unknown>,
 ): void {
   const requestId = typeof message.id === "string" ? message.id : undefined;

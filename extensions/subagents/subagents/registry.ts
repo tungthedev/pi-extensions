@@ -9,6 +9,7 @@ export function childSnapshot(
 ): AgentSnapshot {
   return {
     agent_id: record.agentId,
+    transport: record.transport,
     agent_type: record.agentType,
     status: statusOverride ?? durableStatusToAgentStatus(record.status),
     durable_status: record.status,

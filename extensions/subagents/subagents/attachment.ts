@@ -5,7 +5,7 @@ import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 
 import type { ChildProfileBootstrap } from "./profiles-apply.ts";
-import type { LiveChildAttachment } from "./types.ts";
+import type { RpcLiveChildAttachment } from "./types.ts";
 
 import {
   AGENT_PROFILE_JSON_ENV,
@@ -39,7 +39,7 @@ export function createLiveAttachment(options: {
   model?: string;
   profileBootstrap?: ChildProfileBootstrap;
   sessionFile?: string;
-}): LiveChildAttachment {
+}): RpcLiveChildAttachment {
   const childSessionDir = resolveChildSessionDir();
   const args = ["--mode", "rpc"];
 
@@ -80,6 +80,7 @@ export function createLiveAttachment(options: {
 
   return {
     agentId: options.agentId,
+    transport: "rpc",
     process: child,
     stdoutBuffer: "",
     stdoutDecoder: new StringDecoder("utf8"),

@@ -19,6 +19,7 @@ function activity(
 ): SubagentActivityView {
   return {
     agent_id: overrides.agent_id,
+    transport: overrides.transport,
     displayName: overrides.displayName ?? overrides.agent_id,
     startedAt: overrides.startedAt ?? 1_000,
     toolCallsTotal: overrides.toolCallsTotal ?? 0,
@@ -175,4 +176,26 @@ test("buildSubagentActivityWidgetLines shows up to nine agents in three columns 
   assert.match(rendered, /agent-9/);
   assert.doesNotMatch(rendered, /agent-10/);
   assert.match(rendered, /\+1 more/);
+});
+
+test("buildSubagentActivityWidgetLines renders interactive agents without tool telemetry", () => {
+  const lines = buildSubagentActivityWidgetLines(
+    theme,
+    [
+      activity({
+        agent_id: "interactive-1",
+        transport: "interactive",
+        displayName: "planner [default]",
+        toolCallsTotal: 0,
+      }),
+    ],
+    120,
+    61_000,
+  );
+
+  const rendered = lines.join("\n");
+  assert.match(rendered, /Agents active: 1/);
+  assert.doesNotMatch(rendered, /calls total/);
+  assert.match(rendered, /interactive session/);
+  assert.doesNotMatch(rendered, /thinking/);
 });

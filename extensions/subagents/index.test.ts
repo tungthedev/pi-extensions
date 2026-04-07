@@ -15,6 +15,7 @@ import {
   flattenCollabItems,
   formatSubagentNotificationMessage,
   getWaitAgentResultTitle,
+  isResumable,
   normalizeReasoningEffortToThinkingLevel,
   normalizeWaitAgentTimeoutMs,
   normalizeThinkingLevelToReasoningEffort,
@@ -25,6 +26,7 @@ import {
   resolveForkContextSessionFile,
   resolveParentSpawnDefaults,
   resolveSpawnPrompt,
+  wrapInteractiveSpawnPrompt,
 } from "./index.ts";
 import { getSubagentNotificationDeliveryOptions } from "./subagents/notifications.ts";
 
@@ -156,6 +158,7 @@ test("rebuildDurableRegistry reconstructs the latest durable record and closes s
   assert.equal(records.size, 1);
   assert.deepEqual(records.get("agent-1"), {
     agentId: "agent-1",
+    transport: "rpc",
     cwd: "/tmp/project",
     status: "closed",
     createdAt: "2026-03-17T00:00:00.000Z",
@@ -201,6 +204,15 @@ test("flattenCollabItems and resolveSpawnPrompt compose Codex-style item payload
       "Inspect the auth flow\nmention: app://github\nlocal_image: ./screenshot.png",
     ].join("\n\n"),
   );
+});
+
+test("wrapInteractiveSpawnPrompt instructs the child to summarize and call subagent_done", () => {
+  const wrapped = wrapInteractiveSpawnPrompt("Inspect the auth flow and report back.");
+
+  assert.match(wrapped, /interactive delegated child session/i);
+  assert.match(wrapped, /call the subagent_done tool/i);
+  assert.match(wrapped, /FINAL assistant message/i);
+  assert.match(wrapped, /Inspect the auth flow and report back\./);
 });
 
 test("normalizeReasoningEffortToThinkingLevel maps Codex effort values to Pi thinking levels", () => {
@@ -438,6 +450,51 @@ test("rebuildDurableRegistry still accepts legacy codex entry types", () => {
   ] as never);
 
   assert.equal(records.get("agent-legacy")?.agentId, "agent-legacy");
+});
+
+test("rebuildDurableRegistry preserves interactive transport on detached children", () => {
+  const records = rebuildDurableRegistry([
+    {
+      type: "custom",
+      customType: "subagent:detach",
+      data: {
+        record: {
+          agentId: "agent-interactive",
+          transport: "interactive",
+          cwd: "/tmp/project",
+          status: "detached",
+          createdAt: "2026-03-17T00:00:00.000Z",
+          updatedAt: "2026-03-17T00:01:00.000Z",
+          sessionFile: "/tmp/project/.pi/interactive.jsonl",
+        },
+      },
+    },
+  ] as never);
+
+  assert.deepEqual(records.get("agent-interactive"), {
+    agentId: "agent-interactive",
+    transport: "interactive",
+    cwd: "/tmp/project",
+    status: "detached",
+    createdAt: "2026-03-17T00:00:00.000Z",
+    updatedAt: "2026-03-17T00:01:00.000Z",
+    sessionFile: "/tmp/project/.pi/interactive.jsonl",
+  });
+});
+
+test("isResumable rejects interactive child records", () => {
+  assert.equal(
+    isResumable({
+      agentId: "agent-interactive",
+      transport: "interactive",
+      cwd: "/tmp/project",
+      status: "detached",
+      createdAt: "2026-03-17T00:00:00.000Z",
+      updatedAt: "2026-03-17T00:00:00.000Z",
+      sessionFile: "/tmp/project/.pi/interactive.jsonl",
+    }),
+    false,
+  );
 });
 
 test("parseSubagentNotificationMessage extracts wrapped notification payloads", () => {

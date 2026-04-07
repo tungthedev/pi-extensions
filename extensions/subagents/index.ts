@@ -55,6 +55,7 @@ export {
   normalizeWaitAgentTimeoutMs,
   normalizeThinkingLevelToReasoningEffort,
   resolveSpawnPrompt,
+  wrapInteractiveSpawnPrompt,
   summarizeSubagentReply,
   truncateSubagentReply,
 } from "./subagents/index.ts";

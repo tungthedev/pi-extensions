@@ -2,6 +2,8 @@ import type { Theme } from "@mariozechner/pi-coding-agent";
 
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
+import type { ChildTransport } from "./types.ts";
+
 import { getSubagentDisplayName } from "./rendering.ts";
 
 export const SUBAGENT_ACTIVITY_WIDGET_KEY = "subagents:activity-widget";
@@ -15,6 +17,7 @@ const TIMER_TICK_MS = 1_000;
 
 export type SubagentIdentity = {
   agent_id: string;
+  transport?: ChildTransport;
   agent_type?: string;
   name?: string;
 };
@@ -81,11 +84,13 @@ function ensureSubagentActivityState(
   if (existing) {
     existing.name = trimText(identity.name);
     existing.agent_type = trimText(identity.agent_type);
+    existing.transport = identity.transport;
     return existing;
   }
 
   const next: SubagentActivityState = {
     agent_id: identity.agent_id,
+    transport: identity.transport,
     name: trimText(identity.name),
     agent_type: trimText(identity.agent_type),
     startedAt: now,
@@ -106,6 +111,7 @@ export function markSubagentActivitySubmitted(
   const summary = summarizeSubagentActivityInput(input);
   activities.set(identity.agent_id, {
     agent_id: identity.agent_id,
+    transport: identity.transport,
     name: trimText(identity.name),
     agent_type: trimText(identity.agent_type),
     startedAt: now,
@@ -180,6 +186,7 @@ export function snapshotSubagentActivities(
 ): SubagentActivityView[] {
   return [...activities.values()].map((state) => ({
     agent_id: state.agent_id,
+    transport: state.transport,
     agent_type: state.agent_type,
     name: state.name,
     displayName: getSubagentDisplayName(state),
@@ -233,6 +240,10 @@ function formatCallCount(count: number): string {
 }
 
 function detailText(activity: SubagentActivityView): string {
+  if (activity.transport === "interactive") {
+    return "interactive session";
+  }
+
   if (activity.activeToolName) {
     return activity.activeToolCalls > 1
       ? `${activity.activeToolName} +${activity.activeToolCalls - 1}`
@@ -256,6 +267,15 @@ export function renderSubagentActivityCell(
   width: number,
   now = Date.now(),
 ): string {
+  if (activity.transport === "interactive") {
+    const text = [
+      `${theme.fg("text", "•")} ${theme.fg("accent", activity.displayName)}`,
+      theme.fg("muted", formatSubagentActivityElapsed(now - activity.startedAt)),
+      theme.fg("toolOutput", "interactive session"),
+    ].join(theme.fg("dim", " · "));
+    return truncateToWidth(text, width);
+  }
+
   const bulletColor = activity.activeToolCalls > 0 ? "accent" : "text";
   const detailColor = activity.activeToolCalls > 0 ? "accent" : "toolOutput";
   const text = [
@@ -368,7 +388,10 @@ export function buildSubagentActivityWidgetLines(
   const visibleActivities = sorted.slice(0, columns * MAX_VISIBLE_ROWS);
   const hiddenCount = sorted.length - visibleActivities.length;
   const totalCalls = sorted.reduce((sum, activity) => sum + activity.toolCallsTotal, 0);
-  const title = `Agents active: ${sorted.length} · ${formatCallCount(totalCalls)} total`;
+  const title =
+    totalCalls > 0
+      ? `Agents active: ${sorted.length} · ${formatCallCount(totalCalls)} total`
+      : `Agents active: ${sorted.length}`;
   const lines = layoutActivityRows(theme, visibleActivities, innerWidth, now);
   if (hiddenCount > 0) {
     lines.push(theme.fg("muted", `+${hiddenCount} more`));

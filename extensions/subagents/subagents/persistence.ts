@@ -20,6 +20,7 @@ function isDurableChildRecord(value: unknown): value is DurableChildRecord {
   const record = value as Partial<DurableChildRecord>;
   return (
     typeof record.agentId === "string" &&
+    (record.transport === "rpc" || record.transport === "interactive" || record.transport == null) &&
     typeof record.cwd === "string" &&
     typeof record.status === "string" &&
     typeof record.createdAt === "string" &&
@@ -45,6 +46,7 @@ export function rebuildDurableRegistry(
     const record = entry.data.record;
     records.set(record.agentId, {
       ...record,
+      transport: record.transport ?? "rpc",
       status: normalizeReconstructedStatus(record.status),
     });
   }

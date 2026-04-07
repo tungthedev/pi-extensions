@@ -14,8 +14,11 @@ import path from "node:path";
 
 import type {
   AgentSnapshot,
+  ChildTransport,
   DurableChildRecord,
+  InteractiveLiveChildAttachment,
   LiveChildAttachment,
+  RpcLiveChildAttachment,
   RpcResponse,
   SessionEntryLike,
   SubagentEntryType,
@@ -37,7 +40,20 @@ import {
   SubagentActivityWidget,
   SUBAGENT_ACTIVITY_WIDGET_KEY,
 } from "./activity-widget.ts";
-import { appendBounded, createLiveAttachment } from "./attachment.ts";
+import { appendBounded, createLiveAttachment, resolveChildSessionDir } from "./attachment.ts";
+import {
+  closeSurface,
+  createSurface,
+  isMuxAvailable,
+  muxSetupHint,
+  pollForExit,
+  sendInteractiveInput,
+  sendShellCommand,
+  selectPreservedInteractiveEnv,
+  shellDoneSentinelCommand,
+  shellExternalCommand,
+  shellEscape,
+} from "./interactive.ts";
 import { generateUniqueSubagentName, resolveSubagentName } from "./naming.ts";
 import {
   buildWaitAgentContent,
@@ -73,7 +89,11 @@ import {
   respondToUiRequest,
   sendRpcCommand,
 } from "./rpc.ts";
-import { extractLastAssistantText, isResumable } from "./session.ts";
+import {
+  extractLastAssistantText,
+  extractLastAssistantTextFromSessionFile,
+  isResumable,
+} from "./session.ts";
 import { deriveDurableStatusFromState } from "./state.ts";
 import {
   AGENT_PROFILE_JSON_ENV,
@@ -82,6 +102,8 @@ import {
   CODEX_SUBAGENT_CHILD_ENV,
   CODEX_SUBAGENT_RESERVED_TOOL_NAMES,
   CODEX_SUBAGENT_TOOL_NAMES,
+  INTERACTIVE_EXTENSION_ENTRY,
+  INTERACTIVE_LAUNCHER_ENTRY,
   SUBAGENT_CHILD_ENV,
   SUBAGENT_RESERVED_TOOL_NAMES,
   SUBAGENT_TOOL_NAMES,
@@ -91,6 +113,16 @@ import {
 function notifyStateChange(attachment: LiveChildAttachment): void {
   const waiters = attachment.stateWaiters.splice(0, attachment.stateWaiters.length);
   for (const waiter of waiters) waiter();
+}
+
+function isRpcAttachment(attachment: LiveChildAttachment): attachment is RpcLiveChildAttachment {
+  return attachment.transport === "rpc";
+}
+
+function isInteractiveAttachment(
+  attachment: LiveChildAttachment,
+): attachment is InteractiveLiveChildAttachment {
+  return attachment.transport === "interactive";
 }
 
 function queueAgentOperation<T>(
@@ -161,6 +193,10 @@ function waitForAnyStateChange(
 const MIN_WAIT_AGENT_TIMEOUT_MS = 30_000;
 const DEFAULT_WAIT_AGENT_TIMEOUT_MS = 45_000;
 const MAX_WAIT_AGENT_TIMEOUT_MS = 90_000;
+
+function muxUnavailableError(kind = "interactive child sessions"): Error {
+  return new Error(`${kind} require a supported terminal multiplexer. ${muxSetupHint()}`);
+}
 
 export function normalizeWaitAgentTimeoutMs(timeoutMs: number | undefined): number {
   const rawTimeoutMs = timeoutMs ?? DEFAULT_WAIT_AGENT_TIMEOUT_MS;
@@ -273,6 +309,17 @@ function resolveSpawnPrompt(params: {
   return prompt;
 }
 
+function wrapInteractiveSpawnPrompt(prompt: string): string {
+  const normalizedPrompt = prompt.trim();
+  return [
+    "You are working in an interactive delegated child session.",
+    "Complete the delegated task. The user can interact with you directly at any time.",
+    "When you are finished, call the subagent_done tool to return control to the parent session.",
+    "Your FINAL assistant message before calling subagent_done should summarize what you accomplished.",
+    normalizedPrompt,
+  ].join("\n\n");
+}
+
 function spawnNameSeed(params: {
   task?: string;
   context?: string;
@@ -282,6 +329,7 @@ function spawnNameSeed(params: {
   model?: string;
   reasoning_effort?: string;
   workdir?: string;
+  interactive?: boolean;
 }): string {
   return JSON.stringify({
     task: params.task ?? null,
@@ -292,6 +340,7 @@ function spawnNameSeed(params: {
     model: params.model ?? null,
     reasoning_effort: params.reasoning_effort ?? null,
     workdir: params.workdir ?? null,
+    interactive: params.interactive ?? null,
   });
 }
 
@@ -468,12 +517,17 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       return;
     }
 
-    if (current.name === record.name && current.agent_type === record.agentType) {
+    if (
+      current.name === record.name &&
+      current.agent_type === record.agentType &&
+      current.transport === record.transport
+    ) {
       return;
     }
 
     current.name = record.name;
     current.agent_type = record.agentType;
+    current.transport = record.transport;
     requestSubagentActivityRender();
   };
 
@@ -487,12 +541,13 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     if (activity) {
       return {
         agent_id: activity.agent_id,
+        transport: activity.transport,
         name: activity.name,
         agent_type: activity.agent_type,
       };
     }
 
-    return { agent_id: agentId };
+    return { agent_id: agentId, transport: "rpc" as const };
   };
 
   const dropSubagentActivity = (agentId: string) => {
@@ -841,7 +896,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   };
 
   const readChildState = async (
-    attachment: LiveChildAttachment,
+    attachment: RpcLiveChildAttachment,
   ): Promise<Record<string, unknown>> => {
     const response = await sendRpcCommand(attachment, { type: "get_state" });
     if (!response.success || !response.data) {
@@ -851,7 +906,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   };
 
   const maybeReadLastAssistantText = async (
-    attachment: LiveChildAttachment,
+    attachment: RpcLiveChildAttachment,
   ): Promise<string | undefined> => {
     const response = await sendRpcCommand(attachment, {
       type: "get_last_assistant_text",
@@ -883,7 +938,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     return updateDurableChild(agentId, patch, { persistAs });
   };
 
-  const bindAttachment = (attachment: LiveChildAttachment) => {
+  const bindAttachment = (attachment: RpcLiveChildAttachment) => {
     const handleDurablePatch = (
       patch: Partial<DurableChildRecord>,
       options: { persistAs?: SubagentEntryType; reason?: string } = {},
@@ -1118,11 +1173,220 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     });
   };
 
+  const launchInteractiveChild = async (options: {
+    record: DurableChildRecord;
+    prompt: string;
+    profileBootstrap: {
+      name: string;
+      developerInstructions?: string;
+      model?: string;
+      reasoningEffort?: string;
+      source: string;
+    };
+    forkedSessionFile?: string;
+  }): Promise<{
+    attachment: InteractiveLiveChildAttachment;
+    record: DurableChildRecord;
+  }> => {
+    if (!isMuxAvailable()) {
+      throw muxUnavailableError();
+    }
+
+    const childSessionDir = resolveChildSessionDir();
+    const sessionFile =
+      options.forkedSessionFile ??
+      path.join(childSessionDir, `${options.record.agentId}-${Date.now().toString(36)}.jsonl`);
+    const promptDir = path.join(childSessionDir, "prompts");
+    const configDir = path.join(childSessionDir, "launchers");
+    const promptFile = path.join(promptDir, `${options.record.agentId}-${Date.now()}.md`);
+    const configFile = path.join(configDir, `${options.record.agentId}-${Date.now()}.json`);
+    const wrappedPrompt = wrapInteractiveSpawnPrompt(options.prompt);
+    fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
+    fs.mkdirSync(promptDir, { recursive: true });
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(promptFile, wrappedPrompt, "utf8");
+
+    const surface = createSurface(options.record.name ?? options.record.agentId);
+    await new Promise<void>((resolve) => setTimeout(resolve, 500));
+
+    const piArgs = [
+      "--session",
+      sessionFile,
+      "--session-dir",
+      childSessionDir,
+      "--no-extensions",
+      "-e",
+      INTERACTIVE_EXTENSION_ENTRY,
+    ];
+
+    if (options.record.model && !options.forkedSessionFile) {
+      piArgs.push("--model", options.record.model);
+    }
+
+    const developerInstructions = options.profileBootstrap.developerInstructions?.trim();
+    if (developerInstructions) {
+      piArgs.push("--append-system-prompt", developerInstructions);
+    }
+
+    piArgs.push(`@${promptFile}`);
+
+    const launcherConfig = {
+      binary: process.env.PI_BINARY || "pi",
+      args: piArgs,
+      cwd: options.record.cwd,
+      extraEnv: {
+        ...selectPreservedInteractiveEnv(),
+        FORCE_COLOR: "0",
+        PI_SUBAGENT_PROJECT_ROOT: process.env.PI_SUBAGENT_PROJECT_ROOT ?? process.cwd(),
+        PI_CODEX_PROJECT_ROOT: process.env.PI_CODEX_PROJECT_ROOT ?? process.cwd(),
+        [SUBAGENT_CHILD_ENV]: "1",
+        [CODEX_SUBAGENT_CHILD_ENV]: "1",
+        [AGENT_PROFILE_NAME_ENV]: options.profileBootstrap.name,
+        PI_CODEX_AGENT_PROFILE_NAME: options.profileBootstrap.name,
+        [AGENT_PROFILE_JSON_ENV]: JSON.stringify(options.profileBootstrap),
+        PI_CODEX_AGENT_PROFILE_JSON: JSON.stringify(options.profileBootstrap),
+      },
+      cleanupPaths: [promptFile],
+    };
+    fs.writeFileSync(configFile, JSON.stringify(launcherConfig), "utf8");
+
+    const command =
+      `${shellExternalCommand(process.execPath, [INTERACTIVE_LAUNCHER_ENTRY, configFile])}; ` +
+      shellDoneSentinelCommand();
+    sendShellCommand(surface, command);
+
+    const attachment: InteractiveLiveChildAttachment = {
+      agentId: options.record.agentId,
+      transport: "interactive",
+      surface,
+      sessionFile,
+      abortController: new AbortController(),
+      stateWaiters: [],
+      operationQueue: Promise.resolve(),
+      lastLiveAt: Date.now(),
+    };
+
+    return {
+      attachment,
+      record: {
+        ...options.record,
+        sessionFile,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+  };
+
+  const watchInteractiveAttachment = (attachment: InteractiveLiveChildAttachment): void => {
+    void pollForExit(attachment.surface, attachment.abortController.signal, {
+      interval: 1_000,
+      onTick() {
+        attachment.lastLiveAt = Date.now();
+      },
+    })
+      .then((exitCode) => {
+        attachment.exitCode = exitCode;
+        attachment.lastLiveAt = Date.now();
+
+        let nextRecord: DurableChildRecord | undefined;
+        const record = durableChildrenById.get(attachment.agentId);
+        const lastAssistantText = fs.existsSync(attachment.sessionFile)
+          ? extractLastAssistantTextFromSessionFile(attachment.sessionFile)
+          : undefined;
+
+        if (record) {
+          nextRecord = updateDurableChild(
+            attachment.agentId,
+            {
+              status: exitCode === 0 ? "live_idle" : "failed",
+              lastError: exitCode === 0 ? undefined : `Interactive child exited with code ${exitCode}`,
+              ...(lastAssistantText ? { lastAssistantText } : {}),
+            },
+            { persistAs: SUBAGENT_ENTRY_TYPES.update },
+          );
+        }
+
+        liveAttachmentsById.delete(attachment.agentId);
+        try {
+          closeSurface(attachment.surface);
+        } catch {
+          // Optional.
+        }
+        if (nextRecord) {
+          notifyParentOfChildStatus(nextRecord);
+        }
+      })
+      .catch((error) => {
+        attachment.lastLiveAt = Date.now();
+        const record = durableChildrenById.get(attachment.agentId);
+        if (!record) {
+          liveAttachmentsById.delete(attachment.agentId);
+          notifyStateChange(attachment);
+          return;
+        }
+
+        if (attachment.closingDisposition === "close") {
+          updateDurableChild(
+            attachment.agentId,
+            {
+              status: "closed",
+              closedAt: record.closedAt ?? new Date().toISOString(),
+            },
+            { persistAs: SUBAGENT_ENTRY_TYPES.close },
+          );
+        } else if (attachment.closingDisposition === "detach") {
+          if (!attachment.detachPersisted) {
+            updateDurableChild(
+              attachment.agentId,
+              {
+                status: "detached",
+              },
+              { persistAs: SUBAGENT_ENTRY_TYPES.detach },
+            );
+          }
+        } else if (attachment.closingDisposition !== "discard") {
+          const nextRecord = updateDurableChild(
+            attachment.agentId,
+            {
+              status: "failed",
+              lastError: error instanceof Error ? error.message : String(error),
+            },
+            { persistAs: SUBAGENT_ENTRY_TYPES.update },
+          );
+          notifyParentOfChildStatus(nextRecord);
+        }
+
+        liveAttachmentsById.delete(attachment.agentId);
+      })
+      .finally(() => {
+        dropSubagentActivity(attachment.agentId);
+        notifyStateChange(attachment);
+      });
+  };
+
+  const persistInteractiveDetach = (attachment: InteractiveLiveChildAttachment): void => {
+    if (attachment.detachPersisted) {
+      return;
+    }
+
+    const record = durableChildrenById.get(attachment.agentId);
+    if (record && record.status !== "detached") {
+      updateDurableChild(
+        attachment.agentId,
+        {
+          status: "detached",
+          lastError: undefined,
+        },
+        { persistAs: SUBAGENT_ENTRY_TYPES.detach },
+      );
+    }
+    attachment.detachPersisted = true;
+  };
+
   const attachChild = async (
     record: DurableChildRecord,
     mode: "fresh" | "resume" | "fork",
   ): Promise<{
-    attachment: LiveChildAttachment;
+    attachment: RpcLiveChildAttachment;
     record: DurableChildRecord;
   }> => {
     const resolvedProfiles = resolveAgentProfiles({ includeHidden: true });
@@ -1180,31 +1444,38 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       return existingAttachment;
     }
 
+    const record = requireDurableChild(agentId);
+    if (record.transport === "interactive") {
+      throw new Error(
+        `${formatAgentErrorSubject(agentId, record)} is not currently attached. Interactive children can only be controlled while their parent session is still watching them.`,
+      );
+    }
+
     const inFlightResume = resumeOperationsByAgentId.get(agentId);
     if (inFlightResume) {
       return await inFlightResume;
     }
 
     const resumeOperation = (async () => {
-      const record = requireDurableChild(agentId);
-      const agentSubject = formatAgentErrorSubject(agentId, record);
-      if (record.status === "closed") {
+      const currentRecord = requireDurableChild(agentId);
+      const agentSubject = formatAgentErrorSubject(agentId, currentRecord);
+      if (currentRecord.status === "closed") {
         throw new Error(`${agentSubject} is already closed`);
       }
-      if (!record.sessionFile) {
+      if (!currentRecord.sessionFile) {
         throw new Error(`${agentSubject} is not live and has no durable session_file`);
       }
-      if (!isResumable(record)) {
-        if (record.status === "failed") {
-          throw new Error(record.lastError ?? `${agentSubject} is in a failed state`);
+      if (!isResumable(currentRecord)) {
+        if (currentRecord.status === "failed") {
+          throw new Error(currentRecord.lastError ?? `${agentSubject} is in a failed state`);
         }
         throw new Error(
           `${agentSubject} cannot be resumed because its durable session_file is missing or not yet persisted to disk`,
         );
       }
 
-      const expectedSessionId = record.sessionId;
-      const { attachment } = await attachChild(record, "resume");
+      const expectedSessionId = currentRecord.sessionId;
+      const { attachment } = await attachChild(currentRecord, "resume");
       const attachedRecord = requireDurableChild(agentId);
       if (
         expectedSessionId &&
@@ -1263,6 +1534,22 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     attachment.closingDisposition = disposition;
     attachment.lastLiveAt = Date.now();
 
+    if (isInteractiveAttachment(attachment)) {
+      if (disposition === "detach") {
+        persistInteractiveDetach(attachment);
+      }
+      attachment.abortController.abort();
+      if (disposition === "close") {
+        try {
+          closeSurface(attachment.surface);
+        } catch {
+          // Ignore shutdown errors.
+        }
+      }
+      await waitForStateChange(attachment, CHILD_EXIT_GRACE_MS);
+      return;
+    }
+
     try {
       await sendRpcCommand(attachment, { type: "abort" }, 1_000).catch(() => undefined);
     } catch {
@@ -1278,38 +1565,49 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     }
   };
 
-  const closeAllLiveAttachments = async (reason: "close" | "shutdown") => {
+  const closeAllLiveAttachments = async (reason: "session_change" | "shutdown") => {
     const activeAttachments = [...liveAttachmentsById.values()];
     for (const attachment of activeAttachments) {
-      await closeLiveAttachment(attachment, reason === "close" ? "close" : "discard");
-      liveAttachmentsById.delete(attachment.agentId);
-      dropSubagentActivity(attachment.agentId);
+      const disposition = isInteractiveAttachment(attachment)
+        ? "detach"
+        : reason === "session_change"
+          ? "close"
+          : "discard";
+      await closeLiveAttachment(attachment, disposition);
 
-      const record = durableChildrenById.get(attachment.agentId);
-      if (record && record.status !== "closed") {
-        durableChildrenById.set(attachment.agentId, {
-          ...record,
-          status: reason === "close" ? "closed" : record.status,
-          closedAt: reason === "close" ? (record.closedAt ?? new Date().toISOString()) : record.closedAt,
-          updatedAt: new Date().toISOString(),
-        });
+      if (!isInteractiveAttachment(attachment)) {
+        liveAttachmentsById.delete(attachment.agentId);
+        dropSubagentActivity(attachment.agentId);
+
+        const record = durableChildrenById.get(attachment.agentId);
+        if (record && record.status !== "closed") {
+          durableChildrenById.set(attachment.agentId, {
+            ...record,
+            status: reason === "session_change" ? "closed" : record.status,
+            closedAt:
+              reason === "session_change"
+                ? (record.closedAt ?? new Date().toISOString())
+                : record.closedAt,
+            updatedAt: new Date().toISOString(),
+          });
+        }
       }
     }
   };
 
   pi.on("session_start", async (_event, ctx) => {
-    activeSessionFile = ctx.sessionManager.getSessionFile();
     clearResolvedAgentProfilesCache();
-    await closeAllLiveAttachments("close");
+    await closeAllLiveAttachments("session_change");
+    activeSessionFile = ctx.sessionManager.getSessionFile();
     reconstructDurableRegistry(ctx.sessionManager.getEntries() as SessionEntryLike[]);
     clearSubagentActivities();
     mountSubagentActivityWidget(ctx);
   });
 
   pi.on("session_switch", async (_event, ctx) => {
-    activeSessionFile = ctx.sessionManager.getSessionFile();
     clearResolvedAgentProfilesCache();
-    await closeAllLiveAttachments("close");
+    await closeAllLiveAttachments("session_change");
+    activeSessionFile = ctx.sessionManager.getSessionFile();
     reconstructDurableRegistry(ctx.sessionManager.getEntries() as SessionEntryLike[]);
     clearSubagentActivities();
     mountSubagentActivityWidget(ctx);
@@ -1470,6 +1768,12 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
             "If true, return immediately and notify later when the child completes. Defaults to waiting in this call.",
         }),
       ),
+      interactive: Type.Optional(
+        Type.Boolean({
+          description:
+            "If true, launch the child in a visible multiplexer pane/tab for direct user interaction. Default false. Only use when the user explicitly asks to work in the child session.",
+        }),
+      ),
       name: Type.Optional(
         Type.String({
           description: "Optional descriptive label for the child agent.",
@@ -1479,6 +1783,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const workdir = params.workdir ? path.resolve(ctx.cwd, params.workdir) : ctx.cwd;
       const agentId = randomUUID();
+      const transport: ChildTransport = params.interactive ? "interactive" : "rpc";
       const inheritedDefaults = resolveParentSpawnDefaults({
         modelId: ctx.model?.id,
         sessionEntries: ctx.sessionManager.getEntries() as SessionEntry[],
@@ -1495,6 +1800,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       const thinkingLevel = normalizeReasoningEffortToThinkingLevel(
         appliedProfile.effectiveReasoningEffort,
       );
+      if (transport === "interactive" && !isMuxAvailable()) {
+        throw muxUnavailableError();
+      }
       const forkedSessionFile = params.fork_context
         ? resolveForkContextSessionFile({
             sessionFile: ctx.sessionManager.getSessionFile(),
@@ -1510,6 +1818,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       );
       const baseRecord: DurableChildRecord = {
         agentId,
+        transport,
         agentType: appliedProfile.agentType,
         cwd: workdir,
         model: appliedProfile.effectiveModel,
@@ -1524,10 +1833,18 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       markSubagentActivitySubmitted(subagentActivitiesById, childSnapshot(baseRecord), prompt);
       requestSubagentActivityRender();
 
-      const { attachment } = await attachChild(baseRecord, forkedSessionFile ? "fork" : "fresh");
+      const { attachment, record: attachedRecord } =
+        transport === "interactive"
+          ? await launchInteractiveChild({
+              record: baseRecord,
+              prompt,
+              profileBootstrap: appliedProfile.bootstrap,
+              forkedSessionFile,
+            })
+          : await attachChild(baseRecord, forkedSessionFile ? "fork" : "fresh");
 
       try {
-        if (thinkingLevel) {
+        if (isRpcAttachment(attachment) && thinkingLevel) {
           const thinkingResponse = await sendRpcCommand(attachment, {
             type: "set_thinking_level",
             level: thinkingLevel,
@@ -1541,31 +1858,45 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           }
         }
 
-        const response = await sendRpcCommand(attachment, {
-          type: "prompt",
-          message: prompt,
-        });
+        let durableRecord: DurableChildRecord;
+        if (isRpcAttachment(attachment)) {
+          const response = await sendRpcCommand(attachment, {
+            type: "prompt",
+            message: prompt,
+          });
 
-        if (!response.success) {
-          throw new Error(response.error ?? "Failed to start child agent");
+          if (!response.success) {
+            throw new Error(response.error ?? "Failed to start child agent");
+          }
+
+          const state = await readChildState(attachment);
+          const lastAssistantText = await maybeReadLastAssistantText(attachment);
+          durableRecord = {
+            ...baseRecord,
+            status: deriveDurableStatusFromState(state),
+            sessionId: typeof state.sessionId === "string" ? state.sessionId : undefined,
+            sessionFile: typeof state.sessionFile === "string" ? state.sessionFile : undefined,
+            ...(lastAssistantText ? { lastAssistantText } : {}),
+            updatedAt: new Date().toISOString(),
+          };
+        } else {
+          durableRecord = {
+            ...attachedRecord,
+            status: "live_running",
+          };
         }
-
-        const state = await readChildState(attachment);
-        const lastAssistantText = await maybeReadLastAssistantText(attachment);
-        const durableRecord: DurableChildRecord = {
-          ...baseRecord,
-          status: deriveDurableStatusFromState(state),
-          sessionId: typeof state.sessionId === "string" ? state.sessionId : undefined,
-          sessionFile: typeof state.sessionFile === "string" ? state.sessionFile : undefined,
-          ...(lastAssistantText ? { lastAssistantText } : {}),
-          updatedAt: new Date().toISOString(),
-        };
 
         if (!durableRecord.sessionFile) {
           throw new Error(`Spawned agent ${agentId} did not produce a session_file`);
         }
 
         durableChildrenById.set(agentId, durableRecord);
+        liveAttachmentsById.set(agentId, attachment);
+        if (isInteractiveAttachment(attachment)) {
+          watchInteractiveAttachment(attachment);
+          markSubagentActivityRunning(subagentActivitiesById, childSnapshot(durableRecord, attachment));
+          requestSubagentActivityRender();
+        }
         if (durableRecord.status !== "live_running") {
           dropSubagentActivity(agentId);
         }
@@ -1658,7 +1989,8 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       const agentType = resolveRequestedAgentType(args.agent_type);
       const roleLabel = agentType !== "default" ? ` [${agentType}]` : "";
       const modelLabel = formatSubagentModelLabel(args.model, args.reasoning_effort);
-      const agentName = `${theme.fg("accent", `${predictedName}${roleLabel}`)}${modelLabel ? theme.fg("muted", ` (${modelLabel})`) : ""}`
+      const transportLabel = args.interactive ? theme.fg("muted", " (interactive)") : "";
+      const agentName = `${theme.fg("accent", `${predictedName}${roleLabel}`)}${modelLabel ? theme.fg("muted", ` (${modelLabel})`) : ""}${transportLabel}`;
       const title = titleLine(theme, "text", "Spawned", agentName);
       return new Text(title, 0, 0);
     },
@@ -1727,18 +2059,30 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           throw new Error(record.lastError ?? `${agentSubject} is in a failed state`);
         }
 
-        const commandType =
-          record.status === "live_running" ? (params.interrupt ? "steer" : "follow_up") : "prompt";
-        const response = await sendRpcCommand(attachment, {
-          type: commandType,
-          message: input,
-        });
+        let commandType: "prompt" | "follow_up" | "steer" | "interactive_input";
+        let submissionId: string;
+        if (isInteractiveAttachment(attachment)) {
+          commandType = "interactive_input";
+          sendInteractiveInput(attachment.surface, input);
+          submissionId = `${agentId}:${Date.now()}`;
+        } else {
+          commandType =
+            record.status === "live_running"
+              ? params.interrupt
+                ? "steer"
+                : "follow_up"
+              : "prompt";
+          const response = await sendRpcCommand(attachment, {
+            type: commandType,
+            message: input,
+          });
 
-        if (!response.success) {
-          throw new Error(response.error ?? `Failed to ${commandType} child agent`);
+          if (!response.success) {
+            throw new Error(response.error ?? `Failed to ${commandType} child agent`);
+          }
+
+          submissionId = response.id ?? `${agentId}:${Date.now()}`;
         }
-
-        const submissionId = response.id ?? `${agentId}:${Date.now()}`;
 
         const nextRecord = updateDurableChild(
           agentId,
@@ -1948,6 +2292,7 @@ export {
   resolveAgentIdsAlias,
   resolveSubagentName,
   resolveSpawnPrompt,
+  wrapInteractiveSpawnPrompt,
   summarizeSubagentReply,
   truncateSubagentReply,
   flattenCollabItems,
