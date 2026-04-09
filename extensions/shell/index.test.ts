@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import registerShellExtension, { syncCustomShellTools } from "./index.ts";
+import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "../shared/toolset-resolver.ts";
+import registerShellExtension from "./index.ts";
 
 test("shell extension registers only the shared shell tool and lifecycle hooks", () => {
   const registeredTools: string[] = [];
@@ -18,20 +19,22 @@ test("shell extension registers only the shared shell tool and lifecycle hooks",
 
   assert.deepEqual(registeredTools, ["shell"]);
   assert.equal(handlers.has("session_start"), true);
-  assert.equal(handlers.has("session_switch"), true);
   assert.equal(handlers.has("before_agent_start"), true);
 });
 
-test("syncCustomShellTools replaces builtin bash with shell when enabled", () => {
-  assert.deepEqual(
-    syncCustomShellTools(["read", "bash", "write"], ["read", "bash", "shell", "write"], true),
-    ["read", "write", "shell"],
-  );
-});
+test("shared resolver keeps bash in Pi mode and shell in Codex or Forge mode", () => {
+  const toolInfos = resolveRegisteredToolInfos([
+    { name: "read", description: "builtin" },
+    { name: "write", description: "builtin" },
+    { name: "bash", description: "builtin bash" },
+    { name: "shell", description: "compat shell" },
+    { name: "Task", description: "task" },
+    { name: "TaskOutput", description: "task" },
+    { name: "TaskStop", description: "task" },
+  ]);
 
-test("syncCustomShellTools restores builtin bash when disabled", () => {
-  assert.deepEqual(
-    syncCustomShellTools(["read", "shell", "write"], ["read", "bash", "shell", "write"], false),
-    ["read", "write", "bash"],
-  );
+  assert.deepEqual(resolveToolsetToolNames("pi", toolInfos), ["read", "write", "bash", "Task", "TaskOutput", "TaskStop"]);
+  assert.deepEqual(resolveToolsetToolNames("codex", toolInfos), ["shell"]);
+  assert.deepEqual(resolveToolsetToolNames("forge", toolInfos), ["write", "shell", "Task", "TaskOutput", "TaskStop"]);
+  assert.deepEqual(resolveToolsetToolNames("droid", toolInfos), ["Task", "TaskOutput", "TaskStop"]);
 });

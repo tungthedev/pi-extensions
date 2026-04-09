@@ -21,6 +21,17 @@ import {
   type CodexSystemPromptDeps,
 } from "./system-prompt.ts";
 
+function createContext(toolSet: "pi" | "codex" | "forge") {
+  return {
+    model: { id: "gpt-5.4" },
+    sessionManager: {
+      getBranch() {
+        return [{ type: "custom", customType: "pi-mode:tool-set", data: { toolSet } }];
+      },
+    },
+  };
+}
+
 test("resolveCodexHome uses CODEX_HOME when it points to a directory", async () => {
   const tempDir = await import("node:fs/promises").then((fs) =>
     fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-home-")),
@@ -146,20 +157,16 @@ test("resolveCodexPromptBody uses exact model match and GPT fallback", () => {
   assert.equal(fallback, "gpt fallback");
 });
 
-test("injectCodexPrompt appends once and is idempotent", () => {
+test("injectCodexPrompt replaces the incoming prompt", () => {
   const codexPrompt = buildCodexPrompt("Base Codex prompt");
-  const once = injectCodexPrompt("Existing system prompt", codexPrompt);
-  const twice = injectCodexPrompt(once, codexPrompt);
-
-  assert.match(once, /^Existing system prompt\n\nBase Codex prompt/m);
-  assert.equal(twice, once);
+  assert.equal(injectCodexPrompt("Existing system prompt", codexPrompt), "Base Codex prompt");
+  assert.equal(injectCodexPrompt(undefined, codexPrompt), "Base Codex prompt");
 });
 
 test("handleCodexSystemPromptBeforeAgentStart returns no-op when Codex prompt is not selected", async () => {
   const deps: CodexSystemPromptDeps = {
     readSettings: async () => ({
       toolSet: "forge",
-      customShellTool: true,
       systemMdPrompt: true,
     }),
     buildPromptForModel: () => "Codex block",
@@ -167,7 +174,7 @@ test("handleCodexSystemPromptBeforeAgentStart returns no-op when Codex prompt is
 
   const result = await handleCodexSystemPromptBeforeAgentStart(
     { systemPrompt: "Base" } as never,
-    { model: { id: "gpt-5.4" } } as never,
+    createContext("forge") as never,
     deps,
   );
 
@@ -178,7 +185,6 @@ test("handleCodexSystemPromptBeforeAgentStart returns no-op when system-md is en
   const deps: CodexSystemPromptDeps = {
     readSettings: async () => ({
       toolSet: "codex",
-      customShellTool: true,
       systemMdPrompt: true,
     }),
     buildPromptForModel: () => "Codex block",
@@ -189,7 +195,7 @@ test("handleCodexSystemPromptBeforeAgentStart returns no-op when system-md is en
   try {
     const result = await handleCodexSystemPromptBeforeAgentStart(
       { systemPrompt: "Base" } as never,
-      { model: { id: "gpt-5.4" } } as never,
+      createContext("codex") as never,
       deps,
     );
 
@@ -199,11 +205,10 @@ test("handleCodexSystemPromptBeforeAgentStart returns no-op when system-md is en
   }
 });
 
-test("handleCodexSystemPromptBeforeAgentStart still injects when system-md is loaded but disabled in settings", async () => {
+test("handleCodexSystemPromptBeforeAgentStart still replaces when system-md is loaded but disabled in settings", async () => {
   const deps: CodexSystemPromptDeps = {
     readSettings: async () => ({
       toolSet: "codex",
-      customShellTool: true,
       systemMdPrompt: false,
     }),
     buildPromptForModel: () => "Codex block",
@@ -214,21 +219,20 @@ test("handleCodexSystemPromptBeforeAgentStart still injects when system-md is lo
   try {
     const result = await handleCodexSystemPromptBeforeAgentStart(
       { systemPrompt: "Base" } as never,
-      { model: { id: "gpt-5.4" } } as never,
+      createContext("codex") as never,
       deps,
     );
 
-    assert.deepEqual(result, { systemPrompt: "Base\n\nCodex block" });
+    assert.deepEqual(result, { systemPrompt: "Codex block" });
   } finally {
     setSystemMdPromptEnabledForTests(false);
   }
 });
 
-test("handleCodexSystemPromptBeforeAgentStart injects the selected Codex prompt", async () => {
+test("handleCodexSystemPromptBeforeAgentStart replaces the selected Codex prompt", async () => {
   const deps: CodexSystemPromptDeps = {
     readSettings: async () => ({
       toolSet: "codex",
-      customShellTool: true,
       systemMdPrompt: true,
     }),
     buildPromptForModel: () => "Codex block",
@@ -236,11 +240,11 @@ test("handleCodexSystemPromptBeforeAgentStart injects the selected Codex prompt"
 
   const result = await handleCodexSystemPromptBeforeAgentStart(
     { systemPrompt: "Base" } as never,
-    { model: { id: "gpt-5.4" } } as never,
+    createContext("codex") as never,
     deps,
   );
 
-  assert.deepEqual(result, { systemPrompt: "Base\n\nCodex block" });
+  assert.deepEqual(result, { systemPrompt: "Codex block" });
 });
 
 test("registerCodexSystemPrompt registers before_agent_start", () => {

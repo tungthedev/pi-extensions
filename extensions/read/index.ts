@@ -1,10 +1,13 @@
-import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
 
 import { createReadTool, createReadToolDefinition } from "@mariozechner/pi-coding-agent";
-import { Container, Text } from "@mariozechner/pi-tui";
+import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 
 import { shortenPath } from "../codex-content/shared/text.ts";
+import { applyResolvedToolset } from "../shared/toolset-resolver.ts";
+
+const ENHANCED_READ_TOOL_NAME = "read_file";
 
 const READ_FILE_DESCRIPTION =
   "Read the contents of a file. Accepts absolute paths, cwd-relative paths, @-prefixed paths, and ~ home-directory paths. Supports text files and images (jpg, png, gif, webp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.";
@@ -35,16 +38,31 @@ function renderReadCall(theme: Theme, args: { file_path?: string; offset?: numbe
   );
 }
 
+async function syncReadToolSet(
+  pi: ExtensionAPI,
+  ctx: Pick<ExtensionContext, "sessionManager">,
+): Promise<void> {
+  await applyResolvedToolset(pi, ctx.sessionManager);
+}
+
 export default function registerReadExtension(pi: ExtensionAPI): void {
-  const nativeRead = createReadTool(process.cwd());
   const nativeReadDefinition = createReadToolDefinition(process.cwd());
 
+  pi.on("session_start", async (_event, ctx) => {
+    await syncReadToolSet(pi, ctx);
+  });
+
+  pi.on("before_agent_start", async (_event, ctx) => {
+    await syncReadToolSet(pi, ctx);
+  });
+
   pi.registerTool({
-    name: "read_file",
-    label: "read_file",
+    name: ENHANCED_READ_TOOL_NAME,
+    label: ENHANCED_READ_TOOL_NAME,
     description: READ_FILE_DESCRIPTION,
     parameters: readFileSchema,
-    async execute(toolCallId, params, signal, onUpdate) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      const nativeRead = createReadTool(ctx.cwd);
       return await nativeRead.execute(
         toolCallId,
         {
@@ -60,10 +78,6 @@ export default function registerReadExtension(pi: ExtensionAPI): void {
       return renderReadCall(theme, args);
     },
     renderResult(result, options, theme, context) {
-      if (!options.expanded) {
-        return new Container();
-      }
-
       return nativeReadDefinition.renderResult!(
         result as never,
         options,

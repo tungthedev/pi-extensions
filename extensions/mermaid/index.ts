@@ -3,22 +3,14 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Box, truncateToWidth } from "@mariozechner/pi-tui";
 
 import type { RenderCache } from "./render.ts";
+import type { DiagramEntry } from "./session-index.ts";
 
 import { extractMermaidBlocks, captureContextSlice, extractText } from "./extract.ts";
 import { createCache, pickBestPreset, hashCode } from "./render.ts";
+import { indexSessionDiagrams } from "./session-index.ts";
 import { openMermaidViewer } from "./viewer.ts";
 
-export type DiagramEntry = {
-  id: string;
-  block: {
-    code: string;
-    blockIndex: number;
-    startLine: number;
-    endLine: number;
-  };
-  context: { beforeLines: string[]; afterLines: string[] };
-  source: "assistant" | "user" | "command";
-};
+export type { DiagramEntry } from "./session-index.ts";
 
 export default function mermaidInlineExtension(pi: ExtensionAPI) {
   const CUSTOM_TYPE = "mermaid-inline";
@@ -26,6 +18,10 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
   const MAX_DIAGRAMS = 100;
   const cache: RenderCache = createCache();
   let diagrams: DiagramEntry[] = [];
+
+  function syncDiagramsFromSession(ctx: Pick<ExtensionContext, "sessionManager">): void {
+    diagrams = indexSessionDiagrams(ctx.sessionManager.getBranch() as never, { maxCodeLength: MAX_CODE_LENGTH }).slice(-MAX_DIAGRAMS);
+  }
 
   /**
    * details contains the full DiagramEntry, not just an ID reference.
@@ -77,7 +73,7 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
     return box;
   });
 
-  pi.on("message_end", async (event, _ctx) => {
+  pi.on("message_end", async (event, ctx) => {
     const msg = event.message;
     if (msg.role !== "assistant") return;
     if ((msg as any).customType === CUSTOM_TYPE) return;
@@ -112,9 +108,11 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
         { deliverAs: "nextTurn" },
       );
     }
+
+    syncDiagramsFromSession(ctx);
   });
 
-  pi.on("input", async (event, _ctx) => {
+  pi.on("input", async (event, ctx) => {
     if (event.source === "extension") return;
     const text = typeof event.text === "string" ? event.text : "";
     if (!text) return { action: "continue" as const };
@@ -141,6 +139,8 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
       );
     }
 
+    syncDiagramsFromSession(ctx);
+
     return { action: "continue" as const };
   });
 
@@ -150,15 +150,15 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
     };
   });
 
-  pi.on("session_switch", async () => {
-    diagrams = [];
+  pi.on("session_start", async (_event, ctx) => {
+    syncDiagramsFromSession(ctx);
   });
 
   pi.registerShortcut("ctrl+shift+m", {
     description: "View mermaid diagrams",
     handler: async (ctx) => {
       if (diagrams.length === 0) {
-        lazyDiscoverDiagrams(ctx);
+        syncDiagramsFromSession(ctx);
       }
       if (diagrams.length === 0) {
         if (ctx.hasUI) ctx.ui.notify("no mermaid diagrams in session", "info");
@@ -172,7 +172,7 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
     description: "Open mermaid diagram viewer",
     handler: async (_args, ctx) => {
       if (diagrams.length === 0) {
-        lazyDiscoverDiagrams(ctx);
+        syncDiagramsFromSession(ctx);
       }
       if (diagrams.length === 0) {
         if (ctx.hasUI) ctx.ui.notify("no mermaid diagrams in session", "info");
@@ -186,30 +186,6 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
     diagrams.push(entry);
     if (diagrams.length > MAX_DIAGRAMS) {
       diagrams = diagrams.slice(-MAX_DIAGRAMS);
-    }
-  }
-
-  /** scan session history for mermaid blocks we missed (e.g. session loaded from disk) */
-  function lazyDiscoverDiagrams(ctx: ExtensionContext) {
-    const entries = ctx.sessionManager.getBranch();
-    for (const entry of entries) {
-      if (entry.type !== "message") continue;
-      if (entry.message.role !== "assistant") continue;
-
-      const text = extractText(entry.message.content);
-      if (!text) continue;
-
-      const blocks = extractMermaidBlocks(text);
-      for (const block of blocks) {
-        if (block.code.length > MAX_CODE_LENGTH) continue;
-
-        const hash = hashCode(block.code);
-        if (diagrams.some((d) => d.id.endsWith(hash))) continue;
-
-        const context = captureContextSlice(text, block, 5);
-        const id = `${entry.id}:${block.blockIndex}:${hash}`;
-        addDiagram({ id, block, context, source: "assistant" });
-      }
     }
   }
 }

@@ -248,11 +248,8 @@ export function buildSelectedCodexPrompt(modelId: string | undefined): string {
   );
 }
 
-export function injectCodexPrompt(systemPrompt: string | undefined, codexPrompt: string): string {
-  const basePrompt = (systemPrompt ?? "").trim();
-  if (!codexPrompt) return basePrompt;
-  if (basePrompt.includes(codexPrompt)) return basePrompt;
-  return [basePrompt, codexPrompt].filter(Boolean).join("\n\n").trim();
+export function injectCodexPrompt(_systemPrompt: string | undefined, codexPrompt: string): string {
+  return codexPrompt.trim();
 }
 
 export async function handleCodexSystemPromptBeforeAgentStart(

@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { resolveSessionToolSet } from "../../settings/session.ts";
+import { applyResolvedToolset } from "../../shared/toolset-resolver.ts";
 import { registerCodexWorkflowTools } from "../workflow/index.ts";
 import { registerApplyPatchTool } from "./apply-patch.ts";
 import { registerFindFilesTool } from "./find-files.ts";
@@ -8,79 +8,15 @@ import { registerGrepFilesTool } from "./grep-files.ts";
 import { registerListDirTool } from "./list-dir.ts";
 import { registerViewImageTool } from "./view-image.ts";
 
-const REPLACED_BUILTIN_TOOL_NAMES = new Set([
-  "read",
-  "grep",
-  "find",
-  "ls",
-  "edit",
-  "write",
-]);
-
-const CODEX_TOOL_SET_TOOL_NAMES = new Set([
-  "update_plan",
-  "read_plan",
-  "request_user_input",
-  "list_dir",
-  "find_files",
-  "grep_files",
-  "apply_patch",
-  "view_image",
-]);
-
-const FORGE_TOOL_SET_TOOL_NAMES = new Set([
-  "fs_search",
-  "patch",
-  "followup",
-  "todos_write",
-  "todos_read",
-]);
-
-export function syncCodexToolSet(
-  allToolNames: string[],
-  toolSet: string,
-): string[] | undefined {
-  if (toolSet === "forge") {
-    return undefined;
-  }
-
-  const availableToolNames = Array.from(new Set(allToolNames));
-
-  if (toolSet === "codex") {
-    return availableToolNames.filter(
-      (toolName) =>
-        !REPLACED_BUILTIN_TOOL_NAMES.has(toolName) && !FORGE_TOOL_SET_TOOL_NAMES.has(toolName),
-    );
-  }
-
-  return availableToolNames.filter(
-    (toolName) =>
-      !CODEX_TOOL_SET_TOOL_NAMES.has(toolName) && !FORGE_TOOL_SET_TOOL_NAMES.has(toolName),
-  );
-}
-
 async function applyCompatibilityToolOverrides(
   pi: ExtensionAPI,
   ctx: Pick<ExtensionContext, "sessionManager">,
 ): Promise<void> {
-  const nextActiveTools = syncCodexToolSet(
-    pi.getAllTools().map((tool) => tool.name),
-    await resolveSessionToolSet(ctx.sessionManager),
-  );
-
-  if (!nextActiveTools) {
-    return;
-  }
-
-  pi.setActiveTools(nextActiveTools);
+  await applyResolvedToolset(pi, ctx.sessionManager);
 }
 
 function registerToolOverrideHandlers(pi: ExtensionAPI): void {
   pi.on("session_start", async (_event, ctx) => {
-    await applyCompatibilityToolOverrides(pi, ctx);
-  });
-
-  pi.on("session_switch", async (_event, ctx) => {
     await applyCompatibilityToolOverrides(pi, ctx);
   });
 

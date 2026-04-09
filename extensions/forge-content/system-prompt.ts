@@ -8,6 +8,7 @@ import fs from "node:fs";
 
 import { readTungthedevSettings, type TungthedevSettings } from "../settings/config.ts";
 import { resolveSessionToolSet } from "../settings/session.ts";
+import { resolveRegisteredToolInfos, resolveToolsetEntries } from "../shared/toolset-resolver.ts";
 import { isSystemMdPromptEnabled } from "../system-md/state.ts";
 
 const FORGE_SYSTEM_PROMPT_PATH = new URL("./assets/forge-system.md", import.meta.url);
@@ -37,8 +38,57 @@ export function readForgeSystemPrompt(assetPath: string | URL = FORGE_SYSTEM_PRO
   return fs.readFileSync(assetPath, "utf-8").trim();
 }
 
+const FORGE_TOOL_PLACEHOLDERS = {
+  todos_write: {
+    toolName: "todos_write",
+    fallback: "your task-planning tool",
+  },
+  shell: {
+    toolName: "shell",
+    fallback: "your shell tool",
+  },
+  patch: {
+    toolName: "patch",
+    fallback: "your patch tool",
+  },
+  fs_search: {
+    toolName: "fs_search",
+    fallback: "your file-search tool",
+  },
+  WebSummary: {
+    toolName: "WebSummary",
+    fallback: "an optional web summarization tool",
+  },
+} as const;
+
+function resolveForgeToolPlaceholder(
+  placeholder: keyof typeof FORGE_TOOL_PLACEHOLDERS,
+  activeToolNames: Set<string>,
+): string {
+  const definition = FORGE_TOOL_PLACEHOLDERS[placeholder];
+  return activeToolNames.has(definition.toolName) ? definition.toolName : definition.fallback;
+}
+
+export function renderForgePromptTemplate(
+  template: string,
+  options: Pick<ForgePromptOptions, "activeTools">,
+): string {
+  const activeToolNames = new Set(options.activeTools.map((tool) => tool.name));
+
+  return template
+    .replaceAll("{{tool_names.todos_write}}", resolveForgeToolPlaceholder("todos_write", activeToolNames))
+    .replaceAll("{{tool_names.shell}}", resolveForgeToolPlaceholder("shell", activeToolNames))
+    .replaceAll("{{tool_names.patch}}", resolveForgeToolPlaceholder("patch", activeToolNames))
+    .replaceAll("{{tool_names.fs_search}}", resolveForgeToolPlaceholder("fs_search", activeToolNames))
+    .replaceAll("{{tool_names.WebSummary}}", resolveForgeToolPlaceholder("WebSummary", activeToolNames))
+    .trim();
+}
+
 export function buildForgePrompt(options: ForgePromptOptions): string {
-  const sections = [options.baseSystemPrompt?.trim(), readForgeSystemPrompt()];
+  const sections = [
+    options.baseSystemPrompt?.trim(),
+    renderForgePromptTemplate(readForgeSystemPrompt(), options),
+  ];
 
   return sections
     .filter((section): section is string => Boolean(section))
@@ -46,30 +96,24 @@ export function buildForgePrompt(options: ForgePromptOptions): string {
     .trim();
 }
 
-function getActiveToolInfos(pi: ExtensionAPI): Array<{ name: string; description: string }> {
-  const activeToolNames = new Set(pi.getActiveTools());
-  return pi
-    .getAllTools()
-    .filter((tool) => activeToolNames.has(tool.name))
-    .map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-    }));
+export function resolveForgeToolInfos(pi: Pick<ExtensionAPI, "getAllTools">): Array<{
+  name: string;
+  description: string;
+}> {
+  return resolveToolsetEntries("forge", resolveRegisteredToolInfos(pi.getAllTools()));
 }
 
 export function buildSelectedForgePrompt(pi: ExtensionAPI, ctx: ExtensionContext): string {
   return buildForgePrompt({
     cwd: ctx.cwd,
-    activeTools: getActiveToolInfos(pi),
+    activeTools: resolveForgeToolInfos(pi),
     shell: process.env.SHELL,
     homeDir: process.env.HOME,
   });
 }
 
-export function injectForgePrompt(systemPrompt: string | undefined, forgePrompt: string): string {
-  const basePrompt = (systemPrompt ?? "").trim();
-  const appendedPrompt = forgePrompt.trim();
-  return [basePrompt, appendedPrompt].filter(Boolean).join("\n\n").trim();
+export function injectForgePrompt(_systemPrompt: string | undefined, forgePrompt: string): string {
+  return forgePrompt.trim();
 }
 
 export async function handleForgeSystemPromptBeforeAgentStart(

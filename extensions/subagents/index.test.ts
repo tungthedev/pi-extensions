@@ -26,8 +26,10 @@ import {
   resolveForkContextSessionFile,
   resolveParentSpawnDefaults,
   resolveSpawnPrompt,
+  summarizeTaskRequest,
   wrapInteractiveSpawnPrompt,
 } from "./index.ts";
+import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "../shared/toolset-resolver.ts";
 import { getSubagentNotificationDeliveryOptions } from "./subagents/notifications.ts";
 
 function createPersistedSessionFixture() {
@@ -206,6 +208,33 @@ test("flattenCollabItems and resolveSpawnPrompt compose Codex-style item payload
   );
 });
 
+test("shared resolver switches between Codex and Task subagent lifecycle tools by mode", () => {
+  const toolInfos = resolveRegisteredToolInfos([
+    { name: "spawn_agent", description: "subagent" },
+    { name: "send_input", description: "subagent" },
+    { name: "wait_agent", description: "subagent" },
+    { name: "close_agent", description: "subagent" },
+    { name: "Task", description: "task" },
+    { name: "TaskOutput", description: "task" },
+    { name: "TaskStop", description: "task" },
+    { name: "WebSearch", description: "web" },
+  ]);
+
+  assert.deepEqual(resolveToolsetToolNames("codex", toolInfos), [
+    "WebSearch",
+    "spawn_agent",
+    "send_input",
+    "wait_agent",
+    "close_agent",
+  ]);
+  assert.deepEqual(resolveToolsetToolNames("droid", toolInfos), [
+    "WebSearch",
+    "Task",
+    "TaskOutput",
+    "TaskStop",
+  ]);
+});
+
 test("wrapInteractiveSpawnPrompt instructs the child to summarize and call subagent_done", () => {
   const wrapped = wrapInteractiveSpawnPrompt("Inspect the auth flow and report back.");
 
@@ -253,7 +282,7 @@ test("normalizeWaitAgentTimeoutMs applies wait_agent default, clamp, and validat
   assert.throws(() => normalizeWaitAgentTimeoutMs(0), /timeout_ms must be greater than zero/);
 });
 
-test("resolveParentSpawnDefaults inherits parent model and thinking level from session context", () => {
+test("resolveParentSpawnDefaults inherits parent provider-qualified model and thinking level from session context", () => {
   const fixture = createPersistedSessionFixture();
 
   fixture.manager.appendModelChange("openai", "gpt-5");
@@ -264,25 +293,25 @@ test("resolveParentSpawnDefaults inherits parent model and thinking level from s
     leafId: fixture.manager.getLeafId(),
   });
 
-  assert.deepEqual(resolved, { model: "gpt-5", reasoningEffort: "high" });
+  assert.deepEqual(resolved, { model: "openai/gpt-5", reasoningEffort: "high" });
 
   fixture.cleanup();
 });
 
-test("resolveParentSpawnDefaults prefers the live parent model over session history", () => {
+test("resolveParentSpawnDefaults prefers the live parent provider-qualified model over session history", () => {
   const fixture = createPersistedSessionFixture();
 
   fixture.manager.appendModelChange("openai", "gpt-5");
   fixture.manager.appendThinkingLevelChange("medium");
 
   const resolved = resolveParentSpawnDefaults({
-    modelId: "gpt-5-mini",
+    modelId: "custom-provider/gpt-5-mini",
     sessionEntries: fixture.manager.getEntries() as never,
     leafId: fixture.manager.getLeafId(),
   });
 
   assert.deepEqual(resolved, {
-    model: "gpt-5-mini",
+    model: "custom-provider/gpt-5-mini",
     reasoningEffort: "medium",
   });
 
@@ -432,6 +461,28 @@ test("formatSubagentNotificationMessage wraps model-visible subagent status payl
   });
 });
 
+test("formatSubagentNotificationMessage includes task summary when provided", () => {
+  const payload = JSON.parse(
+    formatSubagentNotificationMessage(
+      {
+        agent_id: "agent-1",
+        status: "idle",
+        durable_status: "live_idle",
+        last_assistant_text: "child done",
+      },
+      { taskSummary: "Run a simple echo command" },
+    ).split("\n")[1] ?? "{}",
+  );
+
+  assert.deepEqual(payload, {
+    agent_id: "agent-1",
+    status: "idle",
+    durable_status: "live_idle",
+    last_assistant_text: "child done",
+    task_summary: "Run a simple echo command",
+  });
+});
+
 test("rebuildDurableRegistry still accepts legacy codex entry types", () => {
   const records = rebuildDurableRegistry([
     {
@@ -517,7 +568,39 @@ test("parseSubagentNotificationMessage extracts wrapped notification payloads", 
     },
   );
 
+  assert.deepEqual(
+    parseSubagentNotificationMessage(
+      formatSubagentNotificationMessage(
+        {
+          agent_id: "agent-2",
+          status: "idle",
+          durable_status: "live_idle",
+          last_assistant_text: "done",
+        },
+        { taskSummary: "Echo hello" },
+      ),
+    ),
+    {
+      agent_id: "agent-2",
+      status: "idle",
+      durable_status: "live_idle",
+      last_assistant_text: "done",
+      task_summary: "Echo hello",
+    },
+  );
+
   assert.equal(parseSubagentNotificationMessage("not a wrapped payload"), undefined);
+});
+
+test("summarizeTaskRequest prefers description and normalizes prompt fallback", () => {
+  assert.equal(
+    summarizeTaskRequest("  Run a simple echo command via child task  ", "ignored"),
+    "Run a simple echo command via child task",
+  );
+  assert.equal(
+    summarizeTaskRequest(undefined, "\n  first line\n\n second   line  "),
+    "first line second line",
+  );
 });
 
 test("getSubagentNotificationDeliveryOptions steers notifications while parent is streaming", () => {

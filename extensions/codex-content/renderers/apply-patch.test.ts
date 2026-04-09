@@ -75,5 +75,5 @@ test("renderApplyPatchResult shows collapsed preview lines before the expand hin
   const renderedText = stripAnsi((rendered as any).text as string);
   assert.match(renderedText, /Modified src\/demo.ts/);
   assert.match(renderedText, /return 2;/);
-  assert.match(renderedText, /\.\.\. \+2 more lines \(Ctrl\+O to expand\)/);
+  assert.match(renderedText, /\.\.\. \+2 more lines \((?:Ctrl\+O|ctrl\+o) to expand\)/);
 });
