@@ -36,6 +36,7 @@ export const SUBAGENT_ENTRY_TYPES = {
 export type SubagentEntryType = (typeof SUBAGENT_ENTRY_TYPES)[keyof typeof SUBAGENT_ENTRY_TYPES];
 export type DurableChildStatus = "live_running" | "live_idle" | "detached" | "failed" | "closed";
 export type AgentToolStatus = "running" | "idle" | "detached" | "failed" | "closed" | "timeout";
+export type PersistedTaskStatus = Exclude<AgentToolStatus, "timeout">;
 
 export type PendingResponse = {
   resolve: (value: RpcResponse) => void;
@@ -53,6 +54,8 @@ export type DurableChildRecord = {
   updatedAt: string;
   sessionId?: string;
   sessionFile?: string;
+  taskStatus?: PersistedTaskStatus;
+  finalResultText?: string;
   lastAssistantText?: string;
   lastError?: string;
   closedAt?: string;
@@ -93,6 +96,8 @@ export type AgentSnapshot = {
   name?: string;
   session_id?: string;
   session_file?: string;
+  completion_version?: number;
+  final_result_text?: string;
   last_assistant_text?: string;
   last_error?: string;
   exit_code?: number | null;

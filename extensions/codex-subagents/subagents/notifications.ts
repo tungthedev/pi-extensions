@@ -1,4 +1,4 @@
-import type { AgentSnapshot } from "./types.ts";
+import type { AgentSnapshot, DurableChildRecord } from "./types.ts";
 
 export const CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE = "codex-subagent-notification";
 
@@ -15,6 +15,8 @@ type NotificationPayload = {
   agent_id: string;
   status: AgentSnapshot["status"];
   durable_status: AgentSnapshot["durable_status"];
+  completion_version?: number;
+  final_result_text?: string;
   name?: string;
   last_assistant_text?: string;
   last_error?: string;
@@ -23,13 +25,24 @@ type NotificationPayload = {
 export function formatSubagentNotificationMessage(
   snapshot: Pick<
     AgentSnapshot,
-    "agent_id" | "status" | "durable_status" | "name" | "last_assistant_text" | "last_error"
+    | "agent_id"
+    | "status"
+    | "durable_status"
+    | "completion_version"
+    | "final_result_text"
+    | "name"
+    | "last_assistant_text"
+    | "last_error"
   >,
 ): string {
   const payload: NotificationPayload = {
     agent_id: snapshot.agent_id,
     status: snapshot.status,
     durable_status: snapshot.durable_status,
+    ...(snapshot.completion_version != null
+      ? { completion_version: snapshot.completion_version }
+      : {}),
+    ...(snapshot.final_result_text ? { final_result_text: snapshot.final_result_text } : {}),
     ...(snapshot.name ? { name: snapshot.name } : {}),
     ...(snapshot.last_assistant_text ? { last_assistant_text: snapshot.last_assistant_text } : {}),
     ...(snapshot.last_error ? { last_error: snapshot.last_error } : {}),
@@ -61,6 +74,16 @@ export function parseSubagentNotificationMessage(
   } catch {
     return undefined;
   }
+}
+
+export function shouldRenderSubagentNotification(
+  payload: Pick<NotificationPayload, "completion_version"> & Partial<NotificationPayload>,
+  currentRecord: DurableChildRecord | undefined,
+  currentCompletionVersion: number | undefined,
+): boolean {
+  if (currentRecord?.status === "closed") return false;
+  if (payload.completion_version == null || currentCompletionVersion == null) return true;
+  return payload.completion_version >= currentCompletionVersion;
 }
 
 export function buildWaitAgentContent(snapshots: AgentSnapshot[], timedOut: boolean): string {

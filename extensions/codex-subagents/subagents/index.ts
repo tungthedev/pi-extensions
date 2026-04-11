@@ -45,7 +45,9 @@ import {
   formatSubagentNotificationMessage,
   getSubagentNotificationDeliveryOptions,
   parseSubagentNotificationMessage,
+  shouldRenderSubagentNotification,
 } from "./notifications.ts";
+import { resolveFinalResultText } from "./final-result.ts";
 import { rebuildDurableRegistry } from "./persistence.ts";
 import { applySpawnAgentProfile, resolveRequestedAgentType } from "./profiles-apply.ts";
 import {
@@ -61,6 +63,7 @@ import {
   formatSubagentModelLabel,
   MAX_SUBAGENT_NOTIFICATION_PREVIEW_CHARS,
   MAX_SUBAGENT_REPLY_PREVIEW_LINES,
+  pickSubagentResultText,
   summarizeSubagentReply,
   truncateSubagentReply,
 } from "./rendering.ts";
@@ -73,6 +76,11 @@ import {
 } from "./rpc.ts";
 import { extractLastAssistantText, isResumable } from "./session.ts";
 import { deriveDurableStatusFromState } from "./state.ts";
+import {
+  buildCompletionSignature,
+  shouldNotifyForTaskStatus,
+  shouldWaitForTaskCompletion,
+} from "./task-status.ts";
 import {
   CHILD_EXIT_GRACE_MS,
   CODEX_SUBAGENT_CHILD_ENV,
@@ -517,11 +525,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   };
 
   const completionSignature = (record: DurableChildRecord): string =>
-    JSON.stringify({
-      status: record.status,
-      lastError: record.lastError ?? null,
-      lastAssistantText: record.lastAssistantText ?? null,
-    });
+    buildCompletionSignature(record);
 
   const getCompletionVersion = (record: DurableChildRecord): number => {
     const signature = completionSignature(record);
@@ -538,7 +542,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   const isReadySnapshot = (
     record: DurableChildRecord,
     attachment: LiveChildAttachment | undefined,
-  ): boolean => !attachment || record.status !== "live_running";
+  ): boolean => !shouldWaitForTaskCompletion(record, Boolean(attachment));
 
   const claimReadySnapshot = (
     agentId: string,
@@ -564,7 +568,10 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
 
     consumedCompletionVersionByAgentId.set(agentId, completionVersion);
     suppressedCompletionVersionByAgentId.delete(agentId);
-    return childSnapshot(record, attachment);
+    return {
+      ...childSnapshot(record, attachment),
+      completion_version: completionVersion,
+    };
   };
 
   const collectReadySnapshots = (
@@ -679,7 +686,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   };
 
   const shouldNotifyParent = (record: DurableChildRecord): boolean => {
-    if (record.status !== "live_idle" && record.status !== "failed") {
+    if (!shouldNotifyForTaskStatus(record)) {
       return false;
     }
 
@@ -737,6 +744,14 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         return new Text(messageContent ?? "", 0, 0);
       }
 
+      const currentRecord = durableChildrenById.get(snapshot.agent_id);
+      const currentCompletionVersion = currentRecord
+        ? getCompletionVersion(currentRecord)
+        : undefined;
+      if (!shouldRenderSubagentNotification(snapshot, currentRecord, currentCompletionVersion)) {
+        return new Text("", 0, 0);
+      }
+
       const displayName = getSubagentDisplayName(snapshot);
       const statusColor =
         snapshot.status === "idle"
@@ -749,7 +764,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       const summary =
         snapshot.last_error ??
         summarizeSubagentReply(
-          snapshot.last_assistant_text,
+          pickSubagentResultText(snapshot),
           expanded ? 600 : MAX_SUBAGENT_NOTIFICATION_PREVIEW_CHARS,
         );
       let detail = `${theme.fg("accent", displayName)}${theme.fg("muted", ": ")}${theme.fg(statusColor, getSubagentCompletionLabel(snapshot.status))}`;
@@ -778,13 +793,13 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       updatedAt: patch.updatedAt ?? new Date().toISOString(),
     };
     durableChildrenById.set(agentId, next);
-    if (next.status === "live_running") {
+    if (next.status === "live_running" || next.taskStatus === "running") {
       resetCompletionTracking(agentId);
     }
     if (options.persistAs) {
       persistRegistryEvent(options.persistAs, next, { reason: options.reason });
     }
-    if (next.status === "live_running") {
+    if (next.status === "live_running" || next.taskStatus === "running") {
       syncSubagentActivityIdentity(next);
     } else {
       dropSubagentActivity(agentId);
@@ -854,6 +869,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         handleDurablePatch(
           {
             status: "failed",
+            taskStatus: "failed",
             lastError: `Failed to parse RPC output: ${String(error)}`,
           },
           { persistAs: SUBAGENT_ENTRY_TYPES.update },
@@ -893,6 +909,8 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         handleDurablePatch(
           {
             status: "live_running",
+            taskStatus: "running",
+            finalResultText: undefined,
             lastError: undefined,
           },
           { persistAs: SUBAGENT_ENTRY_TYPES.update },
@@ -933,11 +951,18 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
 
       if (type === "agent_end") {
         const assistantText = extractLastAssistantText(message.messages);
+        const currentRecord = durableChildrenById.get(attachment.agentId);
+        const finalResultText = resolveFinalResultText({
+          eventText: assistantText,
+          cachedText: currentRecord?.lastAssistantText,
+        });
         const nextRecord = updateDurableChild(
           attachment.agentId,
           {
             status: "live_idle",
+            taskStatus: "idle",
             ...(assistantText ? { lastAssistantText: assistantText } : {}),
+            ...(finalResultText ? { finalResultText } : {}),
           },
           { persistAs: SUBAGENT_ENTRY_TYPES.update },
         );
@@ -1002,6 +1027,12 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
                 : attachment.closingDisposition === "detach"
                   ? "detached"
                   : "failed",
+            taskStatus:
+              attachment.closingDisposition === "close"
+                ? "closed"
+                : attachment.closingDisposition === "detach"
+                  ? "detached"
+                  : "failed",
             lastError: error.message,
           },
           {
@@ -1039,6 +1070,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           durableChildrenById.set(attachment.agentId, {
             ...record,
             status: "closed",
+            taskStatus: "closed",
             closedAt: record.closedAt ?? new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           });
@@ -1046,6 +1078,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           durableChildrenById.set(attachment.agentId, {
             ...record,
             status: "detached",
+            taskStatus: "detached",
             updatedAt: new Date().toISOString(),
           });
         } else if (attachment.closingDisposition !== "discard") {
@@ -1054,6 +1087,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
             attachment.agentId,
             {
               status: code === 0 ? "detached" : "failed",
+              taskStatus: code === 0 ? "detached" : "failed",
               lastError:
                 code === 0 && !record.lastError
                   ? record.lastError
@@ -1172,6 +1206,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           agentId,
           {
             status: "failed",
+            taskStatus: "failed",
             lastError: mismatchError,
           },
           { persistAs: SUBAGENT_ENTRY_TYPES.update },
@@ -1242,6 +1277,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         durableChildrenById.set(attachment.agentId, {
           ...record,
           status: reason === "close" ? "closed" : record.status,
+          taskStatus: reason === "close" ? "closed" : record.taskStatus,
           closedAt: reason === "close" ? (record.closedAt ?? new Date().toISOString()) : record.closedAt,
           updatedAt: new Date().toISOString(),
         });
@@ -1315,7 +1351,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       const displayName = getSubagentDisplayName(agent);
       const statusColor = getStatusColor(agent.status);
       const summary =
-        agent.last_error ?? summarizeSubagentReply(agent.last_assistant_text, expanded ? 600 : 220);
+        agent.last_error ?? summarizeSubagentReply(pickSubagentResultText(agent), expanded ? 600 : 220);
       let detail = `${theme.fg("accent", displayName)}${theme.fg("muted", ": ")}${theme.fg(statusColor, getSubagentCompletionLabel(agent.status))}`;
       if (summary) {
         detail += `${theme.fg("muted", " - ")}${theme.fg("toolOutput", summary)}`;
@@ -1324,7 +1360,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         new Text(`${theme.fg("muted", index === 0 ? "└ " : "  ")}${detail}`, 0, 0),
       );
 
-      const reply = agent.last_assistant_text?.trim();
+      const reply = pickSubagentResultText(agent)?.trim();
       if (expanded && reply) {
         const preview = truncateSubagentReply(reply, MAX_SUBAGENT_REPLY_PREVIEW_LINES);
         if (preview.text) {
@@ -1343,9 +1379,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       }
     }
 
-    if (!expanded && agentsList.some((agent) => Boolean(agent.last_assistant_text?.trim()))) {
+    if (!expanded && agentsList.some((agent) => Boolean(pickSubagentResultText(agent)?.trim()))) {
       const hiddenReplyRows = agentsList.reduce((total, agent) => {
-        const reply = agent.last_assistant_text?.trim();
+        const reply = pickSubagentResultText(agent)?.trim();
         if (!reply) return total;
 
         const preview = truncateSubagentReply(reply, MAX_SUBAGENT_REPLY_PREVIEW_LINES);
@@ -1467,6 +1503,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         model: appliedProfile.effectiveModel,
         name: subagentName,
         status: "live_running",
+        taskStatus: "running",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         parentSessionFile: ctx.sessionManager.getSessionFile(),
@@ -1507,6 +1544,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         const durableRecord: DurableChildRecord = {
           ...baseRecord,
           status: deriveDurableStatusFromState(state),
+          taskStatus: "running",
           sessionId: typeof state.sessionId === "string" ? state.sessionId : undefined,
           sessionFile: typeof state.sessionFile === "string" ? state.sessionFile : undefined,
           ...(lastAssistantText ? { lastAssistantText } : {}),
@@ -1518,7 +1556,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         }
 
         durableChildrenById.set(agentId, durableRecord);
-        if (durableRecord.status !== "live_running") {
+        if (childSnapshot(durableRecord, attachment).status !== "running") {
           dropSubagentActivity(agentId);
         }
         persistRegistryEvent(SUBAGENT_ENTRY_TYPES.create, durableRecord);
@@ -1580,6 +1618,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         const closedRecord: DurableChildRecord = {
           ...baseRecord,
           status: "closed",
+          taskStatus: "closed",
           lastError: message,
           sessionId: durableChildrenById.get(agentId)?.sessionId,
           sessionFile: durableChildrenById.get(agentId)?.sessionFile,
@@ -1680,7 +1719,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         }
 
         const commandType =
-          record.status === "live_running" ? (params.interrupt ? "steer" : "follow_up") : "prompt";
+          record.taskStatus === "running" || record.status === "live_running"
+            ? (params.interrupt ? "steer" : "follow_up")
+            : "prompt";
         const response = await sendRpcCommand(attachment, {
           type: commandType,
           message: input,
@@ -1696,6 +1737,8 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           agentId,
           {
             status: "live_running",
+            taskStatus: "running",
+            finalResultText: undefined,
             lastError: undefined,
           },
           { persistAs: SUBAGENT_ENTRY_TYPES.update },
@@ -1743,7 +1786,8 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   pi.registerTool({
     name: "wait_agent",
     label: "wait_agent",
-    description: "Wait for agents to reach a final status. Returns empty status when timed out.",
+    description:
+      "Wait for delegated task work to reach a task-facing terminal snapshot for the selected agents. Returns empty status when timed out.",
     parameters: Type.Object({
       ids: Type.Array(Type.String(), {
         description:
@@ -1830,6 +1874,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
             agentId,
             {
               status: "closed",
+              taskStatus: "closed",
               closedAt: new Date().toISOString(),
             },
             { persistAs: SUBAGENT_ENTRY_TYPES.close },
@@ -1851,6 +1896,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
               agentId,
               {
                 status: "closed",
+                taskStatus: "closed",
                 closedAt: new Date().toISOString(),
               },
               { persistAs: SUBAGENT_ENTRY_TYPES.close },

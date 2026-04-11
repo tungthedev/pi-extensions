@@ -34,6 +34,12 @@ export function truncateSubagentReply(
   };
 }
 
+export function pickSubagentResultText(
+  snapshot: Pick<AgentSnapshot, "final_result_text" | "last_assistant_text">,
+): string | undefined {
+  return snapshot.final_result_text?.trim() || snapshot.last_assistant_text?.trim() || undefined;
+}
+
 export function summarizeSubagentReply(
   text: string | undefined,
   maxChars = MAX_SUBAGENT_NOTIFICATION_PREVIEW_CHARS,

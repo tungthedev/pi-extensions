@@ -9,6 +9,7 @@ import {
   buildSendInputContent,
   buildSpawnAgentContent,
   buildWaitAgentContent,
+  childSnapshot,
   CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
   deriveDurableStatusFromState,
   extractLastAssistantText,
@@ -26,7 +27,10 @@ import {
   resolveParentSpawnDefaults,
   resolveSpawnPrompt,
 } from "./index.ts";
-import { getSubagentNotificationDeliveryOptions } from "./subagents/notifications.ts";
+import {
+  getSubagentNotificationDeliveryOptions,
+  shouldRenderSubagentNotification,
+} from "./subagents/notifications.ts";
 
 function createPersistedSessionFixture() {
   const root = mkdtempSync(path.join(tmpdir(), "codex-subagents-"));
@@ -132,6 +136,7 @@ test("rebuildDurableRegistry reconstructs the latest durable record and closes s
           agentId: "agent-1",
           cwd: "/tmp/project",
           status: "live_running",
+          taskStatus: "running",
           createdAt: "2026-03-17T00:00:00.000Z",
           updatedAt: "2026-03-17T00:00:00.000Z",
         },
@@ -145,6 +150,8 @@ test("rebuildDurableRegistry reconstructs the latest durable record and closes s
           agentId: "agent-1",
           cwd: "/tmp/project",
           status: "live_idle",
+          taskStatus: "idle",
+          finalResultText: "stable child result",
           createdAt: "2026-03-17T00:00:00.000Z",
           updatedAt: "2026-03-17T00:01:00.000Z",
           sessionFile: "/tmp/project/.pi/session.jsonl",
@@ -158,10 +165,41 @@ test("rebuildDurableRegistry reconstructs the latest durable record and closes s
     agentId: "agent-1",
     cwd: "/tmp/project",
     status: "closed",
+    taskStatus: "closed",
+    finalResultText: "stable child result",
     createdAt: "2026-03-17T00:00:00.000Z",
     updatedAt: "2026-03-17T00:01:00.000Z",
     sessionFile: "/tmp/project/.pi/session.jsonl",
   });
+});
+
+test("childSnapshot prefers taskStatus over durable live_idle status and exposes final_result_text", () => {
+  assert.deepEqual(
+    childSnapshot({
+      agentId: "agent-1",
+      cwd: "/tmp/project",
+      status: "live_idle",
+      taskStatus: "running",
+      finalResultText: "stable review output",
+      createdAt: "2026-03-17T00:00:00.000Z",
+      updatedAt: "2026-03-17T00:00:00.000Z",
+    }),
+    {
+      agent_id: "agent-1",
+      agent_type: undefined,
+      cwd: "/tmp/project",
+      status: "running",
+      durable_status: "live_idle",
+      model: undefined,
+      name: undefined,
+      session_id: undefined,
+      session_file: undefined,
+      final_result_text: "stable review output",
+      last_assistant_text: undefined,
+      last_error: undefined,
+      exit_code: undefined,
+    },
+  );
 });
 
 test("resolveAgentIdAlias and resolveAgentIdsAlias accept Codex and legacy field names", () => {
@@ -277,7 +315,7 @@ test("resolveParentSpawnDefaults prefers the live parent model over session hist
   fixture.cleanup();
 });
 
-test("buildWaitAgentContent exposes child assistant text in tool content", () => {
+test("buildWaitAgentContent exposes stable final_result_text in tool content", () => {
   const content = buildWaitAgentContent(
     [
       {
@@ -285,10 +323,17 @@ test("buildWaitAgentContent exposes child assistant text in tool content", () =>
         status: "idle",
         durable_status: "live_idle",
         cwd: "/tmp/project",
-        last_assistant_text: "child done",
+        final_result_text: "stable child result",
+        last_assistant_text: "older child done",
       },
       {
         agent_id: "agent-2",
+        status: "running",
+        durable_status: "live_idle",
+        cwd: "/tmp/project",
+      },
+      {
+        agent_id: "agent-3",
         status: "failed",
         durable_status: "failed",
         cwd: "/tmp/project",
@@ -301,7 +346,8 @@ test("buildWaitAgentContent exposes child assistant text in tool content", () =>
   assert.deepEqual(JSON.parse(content), {
     status: {
       "agent-1": "idle",
-      "agent-2": "failed",
+      "agent-2": "running",
+      "agent-3": "failed",
     },
     timed_out: false,
     agents: [
@@ -310,10 +356,17 @@ test("buildWaitAgentContent exposes child assistant text in tool content", () =>
         status: "idle",
         durable_status: "live_idle",
         cwd: "/tmp/project",
-        last_assistant_text: "child done",
+        final_result_text: "stable child result",
+        last_assistant_text: "older child done",
       },
       {
         agent_id: "agent-2",
+        status: "running",
+        durable_status: "live_idle",
+        cwd: "/tmp/project",
+      },
+      {
+        agent_id: "agent-3",
         status: "failed",
         durable_status: "failed",
         cwd: "/tmp/project",
@@ -404,6 +457,8 @@ test("formatSubagentNotificationMessage wraps model-visible subagent status payl
     agent_id: "agent-1",
     status: "idle",
     durable_status: "live_idle",
+    completion_version: 3,
+    final_result_text: "stable child result",
     last_assistant_text: "child done",
   });
 
@@ -416,8 +471,28 @@ test("formatSubagentNotificationMessage wraps model-visible subagent status payl
     agent_id: "agent-1",
     status: "idle",
     durable_status: "live_idle",
+    completion_version: 3,
+    final_result_text: "stable child result",
     last_assistant_text: "child done",
   });
+});
+
+test("shouldRenderSubagentNotification rejects stale completion after close", () => {
+  assert.equal(
+    shouldRenderSubagentNotification(
+      { agent_id: "agent-1", status: "idle", durable_status: "live_idle", completion_version: 2 },
+      {
+        agentId: "agent-1",
+        cwd: "/tmp/project",
+        status: "closed",
+        taskStatus: "closed",
+        createdAt: "x",
+        updatedAt: "x",
+      },
+      3,
+    ),
+    false,
+  );
 });
 
 test("parseSubagentNotificationMessage extracts wrapped notification payloads", () => {
@@ -427,6 +502,8 @@ test("parseSubagentNotificationMessage extracts wrapped notification payloads", 
         agent_id: "agent-1",
         status: "idle",
         durable_status: "live_idle",
+        completion_version: 4,
+        final_result_text: "stable child result",
         name: "amber-badger",
         last_assistant_text: "child done",
       }),
@@ -435,6 +512,8 @@ test("parseSubagentNotificationMessage extracts wrapped notification payloads", 
       agent_id: "agent-1",
       status: "idle",
       durable_status: "live_idle",
+      completion_version: 4,
+      final_result_text: "stable child result",
       name: "amber-badger",
       last_assistant_text: "child done",
     },

@@ -6,6 +6,7 @@ import type {
 } from "./types.ts";
 
 import { normalizeReconstructedStatus } from "./state.ts";
+import { normalizeRecoveredTaskStatus } from "./task-status.ts";
 import { SUBAGENT_ENTRY_TYPES } from "./types.ts";
 
 function isRegistryEntryType(value: unknown): value is SubagentEntryType {
@@ -40,9 +41,11 @@ export function rebuildDurableRegistry(
     if (!isRegistryEntryPayload(entry.data)) continue;
 
     const record = entry.data.record;
+    const normalizedStatus = normalizeReconstructedStatus(record.status);
     records.set(record.agentId, {
       ...record,
-      status: normalizeReconstructedStatus(record.status),
+      status: normalizedStatus,
+      taskStatus: normalizeRecoveredTaskStatus(normalizedStatus, record.taskStatus),
     });
   }
 
