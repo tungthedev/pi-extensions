@@ -41,15 +41,68 @@ test("applyTodoUpdates keeps at most one in_progress item", () => {
   ]);
 });
 
+test("applyTodoUpdates preserves stable ids for duplicate todo content", () => {
+  let snapshot = applyTodoUpdates(createEmptyTodoSnapshot(), [
+    { content: "Duplicate", status: "pending" },
+    { content: "Duplicate", status: "in_progress" },
+  ]);
+
+  assert.deepEqual(snapshot.items.map((item) => [item.id, item.content, item.status]), [
+    ["1", "Duplicate", "pending"],
+    ["2", "Duplicate", "in_progress"],
+  ]);
+
+  snapshot = applyTodoUpdates(snapshot, [
+    { content: "Duplicate", status: "completed" },
+    { content: "Duplicate", status: "pending" },
+  ]);
+
+  assert.deepEqual(snapshot.items.map((item) => [item.id, item.content, item.status]), [
+    ["1", "Duplicate", "completed"],
+    ["2", "Duplicate", "pending"],
+  ]);
+});
+
+test("applyTodoUpdates updates the targeted duplicate by id before falling back to content", () => {
+  let snapshot = applyTodoUpdates(createEmptyTodoSnapshot(), [
+    { content: "Duplicate", status: "pending" },
+    { content: "Duplicate", status: "pending" },
+  ]);
+
+  snapshot = applyTodoUpdates(snapshot, [
+    { id: "2", content: "Duplicate", status: "completed" },
+  ]);
+
+  assert.deepEqual(snapshot.items.map((item) => [item.id, item.content, item.status]), [
+    ["1", "Duplicate", "pending"],
+    ["2", "Duplicate", "completed"],
+  ]);
+});
+
+test("applyTodoUpdates cancels the targeted duplicate by id", () => {
+  let snapshot = applyTodoUpdates(createEmptyTodoSnapshot(), [
+    { content: "Duplicate", status: "pending" },
+    { content: "Duplicate", status: "in_progress" },
+  ]);
+
+  snapshot = applyTodoUpdates(snapshot, [
+    { id: "1", content: "Duplicate", status: "cancelled" },
+  ]);
+
+  assert.deepEqual(snapshot.items.map((item) => [item.id, item.content, item.status]), [
+    ["2", "Duplicate", "in_progress"],
+  ]);
+});
+
 test("restoreTodoSnapshot returns the last persisted snapshot", () => {
   const details: TodoWriteDetails[] = [
     {
-      action: "todo_write",
+      action: "todos_write",
       items: [{ id: "1", content: "Initial", status: "pending" }],
       nextId: 2,
     },
     {
-      action: "todo_write",
+      action: "todos_write",
       items: [{ id: "1", content: "Initial", status: "completed" }],
       nextId: 2,
     },

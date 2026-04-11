@@ -5,20 +5,34 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 
-import { readTungthedevSettings, type TungthedevSettings } from "../settings/config.ts";
+import { readSettings, type PiModeSettings } from "../settings/config.ts";
 import { resolveSessionToolSet } from "../settings/session.ts";
-import { isSystemMdPromptEnabled } from "../system-md/state.ts";
+import {
+  resolveCodexConfigPath,
+  resolveCodexHome,
+  resolveCodexModelsCachePath,
+  resolveConfiguredModelCatalogPath,
+} from "../shared/codex-config.ts";
+import {
+  appendPromptContribution,
+  buildPromptResult,
+  replacePromptContribution,
+  resolvePromptContribution,
+} from "../shared/prompt-composition.ts";
+import { matchTomlString } from "../shared/toml-lite.ts";
+import { resolveSystemMdPromptContribution } from "../system-md/state.ts";
+
+export {
+  resolveCodexConfigPath,
+  resolveCodexHome,
+  resolveCodexModelsCachePath,
+  resolveConfiguredModelCatalogPath,
+} from "../shared/codex-config.ts";
 
 const BUNDLED_MODELS_CATALOG_PATH = new URL("./assets/codex-models.json", import.meta.url);
 const DEFAULT_GPT_PROMPT_MODEL = "gpt-5.4";
 const PERSONALITY_PLACEHOLDER = "{{ personality }}";
-const CODEX_HOME_ENV = "CODEX_HOME";
-const CODEX_CONFIG_FILE = "config.toml";
-const CODEX_MODELS_CACHE_FILE = "models_cache.json";
-const CODEX_MODEL_CATALOG_PATH_ENV = "PI_CODEX_MODEL_CATALOG_PATH";
 
 export type CodexPersonality = "none" | "friendly" | "pragmatic";
 
@@ -45,13 +59,13 @@ type ModelInstructionsVariables = {
 };
 
 export type CodexSystemPromptDeps = {
-  readSettings: () => Promise<TungthedevSettings>;
+  readSettings: () => Promise<PiModeSettings>;
   buildPromptForModel: (modelId: string | undefined) => string;
 };
 
 function createDefaultDeps(): CodexSystemPromptDeps {
   return {
-    readSettings: () => readTungthedevSettings(),
+    readSettings: () => readSettings(),
     buildPromptForModel: (modelId) => buildSelectedCodexPrompt(modelId),
   };
 }
@@ -96,56 +110,9 @@ export function buildCodexPrompt(promptBody: string): string {
   return promptBody.trim();
 }
 
-export function resolveCodexHome(env = process.env, homeDir = os.homedir()): string | undefined {
-  const configured = env[CODEX_HOME_ENV]?.trim();
-  if (configured) {
-    try {
-      const stats = fs.statSync(configured);
-      if (!stats.isDirectory()) return undefined;
-      return fs.realpathSync(configured);
-    } catch {
-      return undefined;
-    }
-  }
-
-  const normalizedHomeDir = homeDir?.trim();
-  if (!normalizedHomeDir) return undefined;
-  return path.join(normalizedHomeDir, ".codex");
-}
-
-export function resolveCodexConfigPath(
-  env = process.env,
-  homeDir = os.homedir(),
-): string | undefined {
-  const codexHome = resolveCodexHome(env, homeDir);
-  if (!codexHome) return undefined;
-  return path.join(codexHome, CODEX_CONFIG_FILE);
-}
-
-export function resolveCodexModelsCachePath(
-  env = process.env,
-  homeDir = os.homedir(),
-): string | undefined {
-  const codexHome = resolveCodexHome(env, homeDir);
-  if (!codexHome) return undefined;
-  return path.join(codexHome, CODEX_MODELS_CACHE_FILE);
-}
-
-export function resolveConfiguredModelCatalogPath(env = process.env): string | undefined {
-  const configuredPath = env[CODEX_MODEL_CATALOG_PATH_ENV]?.trim();
-  if (!configuredPath) return undefined;
-  try {
-    const stats = fs.statSync(configuredPath);
-    if (!stats.isFile()) return undefined;
-    return fs.realpathSync(configuredPath);
-  } catch {
-    return undefined;
-  }
-}
-
 export function readFallbackModelsCatalog(
-  env = process.env,
-  homeDir = os.homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir?: string,
 ): ModelsCatalog | undefined {
   const configuredPath = resolveConfiguredModelCatalogPath(env);
   const configuredCatalog = readModelsCatalogFromPath(configuredPath);
@@ -156,10 +123,7 @@ export function readFallbackModelsCatalog(
 export function parseCodexPersonality(
   configToml: string | undefined,
 ): CodexPersonality | undefined {
-  const match = configToml?.match(
-    /^[ \t]*personality[ \t]*=[ \t]*"(none|friendly|pragmatic)"[ \t]*(?:#.*)?$/m,
-  );
-  const personality = match?.[1];
+  const personality = matchTomlString(configToml ?? "", "personality");
   if (personality === "none" || personality === "friendly" || personality === "pragmatic") {
     return personality;
   }
@@ -167,8 +131,8 @@ export function parseCodexPersonality(
 }
 
 export function readCodexPersonality(
-  env = process.env,
-  homeDir = os.homedir(),
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir?: string,
 ): CodexPersonality | undefined {
   const configPath = resolveCodexConfigPath(env, homeDir);
   if (!configPath) return undefined;
@@ -249,7 +213,7 @@ export function buildSelectedCodexPrompt(modelId: string | undefined): string {
 }
 
 export function injectCodexPrompt(_systemPrompt: string | undefined, codexPrompt: string): string {
-  return codexPrompt.trim();
+  return buildPromptResult(undefined, replacePromptContribution(codexPrompt))?.systemPrompt ?? "";
 }
 
 export async function handleCodexSystemPromptBeforeAgentStart(
@@ -258,17 +222,19 @@ export async function handleCodexSystemPromptBeforeAgentStart(
   deps: CodexSystemPromptDeps = createDefaultDeps(),
 ): Promise<{ systemPrompt: string } | undefined> {
   const settings = await deps.readSettings();
-  if (isSystemMdPromptEnabled() && settings.systemMdPrompt) {
-    return undefined;
-  }
-
   if ((await resolveSessionToolSet(ctx.sessionManager)) !== "codex") {
     return undefined;
   }
 
-  return {
-    systemPrompt: injectCodexPrompt(event.systemPrompt, deps.buildPromptForModel(ctx.model?.id)),
-  };
+  return buildPromptResult(
+    event.systemPrompt,
+    resolvePromptContribution([
+      resolveSystemMdPromptContribution(ctx.cwd, settings.systemMdPrompt),
+      settings.includePiPromptSection
+        ? appendPromptContribution(deps.buildPromptForModel(ctx.model?.id))
+        : replacePromptContribution(deps.buildPromptForModel(ctx.model?.id)),
+    ]),
+  );
 }
 
 export function registerCodexSystemPrompt(

@@ -1,7 +1,7 @@
 import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
 
 import { createFindToolDefinition } from "@mariozechner/pi-coding-agent";
-import { Container, Text } from "@mariozechner/pi-tui";
+import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -169,10 +169,6 @@ export function registerFindFilesTool(pi: ExtensionAPI): void {
       return renderFindFilesCall(theme, args);
     },
     renderResult(result, options, theme, context) {
-      if (!options.expanded) {
-        return new Container();
-      }
-
       return nativeFindDefinition.renderResult!(
         result as never,
         options,

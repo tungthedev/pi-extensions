@@ -9,9 +9,10 @@ import path from "node:path";
 import {
   findMatchingFiles,
   formatFindFilesOutput,
-} from "../../codex-content/tools/find-files.ts";
-import { shortenPath } from "../../codex-content/shared/text.ts";
-import { resolveAbsolutePath } from "../../codex-content/tools/runtime.ts";
+} from "../../shared/file-tools/find-files.ts";
+import { renderEmptySlot } from "../../shared/renderers/common.ts";
+import { shortenPath } from "../../shared/text.ts";
+import { resolveAbsolutePath } from "../../shared/runtime-paths.ts";
 
 const DROID_GLOB_DESCRIPTION = `Advanced file path search using glob patterns with multiple pattern support and exclusions.
 Uses ripgrep for high-performance file pattern matching.
@@ -117,6 +118,19 @@ export function registerDroidGlobTool(pi: ExtensionAPI): void {
       return renderGlobCall(theme, args);
     },
     renderResult(result, options, theme, context) {
+      if (context.isError) {
+        return nativeFindDefinition.renderResult!(
+          result as never,
+          options,
+          theme,
+          context as never,
+        );
+      }
+
+      if (!options.expanded) {
+        return renderEmptySlot();
+      }
+
       return nativeFindDefinition.renderResult!(
         result as never,
         options,

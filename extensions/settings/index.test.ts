@@ -1,97 +1,54 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import settingsExtension, { handleTungthedevCommand, type TungthedevCommandDeps } from "./index.ts";
-import { buildTungthedevSettingItems, parseSettingsCommand } from "./ui.ts";
+import { initTheme } from "@mariozechner/pi-coding-agent";
 
-test("parseSettingsCommand rejects the removed system-prompt setting", () => {
-  assert.deepEqual(parseSettingsCommand("system-prompt forge"), {
-    action: "invalid",
-    message: "System prompts now follow the selected tool set. Use: tool-set pi|codex|forge",
-  });
-});
+import {
+  handlePiModeCommand,
+  registerPiModeShortcut,
+  type PiModeCommandDeps,
+} from "./index.ts";
+import { applyToolSetTransition } from "./tool-set-transition.ts";
+import { openPiModeSettingsUi } from "./ui.ts";
 
-test("parseSettingsCommand opens root settings UI when no args are provided", () => {
-  assert.deepEqual(parseSettingsCommand(""), { action: "open-root" });
-});
+initTheme("dark");
 
-test("parseSettingsCommand handles direct tool-set writes", () => {
-  assert.deepEqual(parseSettingsCommand("tool-set pi"), {
-    action: "set-tool-set",
-    value: "pi",
-  });
-});
+function flushMicrotasks(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
-test("parseSettingsCommand keeps content-pack as a compatibility alias", () => {
-  assert.deepEqual(parseSettingsCommand("content-pack forge"), {
-    action: "set-tool-set",
-    value: "forge",
-  });
-});
-
-test("parseSettingsCommand handles direct custom shell tool writes", () => {
-  assert.deepEqual(parseSettingsCommand("custom-shell-tool off"), {
-    action: "set-custom-shell-tool",
-    value: false,
-  });
-});
-
-test("parseSettingsCommand handles direct system-md writes", () => {
-  assert.deepEqual(parseSettingsCommand("system-md off"), {
-    action: "set-system-md-prompt",
-    value: false,
-  });
-});
-
-test("parseSettingsCommand rejects removed skill list injection setting", () => {
-  assert.deepEqual(parseSettingsCommand("skill-list-injection off"), {
-    action: "invalid",
-    message: "Unknown setting: skill-list-injection",
-  });
-});
-
-test("buildTungthedevSettingItems includes descriptions for each setting", () => {
-  const items = buildTungthedevSettingItems({
-    toolSet: "pi",
-    customShellTool: true,
-    systemMdPrompt: true,
-  });
-
-  assert.equal(items.length, 3);
-  assert.equal(items[0]?.label, "Tool set");
-  assert.equal(items[0]?.currentValue, "Pi");
-  assert.deepEqual(items[0]?.values, ["Pi", "Codex", "Forge"]);
-  assert.match(items[0]?.description ?? "", /Pi, Codex, or Forge tool and prompt behavior/);
-  assert.match(items[1]?.description ?? "", /package shell tool/);
-  assert.match(items[2]?.description ?? "", /overrides the active Pi, Codex, or Forge system prompt/);
-});
-
-test("handleTungthedevCommand writes the selected tool set directly", async () => {
-  const writes: Array<"pi" | "codex" | "forge"> = [];
+test("handlePiModeCommand writes the selected tool set directly", async () => {
+  const writes: Array<"pi" | "codex" | "droid"> = [];
+  const sessionWrites: Array<"pi" | "codex" | "droid"> = [];
+  const emitted: Array<"pi" | "codex" | "droid"> = [];
   const notifications: string[] = [];
-  const deps: TungthedevCommandDeps = {
+  const deps: PiModeCommandDeps = {
     readSettings: async () => ({
       toolSet: "pi",
-      customShellTool: true,
       systemMdPrompt: true,
+      includePiPromptSection: false,
     }),
     writeToolSet: async (value) => {
       writes.push(value);
     },
-    writeSessionToolSet: async () => {},
-    writeCustomShellTool: async () => {
-      throw new Error("writeCustomShellTool should not run");
+    writeSessionToolSet: async (value) => {
+      sessionWrites.push(value);
     },
     writeSystemMdPrompt: async () => {
       throw new Error("writeSystemMdPrompt should not run");
+    },
+    writeIncludePiPromptSection: async () => {
+      throw new Error("writeIncludePiPromptSection should not run");
+    },
+    emitToolSetChange: async (value) => {
+      emitted.push(value);
     },
     openSettingsUi: async () => {
       throw new Error("settings UI should not open for direct writes");
     },
   };
 
-  await handleTungthedevCommand(
+  await handlePiModeCommand(
     "tool-set pi",
     {
       hasUI: true,
@@ -105,75 +62,110 @@ test("handleTungthedevCommand writes the selected tool set directly", async () =
   );
 
   assert.deepEqual(writes, ["pi"]);
-  assert.deepEqual(notifications, ["Tool set: Pi"]);
+  assert.deepEqual(sessionWrites, ["pi"]);
+  assert.deepEqual(emitted, ["pi"]);
+  assert.deepEqual(notifications, ["Mode: Pi"]);
 });
 
-test("handleTungthedevCommand writes the selected custom shell setting directly", async () => {
-  const writes: boolean[] = [];
+test("openPiModeSettingsUi applies the same tool-set transition side effects", async () => {
+  const writes: Array<"pi" | "codex" | "droid"> = [];
+  const sessionWrites: Array<"pi" | "codex" | "droid"> = [];
+  const emitted: Array<"pi" | "codex" | "droid"> = [];
   const notifications: string[] = [];
-  const deps: TungthedevCommandDeps = {
-    readSettings: async () => ({
-      toolSet: "codex",
-      customShellTool: true,
-      systemMdPrompt: true,
-    }),
-    writeToolSet: async () => {
-      throw new Error("writeToolSet should not run");
-    },
-    writeSessionToolSet: async () => {},
-    writeCustomShellTool: async (value) => {
-      writes.push(value);
-    },
-    writeSystemMdPrompt: async () => {
-      throw new Error("writeSystemMdPrompt should not run");
-    },
-    openSettingsUi: async () => {
-      throw new Error("settings UI should not open for direct writes");
-    },
-  };
 
-  await handleTungthedevCommand(
-    "custom-shell-tool off",
+  await openPiModeSettingsUi(
     {
       hasUI: true,
       ui: {
         notify(message: string) {
           notifications.push(message);
         },
+        async custom(
+          render: (
+            tui: unknown,
+            theme: { fg: (_color: string, text: string) => string; bold: (text: string) => string },
+            kb: unknown,
+            done: (value: unknown) => void,
+          ) => { handleInput?: (data: string) => void },
+        ) {
+          const component = render(
+            undefined,
+            {
+              fg: (_color: string, text: string) => text,
+              bold: (text: string) => text,
+            },
+            undefined,
+            () => undefined,
+          );
+
+          component.handleInput?.("\r");
+          await flushMicrotasks();
+        },
       },
     } as never,
-    deps,
+    {
+      readSettings: async () => ({
+        toolSet: "pi",
+        systemMdPrompt: true,
+        includePiPromptSection: false,
+      }),
+      applyToolSetTransition: (transitionCtx, value) =>
+        applyToolSetTransition(
+          transitionCtx,
+          {
+            writeToolSet: async (toolSet) => {
+              writes.push(toolSet);
+            },
+            writeSessionToolSet: async (toolSet) => {
+              sessionWrites.push(toolSet);
+            },
+            emitToolSetChange: async (toolSet) => {
+              emitted.push(toolSet);
+            },
+          },
+          value,
+        ),
+      writeSystemMdPrompt: async () => {
+        throw new Error("writeSystemMdPrompt should not run");
+      },
+      writeIncludePiPromptSection: async () => {
+        throw new Error("writeIncludePiPromptSection should not run");
+      },
+    },
   );
 
-  assert.deepEqual(writes, [false]);
-  assert.deepEqual(notifications, ["Custom shell tool: Disabled"]);
+  assert.deepEqual(writes, ["codex"]);
+  assert.deepEqual(sessionWrites, ["codex"]);
+  assert.deepEqual(emitted, ["codex"]);
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0], "Mode: Codex");
 });
 
-test("handleTungthedevCommand writes the selected system-md setting directly", async () => {
+test("handlePiModeCommand writes the selected system-md setting directly", async () => {
   const writes: boolean[] = [];
   const notifications: string[] = [];
-  const deps: TungthedevCommandDeps = {
+  const deps: PiModeCommandDeps = {
     readSettings: async () => ({
       toolSet: "codex",
-      customShellTool: true,
       systemMdPrompt: true,
+      includePiPromptSection: false,
     }),
     writeToolSet: async () => {
       throw new Error("writeToolSet should not run");
     },
     writeSessionToolSet: async () => {},
-    writeCustomShellTool: async () => {
-      throw new Error("writeCustomShellTool should not run");
-    },
     writeSystemMdPrompt: async (value) => {
       writes.push(value);
+    },
+    writeIncludePiPromptSection: async () => {
+      throw new Error("writeIncludePiPromptSection should not run");
     },
     openSettingsUi: async () => {
       throw new Error("settings UI should not open for direct writes");
     },
   };
 
-  await handleTungthedevCommand(
+  await handlePiModeCommand(
     "system-md off",
     {
       hasUI: true,
@@ -187,63 +179,141 @@ test("handleTungthedevCommand writes the selected system-md setting directly", a
   );
 
   assert.deepEqual(writes, [false]);
-  assert.deepEqual(notifications, ["System.md prompt: Disabled"]);
+  assert.deepEqual(notifications, ["Inject SYSTEM.md: Disabled"]);
 });
 
-test("handleTungthedevCommand opens the package settings UI for root invocations", async () => {
-  let openedFocus: string | undefined;
-  const deps: TungthedevCommandDeps = {
+test("handlePiModeCommand writes the include-pi-prompt setting directly", async () => {
+  const writes: boolean[] = [];
+  const notifications: string[] = [];
+  const deps: PiModeCommandDeps = {
     readSettings: async () => ({
-      toolSet: "codex",
-      customShellTool: true,
-      systemMdPrompt: true,
+      toolSet: "droid",
+      systemMdPrompt: false,
+      includePiPromptSection: false,
     }),
     writeToolSet: async () => {
       throw new Error("writeToolSet should not run");
     },
     writeSessionToolSet: async () => {},
-    writeCustomShellTool: async () => {
-      throw new Error("writeCustomShellTool should not run");
+    writeSystemMdPrompt: async () => {
+      throw new Error("writeSystemMdPrompt should not run");
+    },
+    writeIncludePiPromptSection: async (value) => {
+      writes.push(value);
+    },
+    openSettingsUi: async () => {
+      throw new Error("settings UI should not open for direct writes");
+    },
+  };
+
+  await handlePiModeCommand(
+    "include-pi-prompt on",
+    {
+      hasUI: true,
+      ui: {
+        notify(message: string) {
+          notifications.push(message);
+        },
+      },
+    } as never,
+    deps,
+  );
+
+  assert.deepEqual(writes, [true]);
+  assert.deepEqual(notifications, ["Include Pi prompt section: Enabled"]);
+});
+
+test("registerPiModeShortcut cycles pi -> codex -> droid -> pi", async () => {
+  const writes: Array<"pi" | "codex" | "droid"> = [];
+  const sessionWrites: Array<"pi" | "codex" | "droid"> = [];
+  const emitted: Array<"pi" | "codex" | "droid"> = [];
+  const notifications: string[] = [];
+  let shortcutHandler: ((ctx: unknown) => Promise<void>) | undefined;
+
+  registerPiModeShortcut({
+    registerShortcut(_key: string, config: { handler: (ctx: unknown) => Promise<void> }) {
+      shortcutHandler = config.handler;
+    },
+    appendEntry() {},
+    events: {
+      emit() {},
+    },
+  } as never, {
+    readSettings: async () => ({
+      toolSet: "pi",
+      systemMdPrompt: false,
+      includePiPromptSection: false,
+    }),
+    writeToolSet: async (value) => {
+      writes.push(value);
+    },
+    writeSessionToolSet: async (value) => {
+      sessionWrites.push(value);
     },
     writeSystemMdPrompt: async () => {
       throw new Error("writeSystemMdPrompt should not run");
+    },
+    writeIncludePiPromptSection: async () => {
+      throw new Error("writeIncludePiPromptSection should not run");
+    },
+    emitToolSetChange: async (value) => {
+      emitted.push(value);
+    },
+    openSettingsUi: async () => {
+      throw new Error("settings UI should not open while cycling");
+    },
+  });
+
+  assert.notEqual(shortcutHandler, undefined);
+
+  const makeCtx = (toolSet: "pi" | "codex" | "droid") => ({
+    hasUI: true,
+    ui: {
+      notify(message: string) {
+        notifications.push(message);
+      },
+    },
+    sessionManager: {
+      getBranch() {
+        return [{ type: "custom", customType: "pi-mode:tool-set", data: { toolSet } }];
+      },
+    },
+  });
+
+  await shortcutHandler!(makeCtx("pi"));
+  await shortcutHandler!(makeCtx("codex"));
+  await shortcutHandler!(makeCtx("droid"));
+
+  assert.deepEqual(writes, ["codex", "droid", "pi"]);
+  assert.deepEqual(sessionWrites, ["codex", "droid", "pi"]);
+  assert.deepEqual(emitted, ["codex", "droid", "pi"]);
+  assert.deepEqual(notifications, ["Mode: Codex", "Mode: Droid", "Mode: Pi"]);
+});
+
+test("handlePiModeCommand opens the package settings UI for root invocations", async () => {
+  let openedFocus: string | undefined;
+  const deps: PiModeCommandDeps = {
+    readSettings: async () => ({
+      toolSet: "codex",
+      systemMdPrompt: true,
+      includePiPromptSection: false,
+    }),
+    writeToolSet: async () => {
+      throw new Error("writeToolSet should not run");
+    },
+    writeSessionToolSet: async () => {},
+    writeSystemMdPrompt: async () => {
+      throw new Error("writeSystemMdPrompt should not run");
+    },
+    writeIncludePiPromptSection: async () => {
+      throw new Error("writeIncludePiPromptSection should not run");
     },
     openSettingsUi: async (_ctx, options) => {
       openedFocus = options.focus;
     },
   };
 
-  await handleTungthedevCommand("", { hasUI: true, ui: { notify() {} } } as never, deps);
+  await handlePiModeCommand("", { hasUI: true, ui: { notify() {} } } as never, deps);
 
   assert.equal(openedFocus, undefined);
-});
-
-test("settings extension registers the /pi-mode command", () => {
-  let registeredName: string | undefined;
-
-  settingsExtension({
-    on() {},
-    registerCommand(name: string) {
-      registeredName = name;
-    },
-  } as never);
-
-  assert.equal(registeredName, "pi-mode");
-});
-
-test("package manifest ships merged prompt extensions and settings", async () => {
-  const pkg = JSON.parse(
-    await readFile(new URL("../../package.json", import.meta.url), "utf8"),
-  ) as {
-    pi: { extensions: string[] };
-  };
-
-  assert(pkg.pi.extensions.includes("./extensions/codex-content/index.ts"));
-  assert(pkg.pi.extensions.includes("./extensions/forge-content/index.ts"));
-  assert(pkg.pi.extensions.includes("./extensions/system-md/index.ts"));
-  assert(pkg.pi.extensions.includes("./extensions/shell/index.ts"));
-  assert(pkg.pi.extensions.includes("./extensions/settings/index.ts"));
-  assert(!pkg.pi.extensions.includes("./extensions/prompt-pack/index.ts"));
-  assert(!pkg.pi.extensions.includes("./extensions/skill/index.ts"));
-  assert(!pkg.pi.extensions.includes("./extensions/codex-system-prompt/index.ts"));
 });

@@ -1,17 +1,37 @@
-import type { AgentSnapshot } from "./types.ts";
+import type { AgentSnapshot, PublicAgentSnapshot } from "./types.ts";
+
+export function toPublicAgentSnapshot(snapshot: AgentSnapshot): PublicAgentSnapshot {
+  const name = snapshot.name?.trim();
+  if (!name) {
+    throw new Error("public agent snapshot is missing name");
+  }
+
+  return {
+    name,
+    transport: snapshot.transport,
+    agent_type: snapshot.agent_type,
+    status: snapshot.status,
+    durable_status: snapshot.durable_status,
+    cwd: snapshot.cwd,
+    model: snapshot.model,
+    session_id: snapshot.session_id,
+    session_file: snapshot.session_file,
+    last_assistant_text: snapshot.last_assistant_text,
+    last_error: snapshot.last_error,
+    exit_code: snapshot.exit_code,
+  };
+}
 
 export function buildSpawnAgentContent(
-  agentId: string,
-  nickname?: string,
-  completedAgent?: AgentSnapshot,
+  name: string,
+  completedAgent?: PublicAgentSnapshot,
 ): string {
   return JSON.stringify({
-    agent_id: agentId,
-    nickname: nickname ?? null,
+    name,
     ...(completedAgent
       ? {
           status: {
-            [agentId]: completedAgent.status,
+            [name]: completedAgent.status,
           },
           timed_out: false,
           agent: completedAgent,
@@ -21,7 +41,7 @@ export function buildSpawnAgentContent(
   });
 }
 
-export function buildSendInputContent(submissionId: string): string {
+export function buildSendMessageContent(submissionId: string): string {
   return JSON.stringify({
     submission_id: submissionId,
   });

@@ -4,14 +4,15 @@ import { createGrepToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 
-import { buildFsSearchArgs } from "../../forge-content/tools/fs-search.ts";
 import {
   execCommand,
+  normalizeRipgrepGlob,
   resolveAbsolutePathWithVariants,
   resolvePiToolPath,
   trimToBudget,
-} from "../../codex-content/tools/runtime.ts";
-import { shortenPath } from "../../codex-content/shared/text.ts";
+} from "../../shared/runtime-paths.ts";
+import { renderEmptySlot } from "../../shared/renderers/common.ts";
+import { shortenPath } from "../../shared/text.ts";
 
 const DROID_GREP_DESCRIPTION = `High-performance file content search using ripgrep. Wrapper around ripgrep with comprehensive parameter support.
 
@@ -73,6 +74,53 @@ const DROID_GREP_PARAMETERS = Type.Object({
   fixed_string: Type.Optional(Type.Boolean({ description: "Treat the pattern as a literal string instead of a regular expression (ripgrep -F flag). Useful for searching special characters like ?, *, etc." })),
 });
 
+type DroidGrepParams = {
+  pattern: string;
+  glob_pattern?: string;
+  output_mode?: "file_paths" | "content";
+  context_before?: number;
+  context_after?: number;
+  context?: number;
+  line_numbers?: boolean;
+  case_insensitive?: boolean;
+  type?: string;
+  head_limit?: number;
+  multiline?: boolean;
+  fixed_string?: boolean;
+};
+
+function buildDroidGrepArgs(params: DroidGrepParams, searchPath: string): string[] {
+  const args = [
+    "--hidden",
+    "--color=never",
+    "--no-messages",
+    "--glob",
+    "!**/.git/**",
+    "--glob",
+    "!**/.jj/**",
+  ];
+
+  if (params.glob_pattern) args.push("--glob", normalizeRipgrepGlob(params.glob_pattern));
+  if (params.type) args.push("--type", params.type);
+  if (params.case_insensitive) args.push("-i");
+  if (params.multiline) args.push("-U", "--multiline-dotall");
+  if (params.fixed_string) args.push("-F");
+
+  if ((params.output_mode ?? "file_paths") === "file_paths") {
+    args.push("--files-with-matches");
+  } else {
+    if (params.context_before) args.push("-B", String(params.context_before));
+    if (params.context_after) args.push("-A", String(params.context_after));
+    if (params.context) args.push("-C", String(params.context));
+    if (params.line_numbers !== false) args.push("-n");
+  }
+
+  if (typeof params.head_limit === "number") args.push("-m", String(params.head_limit));
+
+  args.push(params.pattern, searchPath);
+  return args;
+}
+
 function renderGrepCall(theme: Theme, args: { pattern?: string; path?: string }): Text {
   return new Text(
     `${theme.fg("toolTitle", theme.bold("Grep "))}${theme.fg("accent", `${args.pattern || ""} in ${shortenPath(args.path || ".")}`)}`,
@@ -98,20 +146,20 @@ export function registerDroidGrepTool(pi: ExtensionAPI): void {
 
       const result = await execCommand(
         rgPath,
-        buildFsSearchArgs(
+        buildDroidGrepArgs(
           {
             pattern: params.pattern,
-            path: searchPath,
-            glob: params.glob_pattern,
-            output_mode: params.output_mode === "file_paths" ? "files_with_matches" : "content",
-            before_context: params.context_before,
-            after_context: params.context_after,
+            glob_pattern: params.glob_pattern,
+            output_mode: params.output_mode,
+            context_before: params.context_before,
+            context_after: params.context_after,
             context: params.context,
-            show_line_numbers: params.line_numbers,
+            line_numbers: params.line_numbers,
             case_insensitive: params.case_insensitive,
-            file_type: params.type,
+            type: params.type,
             head_limit: params.head_limit,
             multiline: params.multiline,
+            fixed_string: params.fixed_string,
           },
           searchPath,
         ),
@@ -138,6 +186,19 @@ export function registerDroidGrepTool(pi: ExtensionAPI): void {
       return renderGrepCall(theme, args);
     },
     renderResult(result, options, theme, context) {
+      if (context.isError) {
+        return nativeGrepDefinition.renderResult!(
+          result as never,
+          options,
+          theme,
+          context as never,
+        );
+      }
+
+      if (!options.expanded) {
+        return renderEmptySlot();
+      }
+
       return nativeGrepDefinition.renderResult!(
         result as never,
         options,

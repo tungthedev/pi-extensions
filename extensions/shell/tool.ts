@@ -13,7 +13,7 @@ import { createWriteStream, type WriteStream } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { resolveAbsolutePath } from "../codex-content/tools/runtime.ts";
+import { resolveAbsolutePath } from "../shared/runtime-paths.ts";
 import {
   executeShellCommand,
   getShellEnv,
@@ -171,8 +171,8 @@ function buildShellDetails(
   };
 }
 
-export function registerShellTool(pi: ExtensionAPI): void {
-  pi.registerTool({
+export function createShellToolDefinition() {
+  return {
     name: "shell",
     label: "shell",
     description:
@@ -197,7 +197,7 @@ export function registerShellTool(pi: ExtensionAPI): void {
         }),
       ),
     }),
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+    async execute(_toolCallId: string, params: ShellParams, signal: AbortSignal | undefined, onUpdate: ((update: { content: Array<{ type: "text"; text: string }>; details: unknown }) => void) | undefined, ctx: { cwd: string }) {
       const normalized = normalizeShellInput(ctx.cwd, params);
       if (!normalized.command) {
         return buildShellErrorResult(
@@ -351,17 +351,17 @@ export function registerShellTool(pi: ExtensionAPI): void {
         };
       }
     },
-    renderCall(args, theme, context) {
+    renderCall(args: ShellParams, theme: any, context: any) {
       return nativeBashTool.renderCall!(
         {
-          command: args.command,
+          command: args.command ?? "",
           timeout: args.timeout_ms !== undefined ? args.timeout_ms / 1000 : undefined,
         },
         theme,
         context as never,
       );
     },
-    renderResult(result, options, theme, context) {
+    renderResult(result: any, options: any, theme: any, context: any) {
       return nativeBashTool.renderResult!(
         result as AgentToolResult<BashToolDetails | undefined>,
         options,
@@ -369,5 +369,9 @@ export function registerShellTool(pi: ExtensionAPI): void {
         context as never,
       );
     },
-  });
+  };
+}
+
+export function registerShellTool(pi: ExtensionAPI): void {
+  pi.registerTool(createShellToolDefinition());
 }

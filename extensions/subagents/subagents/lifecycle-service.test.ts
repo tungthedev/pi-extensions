@@ -37,7 +37,8 @@ function createBaseDeps(overrides: Partial<Parameters<typeof createSubagentLifec
       resolveParentSpawnDefaults: () => ({}),
       normalizeReasoningEffortToThinkingLevel: () => undefined,
       resolveForkContextSessionFile: () => "/tmp/fork.jsonl",
-      resolveName: () => "worker",
+      findAddressableChildByName: (name: string) =>
+        [...records.values()].find((record) => record.name === name),
       attachChild: async () => ({ attachment: attachment as never, record: records.get("agent-1")! }),
       launchInteractiveChild: async () => ({ attachment, record: records.get("agent-1")! }),
       watchInteractiveAttachment() {},
@@ -72,6 +73,7 @@ function createBaseDeps(overrides: Partial<Parameters<typeof createSubagentLifec
       sendInteractiveInput() {},
       sendAttachmentMessage: async () => "submission-1",
       closeLiveAttachment: async () => undefined,
+      listWaitableChildIds: () => ["agent-1"],
       waitForReadySnapshots: async () => [],
       incrementActiveWaits() {},
       decrementActiveWaits() {},
@@ -126,10 +128,9 @@ test("lifecycle service spawn failure persists cleanup semantics", async () => {
         cwd: "/tmp/project",
         sessionManager: { getEntries: () => [], getLeafId: () => null, getSessionFile: () => "/tmp/session.jsonl" },
       } as never,
+      name: "worker",
       prompt: "run",
       runInBackground: true,
-      displayNameHint: "worker",
-      nameSeed: "seed",
     }),
     /boom/,
   );
@@ -168,14 +169,26 @@ test("lifecycle service wait and stop share active wait and close behavior", asy
   const service = createSubagentLifecycleService(deps);
 
   const waited = await service.wait({ ids: ["agent-1"], timeoutMs: 45_000 });
+  const waitedAny = await service.waitAny({ timeoutMs: 45_000 });
   records.set("agent-1", { ...records.get("agent-1")!, status: "live_idle" });
   const stopped = await service.stop("agent-1");
 
   assert.equal(waited.timedOut, false);
   assert.equal(waited.snapshots[0]?.status, "idle");
+  assert.equal(waitedAny.timedOut, false);
+  assert.equal(waitedAny.snapshots[0]?.status, "idle");
   assert.equal(stopped.snapshot.status, "closed");
-  assert.equal(increments, 1);
-  assert.equal(decrements, 1);
-  assert.equal(flushed, 1);
+  assert.equal(increments, 2);
+  assert.equal(decrements, 2);
+  assert.equal(flushed, 2);
   assert.equal(closed, 1);
+});
+
+test("lifecycle service waitAny rejects when no child agents are available", async () => {
+  const { deps } = createBaseDeps({
+    listWaitableChildIds: () => [],
+  });
+  const service = createSubagentLifecycleService(deps);
+
+  await assert.rejects(service.waitAny({ timeoutMs: 45_000 }), /No child agents are available to wait on/);
 });

@@ -33,7 +33,7 @@ Before executing commands:
    - Prefer using absolute paths over changing directories
 
 Tool Usage Guidelines:
-- Prefer 'Read' tool over cat, head, tail, sed, or awk for viewing files
+- Prefer 'read' tool over cat, head, tail, sed, or awk for viewing files
 - Prefer 'LS' tool over ls for exploring directories
 - Prefer 'Create' tool over shell redirection for creating files
 - Prefer 'Edit' tool over sed or perl for in-place modifications`;

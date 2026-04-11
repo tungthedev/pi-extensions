@@ -24,7 +24,6 @@ import {
   closeSurface,
   createSurface,
   isMuxAvailable,
-  muxSetupHint,
   pollForExit,
   sendInteractiveInput,
   sendShellCommand,
@@ -32,9 +31,8 @@ import {
   shellDoneSentinelCommand,
   shellExternalCommand,
 } from "./interactive.ts";
-import { generateUniqueSubagentName, resolveSubagentName } from "./naming.ts";
+import { validateSubagentName } from "./naming.ts";
 import {
-  buildWaitAgentContent,
   CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
   formatSubagentNotificationMessage,
   getSubagentNotificationDeliveryOptions,
@@ -42,13 +40,13 @@ import {
   SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
 } from "./notifications.ts";
 import { rebuildDurableRegistry } from "./persistence.ts";
-import { applySpawnAgentProfile, resolveRequestedAgentType } from "./profiles-apply.ts";
 import {
-  buildSpawnAgentTypeDescription,
-  clearResolvedAgentProfilesCache,
   resolveAgentProfiles,
 } from "./profiles.ts";
 import { childSnapshot } from "./registry.ts";
+import {
+  wrapInteractiveSpawnPrompt,
+} from "./request-utils.ts";
 import { shorten } from "./render.ts";
 import {
   getSubagentCompletionLabel,
@@ -59,7 +57,9 @@ import {
   summarizeTaskRequest,
   truncateSubagentReply,
 } from "./rendering.ts";
-import { buildSendInputContent, buildSpawnAgentContent } from "./results.ts";
+import {
+  toPublicAgentSnapshot,
+} from "./results.ts";
 import {
   parseJsonLines,
   rejectPendingResponses,
@@ -72,10 +72,18 @@ import {
   isResumable,
 } from "./session.ts";
 import { createSubagentLifecycleService } from "./lifecycle-service.ts";
-import { createSubagentRuntimeStore } from "./runtime-store.ts";
+import { createSubagentRuntimeStore, isWaitableChild } from "./runtime-store.ts";
+import { createReadySnapshotCoordinator } from "./ready-snapshot-coordinator.ts";
 import { registerSubagentNotificationRenderers } from "./renderers.ts";
 import { registerSubagentSessionEvents } from "./session-events.ts";
 import { deriveDurableStatusFromState } from "./state.ts";
+import {
+  isInteractiveAttachment,
+  notifyStateChange,
+  queueAgentOperation,
+  waitForAnyStateChange,
+  waitForStateChange,
+} from "./live-attachment-utils.ts";
 import { registerCodexToolAdapters } from "./tool-adapters-codex.ts";
 import { registerTaskToolAdapters } from "./tool-adapters-task.ts";
 import {
@@ -91,220 +99,14 @@ import {
   SUBAGENT_RESERVED_TOOL_NAMES,
   SUBAGENT_TOOL_NAMES,
   SUBAGENT_ENTRY_TYPES,
+  TOOL_SET_OVERRIDE_ENV,
 } from "./types.ts";
-
-function notifyStateChange(attachment: LiveChildAttachment): void {
-  const waiters = attachment.stateWaiters.splice(0, attachment.stateWaiters.length);
-  for (const waiter of waiters) waiter();
-}
-
-function isInteractiveAttachment(
-  attachment: LiveChildAttachment,
-): attachment is InteractiveLiveChildAttachment {
-  return attachment.transport === "interactive";
-}
-
-function queueAgentOperation<T>(
-  attachment: LiveChildAttachment,
-  operation: () => Promise<T>,
-): Promise<T> {
-  const run = attachment.operationQueue.then(operation, operation);
-  attachment.operationQueue = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  return run;
-}
-
-function waitForStateChange(attachment: LiveChildAttachment, timeoutMs: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(
-      () => {
-        attachment.stateWaiters = attachment.stateWaiters.filter((waiter) => waiter !== onChange);
-        resolve();
-      },
-      Math.max(1, timeoutMs),
-    );
-
-    const onChange = () => {
-      clearTimeout(timer);
-      resolve();
-    };
-
-    attachment.stateWaiters.push(onChange);
-  });
-}
-
-function waitForAnyStateChange(
-  attachments: LiveChildAttachment[],
-  timeoutMs: number,
-): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (attachments.length === 0) {
-      setTimeout(() => resolve(false), Math.max(1, timeoutMs));
-      return;
-    }
-
-    let settled = false;
-    const listeners: Array<{ attachment: LiveChildAttachment; waiter: () => void }> = [];
-    const cleanup = () => {
-      for (const { attachment, waiter } of listeners) {
-        attachment.stateWaiters = attachment.stateWaiters.filter((entry) => entry !== waiter);
-      }
-    };
-    const finish = (changed: boolean) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      cleanup();
-      resolve(changed);
-    };
-    const timer = setTimeout(() => finish(false), Math.max(1, timeoutMs));
-
-    for (const attachment of attachments) {
-      const waiter = () => finish(true);
-      listeners.push({ attachment, waiter });
-      attachment.stateWaiters.push(waiter);
-    }
-  });
-}
-
-const MIN_WAIT_AGENT_TIMEOUT_MS = 30_000;
-const DEFAULT_WAIT_AGENT_TIMEOUT_MS = 45_000;
-const MAX_WAIT_AGENT_TIMEOUT_MS = 90_000;
-
-function muxUnavailableError(kind = "interactive child sessions"): Error {
-  return new Error(`${kind} require a supported terminal multiplexer. ${muxSetupHint()}`);
-}
-
-export function normalizeWaitAgentTimeoutMs(timeoutMs: number | undefined): number {
-  const rawTimeoutMs = timeoutMs ?? DEFAULT_WAIT_AGENT_TIMEOUT_MS;
-  if (rawTimeoutMs <= 0) {
-    throw new Error("timeout_ms must be greater than zero");
-  }
-  return Math.min(MAX_WAIT_AGENT_TIMEOUT_MS, Math.max(MIN_WAIT_AGENT_TIMEOUT_MS, rawTimeoutMs));
-}
-
-export function getWaitAgentResultTitle(timedOut: boolean, agentCount: number): string {
-  if (timedOut && agentCount === 0) {
-    return "Waiting timed out";
-  }
-
-  return agentCount === 1 ? "Agent finished" : "Agents finished";
-}
-
-type CollabInputItem = {
-  type?: string;
-  text?: string;
-  image_url?: string;
-  path?: string;
-  name?: string;
-};
-
-function resolveAgentIdAlias(params: { id?: string; agent_id?: string }, fieldName = "id"): string {
-  const value = (params.id ?? params.agent_id ?? "").trim();
-  if (!value) throw new Error(`${fieldName} is required`);
-  return value;
-}
-
-function resolveAgentIdsAlias(params: {
-  id?: string;
-  agent_id?: string;
-  ids?: string[];
-  agent_ids?: string[];
-}): string[] {
-  return [
-    ...new Set(
-      [params.id, params.agent_id, ...(params.ids ?? []), ...(params.agent_ids ?? [])]
-        .filter((value): value is string => typeof value === "string")
-        .map((value) => value.trim())
-        .filter(Boolean),
-    ),
-  ];
-}
-
-function flattenCollabItems(items: CollabInputItem[] | undefined): string | undefined {
-  if (!items?.length) return undefined;
-
-  const lines = items
-    .map((item) => {
-      if (item.type === "text" && item.text?.trim()) return item.text.trim();
-      if (item.type === "image" && item.image_url?.trim()) return `image: ${item.image_url.trim()}`;
-      if (item.type === "local_image" && item.path?.trim())
-        return `local_image: ${item.path.trim()}`;
-      if (item.type === "skill")
-        return `skill: ${item.name?.trim() || item.path?.trim() || "skill"}`;
-      if (item.type === "mention") {
-        return `mention: ${item.name?.trim() || item.path?.trim() || "mention"}`;
-      }
-
-      return [item.text, item.name, item.path, item.image_url]
-        .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-        .map((value) => value.trim())
-        .join(" ");
-    })
-    .filter(Boolean);
-
-  return lines.length > 0 ? lines.join("\n") : undefined;
-}
-
-function resolveSpawnPrompt(params: {
-  task?: string;
-  context?: string;
-  message?: string;
-  items?: CollabInputItem[];
-}): string {
-  const prompt = [
-    params.context?.trim(),
-    params.task?.trim(),
-    params.message?.trim(),
-    flattenCollabItems(params.items),
-  ]
-    .filter((value): value is string => Boolean(value))
-    .join("\n\n")
-    .trim();
-
-  if (!prompt) {
-    throw new Error("task, message, or items is required");
-  }
-
-  return prompt;
-}
-
-function wrapInteractiveSpawnPrompt(prompt: string): string {
-  const normalizedPrompt = prompt.trim();
-  return [
-    "You are working in an interactive delegated child session.",
-    "Complete the delegated task. The user can interact with you directly at any time.",
-    "When you are finished, call the subagent_done tool to return control to the parent session.",
-    "Your FINAL assistant message before calling subagent_done should summarize what you accomplished.",
-    normalizedPrompt,
-  ].join("\n\n");
-}
-
-function spawnNameSeed(params: {
-  task?: string;
-  context?: string;
-  message?: string;
-  items?: CollabInputItem[];
-  agent_type?: string;
-  model?: string;
-  reasoning_effort?: string;
-  workdir?: string;
-  interactive?: boolean;
-}): string {
-  return JSON.stringify({
-    task: params.task ?? null,
-    context: params.context ?? null,
-    message: params.message ?? null,
-    items: params.items ?? null,
-    agent_type: params.agent_type ?? null,
-    model: params.model ?? null,
-    reasoning_effort: params.reasoning_effort ?? null,
-    workdir: params.workdir ?? null,
-    interactive: params.interactive ?? null,
-  });
-}
+import {
+  getWaitAgentResultTitle,
+  MAX_WAIT_AGENT_TIMEOUT_MS,
+  muxUnavailableError,
+  normalizeWaitAgentTimeoutMs,
+} from "./wait-utils.ts";
 
 export function normalizeReasoningEffortToThinkingLevel(
   reasoningEffort: string | undefined,
@@ -432,123 +234,42 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     store.decrementActiveWaits(ids);
   };
 
+  const readySnapshots = createReadySnapshotCoordinator({
+    store,
+    childSnapshot,
+    requireDurableChild: (agentId) => {
+      const record = store.getDurableChild(agentId);
+      if (!record) {
+        throw new Error(`Unknown agent_id: ${agentId}`);
+      }
+      return record;
+    },
+    waitForAnyStateChange,
+    maxWaitTimeoutMs: MAX_WAIT_AGENT_TIMEOUT_MS,
+    sendNotification: (snapshot, taskSummary) => {
+      const publicSnapshot = toPublicAgentSnapshot(snapshot);
+      pi.sendMessage(
+        {
+          customType: SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
+          content: formatSubagentNotificationMessage(snapshot, {
+            taskSummary,
+          }),
+          display: true,
+          details: taskSummary ? { ...publicSnapshot, task_summary: taskSummary } : publicSnapshot,
+        },
+        getSubagentNotificationDeliveryOptions(store.getParentIsStreaming()),
+      );
+    },
+  });
+
   const resetCompletionTracking = (agentId: string) => {
-    store.clearCompletionTracking(agentId);
+    readySnapshots.resetCompletionTracking(agentId);
   };
 
-  const completionSignature = (record: DurableChildRecord): string =>
-    JSON.stringify({
-      status: record.status,
-      lastError: record.lastError ?? null,
-      lastAssistantText: record.lastAssistantText ?? null,
-    });
-
-  const getCompletionVersion = (record: DurableChildRecord): number => {
-    const signature = completionSignature(record);
-    if (store.getCompletionSignature(record.agentId) !== signature) {
-      store.setCompletionSignature(record.agentId, signature);
-      store.setCompletionVersion(record.agentId, store.getCompletionVersion(record.agentId) + 1);
-    }
-    return store.getCompletionVersion(record.agentId);
-  };
-
-  const isReadySnapshot = (
-    record: DurableChildRecord,
-    attachment: LiveChildAttachment | undefined,
-  ): boolean => !attachment || record.status !== "live_running";
-
-  const claimReadySnapshot = (
-    agentId: string,
-    options: { requireNotificationEligibility?: boolean } = {},
-  ): AgentSnapshot | undefined => {
-    const record = store.getDurableChild(agentId);
-    if (!record) return undefined;
-
-    const attachment = store.getLiveAttachment(agentId);
-    if (!isReadySnapshot(record, attachment)) {
-      return undefined;
-    }
-
-    if (options.requireNotificationEligibility && !shouldNotifyParent(record)) {
-      return undefined;
-    }
-
-    const completionVersion = getCompletionVersion(record);
-    if (store.getConsumedCompletionVersion(agentId) >= completionVersion) {
-      store.clearSuppressedCompletionVersion(agentId);
-      return undefined;
-    }
-
-    store.setConsumedCompletionVersion(agentId, completionVersion);
-    store.clearSuppressedCompletionVersion(agentId);
-    return childSnapshot(record, attachment);
-  };
-
-  const collectReadySnapshots = (
-    ids: string[],
-    options: { claim?: boolean } = {},
-  ): {
-    snapshots: AgentSnapshot[];
-    pendingCount: number;
-  } => {
-    const snapshots: AgentSnapshot[] = [];
-    let pendingCount = 0;
-
-    for (const id of ids) {
-      const record = requireDurableChild(id);
-      const attachment = store.getLiveAttachment(id);
-      if (!isReadySnapshot(record, attachment)) {
-        pendingCount += 1;
-        continue;
-      }
-
-      if (!options.claim) {
-        snapshots.push(childSnapshot(record, attachment));
-        continue;
-      }
-
-      const claimedSnapshot = claimReadySnapshot(id);
-      if (claimedSnapshot) {
-        snapshots.push(claimedSnapshot);
-      }
-    }
-
-    return { snapshots, pendingCount };
-  };
-
-  const waitForReadySnapshots = async (
+  const waitForReadySnapshots = (
     ids: string[],
     options: { timeoutMs?: number; claim?: boolean } = {},
-  ): Promise<AgentSnapshot[]> => {
-    const claim = options.claim ?? false;
-    const deadline = options.timeoutMs === undefined ? undefined : Date.now() + options.timeoutMs;
-
-    let { snapshots, pendingCount } = collectReadySnapshots(ids, { claim });
-    while (snapshots.length === 0 && pendingCount > 0) {
-      const liveAttachments = ids.flatMap((id) => {
-        const attachment = store.getLiveAttachment(id);
-        return attachment ? [attachment] : [];
-      });
-      if (liveAttachments.length === 0) {
-        break;
-      }
-
-      const waitTimeoutMs =
-        deadline === undefined ? MAX_WAIT_AGENT_TIMEOUT_MS : Math.max(1, deadline - Date.now());
-      if (deadline !== undefined && waitTimeoutMs <= 0) {
-        break;
-      }
-
-      const changed = await waitForAnyStateChange(liveAttachments, waitTimeoutMs);
-      if (!changed && deadline !== undefined && Date.now() >= deadline) {
-        break;
-      }
-
-      ({ snapshots, pendingCount } = collectReadySnapshots(ids, { claim }));
-    }
-
-    return snapshots;
-  };
+  ): Promise<AgentSnapshot[]> => readySnapshots.waitForReadySnapshots(ids, options);
 
   const persistRegistryEvent = (
     eventType: SubagentEntryType,
@@ -592,54 +313,12 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     })}`;
   };
 
-  const shouldNotifyParent = (record: DurableChildRecord): boolean => {
-    if (record.status !== "live_idle" && record.status !== "failed") {
-      return false;
-    }
-
-    const activeSessionFile = store.getActiveSessionFile();
-    return !activeSessionFile || !record.parentSessionFile
-      ? true
-      : activeSessionFile === record.parentSessionFile;
-  };
-
   const notifyParentOfChildStatus = (record: DurableChildRecord): void => {
-    if (!shouldNotifyParent(record)) return;
-
-    const completionVersion = getCompletionVersion(record);
-    if (store.getActiveWaitCount(record.agentId) > 0) {
-      store.setSuppressedCompletionVersion(record.agentId, completionVersion);
-      return;
-    }
-    const snapshot = claimReadySnapshot(record.agentId, { requireNotificationEligibility: true });
-    if (!snapshot) return;
-
-    pi.sendMessage(
-      {
-        customType: SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
-        content: formatSubagentNotificationMessage(snapshot, {
-          taskSummary: record.taskSummary,
-        }),
-        display: true,
-        details: record.taskSummary ? { ...snapshot, task_summary: record.taskSummary } : snapshot,
-      },
-      getSubagentNotificationDeliveryOptions(store.getParentIsStreaming()),
-    );
+    readySnapshots.notifyParentOfChildStatus(record);
   };
 
   const flushSuppressedNotifications = (ids: string[]) => {
-    for (const id of ids) {
-      if (store.getActiveWaitCount(id) > 0) continue;
-      const record = store.getDurableChild(id);
-      const suppressedVersion = store.getSuppressedCompletionVersion(id);
-      if (!record || suppressedVersion === undefined || !shouldNotifyParent(record)) continue;
-      if (store.getConsumedCompletionVersion(id) >= suppressedVersion) {
-        store.clearSuppressedCompletionVersion(id);
-        continue;
-      }
-      if (getCompletionVersion(record) !== suppressedVersion) continue;
-      notifyParentOfChildStatus(record);
-    }
+    readySnapshots.flushSuppressedNotifications(ids);
   };
   registerSubagentNotificationRenderers(pi);
 
@@ -649,12 +328,27 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     options: { persistAs?: SubagentEntryType; reason?: string } = {},
   ): DurableChildRecord => {
     const current = requireDurableChild(agentId);
-    const next: DurableChildRecord = {
-      ...current,
-      ...patch,
-      updatedAt: patch.updatedAt ?? new Date().toISOString(),
-    };
-    store.setDurableChild(agentId, next);
+    const next =
+      patch.status === "live_running"
+        ? store.markRunning(agentId, patch)
+        : patch.status === "live_idle"
+          ? store.markCompleted(agentId, patch)
+          : patch.status === "failed"
+            ? store.markFailed(agentId, patch)
+            : patch.status === "closed"
+              ? store.markClosed(agentId, patch)
+              : (() => {
+                  const updatedRecord: DurableChildRecord = {
+                    ...current,
+                    ...patch,
+                    updatedAt: patch.updatedAt ?? new Date().toISOString(),
+                  };
+                  store.setDurableChild(agentId, updatedRecord);
+                  return updatedRecord;
+                })();
+    if (!next) {
+      return current;
+    }
     if (next.status === "live_running") {
       resetCompletionTracking(agentId);
     }
@@ -945,6 +639,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       reasoningEffort?: string;
       source: string;
     };
+    toolSet: "pi" | "codex" | "droid";
     forkedSessionFile?: string;
   }): Promise<{
     attachment: InteractiveLiveChildAttachment;
@@ -1007,6 +702,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         PI_CODEX_AGENT_PROFILE_NAME: options.profileBootstrap.name,
         [AGENT_PROFILE_JSON_ENV]: JSON.stringify(options.profileBootstrap),
         PI_CODEX_AGENT_PROFILE_JSON: JSON.stringify(options.profileBootstrap),
+        [TOOL_SET_OVERRIDE_ENV]: options.toolSet,
       },
       cleanupPaths: [promptFile],
     };
@@ -1028,13 +724,17 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       lastLiveAt: Date.now(),
     };
 
+    const nextRecord = {
+      ...options.record,
+      sessionFile,
+      updatedAt: new Date().toISOString(),
+    };
+
+    store.attach(nextRecord, attachment);
+
     return {
       attachment,
-      record: {
-        ...options.record,
-        sessionFile,
-        updatedAt: new Date().toISOString(),
-      },
+      record: nextRecord,
     };
   };
 
@@ -1147,6 +847,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   const attachChild = async (
     record: DurableChildRecord,
     mode: "fresh" | "resume" | "fork",
+    toolSet?: "pi" | "codex" | "droid",
   ): Promise<{
     attachment: RpcLiveChildAttachment;
     record: DurableChildRecord;
@@ -1167,15 +868,16 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           }
         : undefined,
       sessionFile: mode === "fresh" ? undefined : record.sessionFile,
+      toolSet,
     });
-    store.setLiveAttachment(record.agentId, attachment);
+    store.attach(record, attachment);
     bindAttachment(attachment);
 
     try {
       const state = await readChildState(attachment);
       const sessionFile = state.sessionFile;
       if (typeof sessionFile !== "string" || sessionFile.trim().length === 0) {
-        throw new Error(`Agent ${record.agentId} did not expose a durable session file`);
+        throw new Error(`Agent ${record.name ?? "subagent"} did not expose a durable session file`);
       }
 
       const nextRecord = store.hasDurableChild(record.agentId)
@@ -1191,6 +893,10 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
             sessionFile,
             updatedAt: new Date().toISOString(),
           };
+
+      if (!store.hasDurableChild(record.agentId)) {
+        store.setDurableChild(record.agentId, nextRecord);
+      }
 
       return { attachment, record: nextRecord };
     } catch (error) {
@@ -1391,7 +1097,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     };
 
     if (!durableRecord.sessionFile) {
-      throw new Error(`Spawned agent ${attachment.agentId} did not produce a session_file`);
+      throw new Error(
+        `Spawned agent ${durableRecord.name ?? "subagent"} did not produce a session_file`,
+      );
     }
 
     store.setDurableChild(attachment.agentId, durableRecord);
@@ -1418,8 +1126,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     resolveParentSpawnDefaults,
     normalizeReasoningEffortToThinkingLevel,
     resolveForkContextSessionFile,
-    resolveName: (displayNameHint, nameSeed) =>
-      resolveSubagentName(store.durableChildValues(), displayNameHint, nameSeed),
+    findAddressableChildByName: (name) => store.findChildByPublicName(name),
     attachChild,
     launchInteractiveChild,
     watchInteractiveAttachment,
@@ -1433,6 +1140,10 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     sendInteractiveInput: (attachment, input) => sendInteractiveInput((attachment as InteractiveLiveChildAttachment).surface, input),
     sendAttachmentMessage,
     closeLiveAttachment,
+    listWaitableChildIds: () =>
+      Array.from(store.durableChildValues())
+        .filter((record) => isWaitableChild(record))
+        .map((record) => record.agentId),
     waitForReadySnapshots,
     incrementActiveWaits,
     decrementActiveWaits,
@@ -1451,21 +1162,9 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   });
 
   registerCodexToolAdapters(pi, {
-    store,
     lifecycle,
-    resolveSpawnPrompt,
-    resolveAgentIdsAlias,
-    resolveAgentIdAlias,
-    predictSpawnName: (args) =>
-      resolveSubagentName(
-        store.durableChildValues(),
-        typeof args.name === "string" ? args.name : undefined,
-        spawnNameSeed(args as never),
-      ),
     renderSpawnPromptPreview: (prompt, theme) =>
       new Text(`${theme.fg("muted", "└ ")}${theme.fg("dim", shorten(prompt, 140))}`, 0, 0),
-    toSnapshot: (record, attachment) =>
-      childSnapshot(record as DurableChildRecord, attachment as LiveChildAttachment | undefined),
     normalizeWaitAgentTimeoutMs,
   });
 
@@ -1473,17 +1172,13 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   void CODEX_SUBAGENT_RESERVED_TOOL_NAMES;
 
   registerTaskToolAdapters(pi, {
-    store,
     lifecycle,
-    toSnapshot: (record, attachment) =>
-      childSnapshot(record as DurableChildRecord, attachment as LiveChildAttachment | undefined),
     normalizeWaitAgentTimeoutMs,
   });
 }
 
 export {
   childSnapshot,
-  generateUniqueSubagentName,
   getSubagentCompletionLabel,
   getSubagentDisplayName,
   MAX_SUBAGENT_REPLY_PREVIEW_LINES,
@@ -1494,20 +1189,15 @@ export {
   parseJsonLines,
   extractLastAssistantText,
   deriveDurableStatusFromState,
-  resolveAgentIdAlias,
-  resolveAgentIdsAlias,
-  resolveSubagentName,
-  resolveSpawnPrompt,
   wrapInteractiveSpawnPrompt,
   summarizeSubagentReply,
   summarizeTaskRequest,
   truncateSubagentReply,
-  flattenCollabItems,
+  getWaitAgentResultTitle,
+  normalizeWaitAgentTimeoutMs,
+  validateSubagentName,
 };
 export {
-  buildSendInputContent,
-  buildSpawnAgentContent,
-  buildWaitAgentContent,
   AGENT_PROFILE_JSON_ENV,
   AGENT_PROFILE_NAME_ENV,
   SUBAGENT_CHILD_ENV,
@@ -1520,6 +1210,8 @@ export {
   CODEX_SUBAGENT_TOOL_NAMES,
   formatSubagentNotificationMessage,
 };
+export { buildSendMessageContent, buildSpawnAgentContent } from "./results.ts";
+export { buildWaitAgentContent } from "./notifications.ts";
 export type { AgentSnapshot, DurableChildRecord, LiveChildAttachment };
 export type { AgentProfileConfig, ResolvedAgentProfiles } from "./profiles.ts";
 export type { AppliedSpawnProfile, ChildProfileBootstrap } from "./profiles-apply.ts";

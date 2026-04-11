@@ -2,51 +2,33 @@ import { Type } from "@sinclair/typebox";
 
 export const CUSTOM_INPUT_OPTION = "Other (type a custom answer)";
 
-export const RequestOptionObjectSchema = Type.Object({
-  label: Type.String({ description: "User-facing label (1-5 words)." }),
-  value: Type.Optional(Type.String({ description: "Structured value returned when selected." })),
-  description: Type.String({
-    description: "One short sentence explaining impact/tradeoff if selected.",
-  }),
+export const RequestOptionSchema = Type.String({
+  description: "User-facing option label.",
 });
-
-export const RequestOptionSchema = Type.Union([Type.String(), RequestOptionObjectSchema]);
 
 export const RequestQuestionSchema = Type.Object({
-  id: Type.String({ description: "Stable identifier for mapping answers (snake_case)." }),
-  header: Type.String({ description: "Short header label shown in the UI (12 or fewer chars)." }),
   question: Type.String({ description: "Single-sentence prompt shown to the user." }),
-  options: Type.Array(RequestOptionObjectSchema, {
-    description:
-      'Provide 2-3 mutually exclusive choices. Put the recommended option first and suffix its label with "(Recommended)". Do not include an "Other" option in this list; the client will add a free-form "Other" option automatically.',
-  }),
+  options: Type.Optional(
+    Type.Array(RequestOptionSchema, {
+      description:
+        'Optional list of suggested answers. Omit or pass an empty list for freeform input. Do not include an "Other" option; the client adds custom input automatically.',
+    }),
+  ),
 });
 
-export type RequestOptionInput = string | { label: string; value?: string; description?: string };
-
 export type RequestQuestionInput = {
-  id: string;
-  header: string;
   question: string;
-  options: Array<{ label: string; value?: string; description?: string }>;
+  options?: string[];
 };
 
 export type AskUserParams = {
-  questions?: RequestQuestionInput[];
-  question?: string;
-  prompt?: string;
-  options?: RequestOptionInput[];
-  allow_text_input?: boolean;
-  placeholder?: string;
-  multi_line?: boolean;
-  default_value?: string;
+  questions: RequestQuestionInput[];
   timeout_ms?: number;
 };
 
 export type RequestOption = {
   label: string;
   value: string;
-  description?: string;
 };
 
 export type RequestQuestion = {
@@ -54,6 +36,19 @@ export type RequestQuestion = {
   header: string;
   question: string;
   options: RequestOption[];
+};
+
+export type RequestQuestionBehavior = {
+  useFreeformOnly: boolean;
+};
+
+export type NormalizedRequestQuestion = RequestQuestion & {
+  behavior: RequestQuestionBehavior;
+};
+
+export type NormalizedAskUserRequest = {
+  questions: NormalizedRequestQuestion[];
+  timeoutMs: number;
 };
 
 export type RequestAnswer = {

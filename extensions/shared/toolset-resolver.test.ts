@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "./toolset-resolver.ts";
+import { TOOLSET_MODE_ORDER } from "./toolset-registry.ts";
 
 const ALL_TOOL_INFOS = resolveRegisteredToolInfos([
-  { name: "read", description: "builtin read" },
+  { name: "read", description: "custom read" },
   { name: "grep", description: "builtin grep" },
   { name: "find", description: "builtin find" },
   { name: "ls", description: "builtin ls" },
@@ -12,10 +13,10 @@ const ALL_TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "write", description: "builtin write" },
   { name: "bash", description: "builtin bash" },
   { name: "shell", description: "compat shell" },
-  { name: "read_file", description: "compat read" },
   { name: "WebSearch", description: "web search" },
   { name: "WebSummary", description: "web summary" },
   { name: "FetchUrl", description: "fetch" },
+  { name: "skill", description: "skill" },
   { name: "update_plan", description: "codex" },
   { name: "read_plan", description: "codex" },
   { name: "request_user_input", description: "codex" },
@@ -24,7 +25,6 @@ const ALL_TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "grep_files", description: "codex" },
   { name: "apply_patch", description: "codex" },
   { name: "view_image", description: "codex" },
-  { name: "Read", description: "droid" },
   { name: "LS", description: "droid" },
   { name: "Grep", description: "droid" },
   { name: "Glob", description: "droid" },
@@ -34,20 +34,18 @@ const ALL_TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "AskUser", description: "droid" },
   { name: "TodoWrite", description: "droid" },
   { name: "Execute", description: "droid" },
-  { name: "Skill", description: "droid" },
-  { name: "fs_search", description: "forge" },
-  { name: "patch", description: "forge" },
-  { name: "followup", description: "forge" },
-  { name: "todos_write", description: "forge" },
-  { name: "todos_read", description: "forge" },
   { name: "spawn_agent", description: "subagent codex" },
-  { name: "send_input", description: "subagent codex" },
+  { name: "send_message", description: "subagent codex" },
   { name: "wait_agent", description: "subagent codex" },
   { name: "close_agent", description: "subagent codex" },
   { name: "Task", description: "task" },
   { name: "TaskOutput", description: "task" },
   { name: "TaskStop", description: "task" },
 ]);
+
+test("toolset registry only exposes pi, codex, and droid modes", () => {
+  assert.deepEqual(Object.keys(TOOLSET_MODE_ORDER), ["pi", "codex", "droid"]);
+});
 
 test("resolveToolsetToolNames computes the canonical tool list for each mode", () => {
   assert.deepEqual(resolveToolsetToolNames("pi", ALL_TOOL_INFOS), [
@@ -61,6 +59,7 @@ test("resolveToolsetToolNames computes the canonical tool list for each mode", (
     "WebSearch",
     "WebSummary",
     "FetchUrl",
+    "skill",
     "Task",
     "TaskOutput",
     "TaskStop",
@@ -68,10 +67,11 @@ test("resolveToolsetToolNames computes the canonical tool list for each mode", (
 
   assert.deepEqual(resolveToolsetToolNames("codex", ALL_TOOL_INFOS), [
     "shell",
-    "read_file",
+    "read",
     "WebSearch",
     "WebSummary",
     "FetchUrl",
+    "skill",
     "update_plan",
     "read_plan",
     "request_user_input",
@@ -81,30 +81,13 @@ test("resolveToolsetToolNames computes the canonical tool list for each mode", (
     "apply_patch",
     "view_image",
     "spawn_agent",
-    "send_input",
+    "send_message",
     "wait_agent",
     "close_agent",
   ]);
 
-  assert.deepEqual(resolveToolsetToolNames("forge", ALL_TOOL_INFOS), [
-    "write",
-    "shell",
-    "read_file",
-    "WebSearch",
-    "WebSummary",
-    "FetchUrl",
-    "fs_search",
-    "patch",
-    "followup",
-    "todos_write",
-    "todos_read",
-    "Task",
-    "TaskOutput",
-    "TaskStop",
-  ]);
-
   assert.deepEqual(resolveToolsetToolNames("droid", ALL_TOOL_INFOS), [
-    "Read",
+    "read",
     "LS",
     "Grep",
     "Glob",
@@ -114,10 +97,10 @@ test("resolveToolsetToolNames computes the canonical tool list for each mode", (
     "AskUser",
     "TodoWrite",
     "Execute",
-    "Skill",
     "WebSearch",
     "WebSummary",
     "FetchUrl",
+    "skill",
     "Task",
     "TaskOutput",
     "TaskStop",
@@ -129,16 +112,19 @@ test("resolveToolsetToolNames filters unavailable optional tools without leaving
     (tool) => tool.name !== "WebSummary" && tool.name !== "FetchUrl",
   );
 
-  assert.deepEqual(resolveToolsetToolNames("forge", withoutOptionals), [
-    "write",
-    "shell",
-    "read_file",
+  assert.deepEqual(resolveToolsetToolNames("droid", withoutOptionals), [
+    "read",
+    "LS",
+    "Grep",
+    "Glob",
+    "Create",
+    "Edit",
+    "ApplyPatch",
+    "AskUser",
+    "TodoWrite",
+    "Execute",
     "WebSearch",
-    "fs_search",
-    "patch",
-    "followup",
-    "todos_write",
-    "todos_read",
+    "skill",
     "Task",
     "TaskOutput",
     "TaskStop",

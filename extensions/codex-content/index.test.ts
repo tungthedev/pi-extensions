@@ -5,7 +5,7 @@ import registerCodexContentExtension from "./index.ts";
 import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "../shared/toolset-resolver.ts";
 
 const TOOL_INFOS = resolveRegisteredToolInfos([
-  { name: "read", description: "builtin" },
+  { name: "read", description: "custom read" },
   { name: "grep", description: "builtin" },
   { name: "find", description: "builtin" },
   { name: "ls", description: "builtin" },
@@ -13,7 +13,6 @@ const TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "write", description: "builtin" },
   { name: "bash", description: "builtin" },
   { name: "shell", description: "shell" },
-  { name: "read_file", description: "read" },
   { name: "WebSearch", description: "web" },
   { name: "WebSummary", description: "web" },
   { name: "FetchUrl", description: "web" },
@@ -25,19 +24,14 @@ const TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "grep_files", description: "codex" },
   { name: "apply_patch", description: "codex" },
   { name: "view_image", description: "codex" },
-  { name: "Read", description: "droid" },
+  { name: "LS", description: "droid" },
   { name: "Task", description: "task" },
   { name: "TaskOutput", description: "task" },
   { name: "TaskStop", description: "task" },
   { name: "spawn_agent", description: "subagent" },
-  { name: "send_input", description: "subagent" },
+  { name: "send_message", description: "subagent" },
   { name: "wait_agent", description: "subagent" },
   { name: "close_agent", description: "subagent" },
-  { name: "fs_search", description: "forge" },
-  { name: "patch", description: "forge" },
-  { name: "followup", description: "forge" },
-  { name: "todos_write", description: "forge" },
-  { name: "todos_read", description: "forge" },
 ]);
 
 test("codex-content registers before_agent_start for shared toolset and prompt setup", () => {
@@ -75,7 +69,7 @@ test("pi mode excludes codex-managed tools from the shared resolver", () => {
 test("codex mode activates codex tool groups and hides conflicting tools", () => {
   assert.deepEqual(resolveToolsetToolNames("codex", TOOL_INFOS), [
     "shell",
-    "read_file",
+    "read",
     "WebSearch",
     "WebSummary",
     "FetchUrl",
@@ -88,7 +82,7 @@ test("codex mode activates codex tool groups and hides conflicting tools", () =>
     "apply_patch",
     "view_image",
     "spawn_agent",
-    "send_input",
+    "send_message",
     "wait_agent",
     "close_agent",
   ]);

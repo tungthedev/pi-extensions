@@ -1,17 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { getPiBinDir } from "../codex-content/tools/runtime.ts";
+import { getPiBinDir } from "../shared/runtime-paths.ts";
 import {
   executeShellCommand,
   getShellEnv,
-  readConfiguredShellPath,
   resolveShellInvocation,
-  splitLeadingCdCommand,
-  stripTrailingBackgroundOperator,
 } from "./runtime.ts";
 
 async function withTempDir(run: (dir: string) => Promise<void>) {
@@ -46,35 +43,6 @@ async function withEnv(
     }
   }
 }
-
-test("readConfiguredShellPath reads shellPath from the global Pi settings file", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-shell-settings-"));
-  const settingsPath = path.join(tempDir, "settings.json");
-
-  try {
-    await writeFile(
-      settingsPath,
-      `${JSON.stringify({ shellPath: "C:\\cygwin64\\bin\\bash.exe" }, null, 2)}\n`,
-      "utf8",
-    );
-
-    assert.equal(await readConfiguredShellPath(settingsPath), "C:\\cygwin64\\bin\\bash.exe");
-  } finally {
-    await rm(tempDir, { recursive: true, force: true });
-  }
-});
-
-test("readConfiguredShellPath ignores malformed settings files", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-shell-settings-"));
-  const settingsPath = path.join(tempDir, "settings.json");
-
-  try {
-    await writeFile(settingsPath, "{not-json", "utf8");
-    assert.equal(await readConfiguredShellPath(settingsPath), undefined);
-  } finally {
-    await rm(tempDir, { recursive: true, force: true });
-  }
-});
 
 test("resolveShellInvocation uses supported user shells and falls back for unknown shells", () => {
   assert.deepEqual(
@@ -164,20 +132,6 @@ test("getShellEnv prepends Pi's managed bin directory to PATH once", async () =>
         assert.equal(entries.filter((entry) => entry === getPiBinDir()).length, 1);
       });
     });
-  });
-});
-
-test("splitLeadingCdCommand parses a leading cd chain", () => {
-  assert.deepEqual(splitLeadingCdCommand('cd "./nested dir" && npm test'), {
-    workdir: "./nested dir",
-    command: "npm test",
-  });
-});
-
-test("stripTrailingBackgroundOperator removes a trailing background marker", () => {
-  assert.deepEqual(stripTrailingBackgroundOperator("npm run dev &"), {
-    command: "npm run dev",
-    stripped: true,
   });
 });
 

@@ -8,7 +8,6 @@ import {
   execCommand,
   getPiAgentDir,
   getPiBinDir,
-  normalizeRipgrepGlob,
   resolveAbsolutePath,
   resolveAbsolutePathWithVariants,
   resolvePiManagedToolPath,
@@ -71,10 +70,6 @@ test("resolveAbsolutePath expands home references and strips the @ prefix", () =
     resolveAbsolutePath("/workspace", "@~\\nested\\sample.txt"),
     path.join(os.homedir(), "nested", "sample.txt"),
   );
-});
-
-test("normalizeRipgrepGlob converts Windows separators to ripgrep glob separators", () => {
-  assert.equal(normalizeRipgrepGlob("src\\**\\*.ts"), "src/**/*.ts");
 });
 
 test("resolvePiToolPath prefers Pi's managed bin directory", async () => {

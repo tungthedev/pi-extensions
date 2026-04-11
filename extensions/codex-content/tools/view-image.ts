@@ -1,6 +1,5 @@
 import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 
@@ -9,13 +8,11 @@ import {
   formatDimensionNote,
   resizeImage,
 } from "../image-utils.ts";
+import { renderToolCall } from "../renderers/common.ts";
+import { shortenPath } from "../shared/text.ts";
 import { resolveAbsolutePath } from "./runtime.ts";
 
 type ViewImageDetail = "original" | undefined;
-
-function conciseResult(title: string, detail?: string) {
-  return new Text(detail ? `${title} ${detail}` : title, 0, 0);
-}
 
 function resolveRequestedImagePath(params: { path?: string; file_path?: string }): string {
   const rawPath = params.path ?? params.file_path;
@@ -133,8 +130,14 @@ export function registerViewImageTool(pi: ExtensionAPI): void {
       });
       return buildResizedImageResult(absolutePath, resized);
     },
-    renderCall(args) {
-      return conciseResult("view_image", args.path ?? args.file_path);
+    renderCall(args, theme) {
+      const path = shortenPath(args.path ?? args.file_path);
+      const detail = args.detail === "original" ? theme.fg("dim", " (original)") : undefined;
+      return renderToolCall(
+        theme,
+        "View image",
+        `${theme.fg("accent", path)}${detail ?? ""}`,
+      );
     },
   });
 }

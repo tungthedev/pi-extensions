@@ -2,6 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { AgentProfileConfig } from "./profiles-types.ts";
+import {
+  matchTomlString,
+  matchTomlStringArray,
+  matchTomlTripleQuotedString,
+} from "../../shared/toml-lite.ts";
 
 import {
   discoverCodexRoleFiles,
@@ -23,36 +28,6 @@ export type LoadedCustomAgentProfiles = {
   profiles: Map<string, AgentProfileConfig>;
   warnings: string[];
 };
-
-function normalizeArrayItems(raw: string): string[] {
-  return raw
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map((item) => item.replace(/^"|"$/g, "").replace(/^'|'$/g, ""))
-    .filter(Boolean);
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function matchTomlTripleQuotedString(contents: string, key: string): string | undefined {
-  const match = contents.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*"""([\\s\\S]*?)"""`, "m"));
-  return match?.[1]?.trim();
-}
-
-function matchTomlString(contents: string, key: string): string | undefined {
-  const match = contents.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*"([^"]*)"`, "m"));
-  return match?.[1]?.trim();
-}
-
-function matchTomlStringArray(contents: string, key: string): string[] | undefined {
-  const match = contents.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*\\[([^\\]]*)\\]`, "m"));
-  if (!match?.[1]) return undefined;
-  const values = normalizeArrayItems(match[1]);
-  return values.length > 0 ? values : undefined;
-}
 
 export function parseCodexRoleFile(contents: string): ParsedCodexRoleFile {
   return {

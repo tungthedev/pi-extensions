@@ -8,9 +8,10 @@ import {
   formatListDirectoryOutput,
   scanDirectoryEntries,
   type ListDirectoryEntry,
-} from "../../codex-content/tools/list-dir.ts";
-import { shortenPath } from "../../codex-content/shared/text.ts";
-import { resolveAbsolutePathWithVariants } from "../../codex-content/tools/runtime.ts";
+} from "../../shared/file-tools/list-dir.ts";
+import { renderEmptySlot } from "../../shared/renderers/common.ts";
+import { shortenPath } from "../../shared/text.ts";
+import { resolveAbsolutePathWithVariants } from "../../shared/runtime-paths.ts";
 
 const DROID_LIST_DIRECTORY_DESCRIPTION = `List the contents of a directory with optional pattern-based filtering.
 Prefer usage of 'Grep' and 'Glob' tools, for more targeted searches.
@@ -40,7 +41,7 @@ function renderListDirectoryCall(
   args: { directory_path?: string },
 ): Text {
   return new Text(
-    `${theme.fg("toolTitle", theme.bold("List Directory "))}${theme.fg("accent", shortenPath(args.directory_path || "."))}`,
+    `${theme.fg("toolTitle", theme.bold("List "))}${theme.fg("accent", shortenPath(args.directory_path || "."))}`,
     0,
     0,
   );
@@ -77,7 +78,7 @@ export function registerDroidListDirectoryTool(pi: ExtensionAPI): void {
 
   pi.registerTool({
     name: "LS",
-    label: "List Directory",
+    label: "List",
     description: DROID_LIST_DIRECTORY_DESCRIPTION,
     parameters: DROID_LIST_DIRECTORY_PARAMETERS,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -105,6 +106,19 @@ export function registerDroidListDirectoryTool(pi: ExtensionAPI): void {
       return renderListDirectoryCall(theme, args);
     },
     renderResult(result, options, theme, context) {
+      if (context.isError) {
+        return nativeLsDefinition.renderResult!(
+          result as never,
+          options,
+          theme,
+          context as never,
+        );
+      }
+
+      if (!options.expanded) {
+        return renderEmptySlot();
+      }
+
       return nativeLsDefinition.renderResult!(
         result as never,
         options,

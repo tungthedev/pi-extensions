@@ -55,6 +55,77 @@ test("discoverLocalExtensions ignores missing configured files", async () => {
   });
 });
 
+test("discoverLocalExtensions finds top-level files and directory index entries", async () => {
+  await withTempEnv(async ({ cwd }) => {
+    const projectExtensionsDir = path.join(cwd, ".pi", "extensions");
+
+    await mkdir(path.join(projectExtensionsDir, "nested"), { recursive: true });
+    await writeFile(path.join(projectExtensionsDir, "project-file.ts"), "export default 1\n");
+    await writeFile(path.join(projectExtensionsDir, "nested", "index.js"), "module.exports = {}\n");
+
+    const entries = await discoverLocalExtensions(cwd);
+
+    assert.equal(
+      entries.some((entry) => entry.displayName === ".pi/extensions/project-file.ts"),
+      true,
+    );
+    assert.equal(
+      entries.some((entry) => entry.displayName === ".pi/extensions/nested/index.js"),
+      true,
+    );
+  });
+});
+
+test("discoverLocalExtensions resolves disabled top-level entries", async () => {
+  await withTempEnv(async ({ cwd }) => {
+    const projectExtensionsDir = path.join(cwd, ".pi", "extensions");
+    const disabledPath = path.join(projectExtensionsDir, "disabled-entry.ts.disabled");
+
+    await mkdir(projectExtensionsDir, { recursive: true });
+    await writeFile(disabledPath, "export default 1\n");
+
+    const entries = await discoverLocalExtensions(cwd);
+    const entry = entries.find(
+      (item) => item.displayName === ".pi/extensions/disabled-entry.ts",
+    );
+
+    assert.ok(entry);
+    assert.equal(entry.state, "disabled");
+    assert.equal(entry.disabledPath, disabledPath);
+  });
+});
+
+test("discoverLocalExtensions resolves configured files and directories", async () => {
+  await withTempEnv(async ({ cwd }) => {
+    const settingsPath = path.join(cwd, ".pi", "settings.json");
+    const configuredFilePath = path.join(cwd, "configured-file.ts");
+    const configuredDirPath = path.join(cwd, "configured-dir");
+
+    await mkdir(path.dirname(settingsPath), { recursive: true });
+    await mkdir(configuredDirPath, { recursive: true });
+    await writeFile(configuredFilePath, "export default 1\n");
+    await writeFile(path.join(configuredDirPath, "index.ts"), "export default 1\n");
+    await writeFile(
+      settingsPath,
+      JSON.stringify(
+        {
+          extensions: ["../configured-file.ts", "../configured-dir"],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const entries = await discoverLocalExtensions(cwd);
+
+    assert.equal(entries.some((entry) => entry.activePath === configuredFilePath), true);
+    assert.equal(
+      entries.some((entry) => entry.activePath === path.join(configuredDirPath, "index.ts")),
+      true,
+    );
+  });
+});
+
 test("discoverLocalExtensions treats configured disabled files as disabled entries", async () => {
   await withTempEnv(async ({ cwd }) => {
     const settingsPath = path.join(cwd, ".pi", "settings.json");

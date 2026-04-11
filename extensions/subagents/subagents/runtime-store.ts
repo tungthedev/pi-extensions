@@ -1,6 +1,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import type { DurableChildRecord, LiveChildAttachment } from "./types.ts";
+import type { RuntimeCompletionState } from "./runtime-types.ts";
 
 import {
   markSubagentActivityRunning,
@@ -13,18 +14,45 @@ import {
   type SubagentActivityWidget,
 } from "./activity-widget.ts";
 import { childSnapshot } from "./registry.ts";
+import { createAttachmentRegistry } from "./attachment-registry.ts";
+import { createCompletionTracker } from "./completion-tracker.ts";
+import { isResumable } from "./session.ts";
+
+function normalizePublicName(name: string): string {
+  return name.trim();
+}
+
+export function isPubliclyAddressableChild(record: DurableChildRecord): boolean {
+  switch (record.status) {
+    case "live_running":
+    case "live_idle":
+    case "failed":
+      return true;
+    case "detached":
+      return record.transport === "rpc" && isResumable(record);
+    case "closed":
+      return false;
+  }
+}
+
+export function isWaitableChild(record: DurableChildRecord): boolean {
+  switch (record.status) {
+    case "live_running":
+    case "live_idle":
+    case "failed":
+      return true;
+    case "detached":
+    case "closed":
+      return false;
+  }
+}
 
 export type SubagentRuntimeStore = ReturnType<typeof createSubagentRuntimeStore>;
 
 export function createSubagentRuntimeStore() {
-  const durableChildrenById = new Map<string, DurableChildRecord>();
-  const liveAttachmentsById = new Map<string, LiveChildAttachment>();
+  const attachments = createAttachmentRegistry();
+  const completion = createCompletionTracker();
   const resumeOperationsByAgentId = new Map<string, Promise<LiveChildAttachment>>();
-  const activeWaitsByAgentId = new Map<string, number>();
-  const completionVersionByAgentId = new Map<string, number>();
-  const completionSignatureByAgentId = new Map<string, string>();
-  const consumedCompletionVersionByAgentId = new Map<string, number>();
-  const suppressedCompletionVersionByAgentId = new Map<string, number>();
   const subagentActivitiesById = new Map<string, SubagentActivityState>();
 
   let parentIsStreaming = false;
@@ -38,42 +66,54 @@ export function createSubagentRuntimeStore() {
   };
 
   return {
-    durableChildrenById,
-    liveAttachmentsById,
+    durableChildrenById: attachments.durableChildrenById,
+    liveAttachmentsById: attachments.liveAttachmentsById,
     resumeOperationsByAgentId,
     subagentActivitiesById,
     getDurableChild(agentId: string) {
-      return durableChildrenById.get(agentId);
+      return attachments.getDurable(agentId);
     },
     hasDurableChild(agentId: string) {
-      return durableChildrenById.has(agentId);
+      return attachments.hasDurable(agentId);
     },
     setDurableChild(agentId: string, record: DurableChildRecord) {
-      durableChildrenById.set(agentId, record);
+      attachments.setDurable(agentId, record);
+    },
+    attach(record: DurableChildRecord, attachment?: LiveChildAttachment) {
+      attachments.attach(record, attachment);
     },
     deleteDurableChild(agentId: string) {
-      durableChildrenById.delete(agentId);
+      attachments.deleteDurable(agentId);
     },
     replaceDurableChildren(records: Map<string, DurableChildRecord>) {
-      durableChildrenById.clear();
-      for (const [agentId, record] of records) {
-        durableChildrenById.set(agentId, record);
-      }
+      attachments.replaceDurable(records);
     },
     durableChildValues() {
-      return durableChildrenById.values();
+      return attachments.durableValues();
+    },
+    findChildByPublicName(name: string, options: { addressableOnly?: boolean } = {}) {
+      const normalizedName = normalizePublicName(name);
+      for (const record of attachments.durableValues()) {
+        if (record.name !== normalizedName) continue;
+        if (options.addressableOnly !== false && !isPubliclyAddressableChild(record)) continue;
+        return record;
+      }
+      return undefined;
+    },
+    hasAddressableChildName(name: string) {
+      return Boolean(this.findChildByPublicName(name, { addressableOnly: true }));
     },
     getLiveAttachment(agentId: string) {
-      return liveAttachmentsById.get(agentId);
+      return attachments.getLive(agentId);
     },
     setLiveAttachment(agentId: string, attachment: LiveChildAttachment) {
-      liveAttachmentsById.set(agentId, attachment);
+      attachments.setLive(agentId, attachment);
     },
     deleteLiveAttachment(agentId: string) {
-      liveAttachmentsById.delete(agentId);
+      attachments.deleteLive(agentId);
     },
     listLiveAttachments() {
-      return [...liveAttachmentsById.values()];
+      return attachments.listLive();
     },
     getResumeOperation(agentId: string) {
       return resumeOperationsByAgentId.get(agentId);
@@ -87,53 +127,112 @@ export function createSubagentRuntimeStore() {
       }
     },
     getActiveWaitCount(agentId: string) {
-      return activeWaitsByAgentId.get(agentId) ?? 0;
+      return completion.getActiveWaitCount(agentId);
+    },
+    beginWait(ids: string[]) {
+      completion.beginWait(ids);
+    },
+    endWait(ids: string[]) {
+      completion.endWait(ids);
     },
     incrementActiveWaits(ids: string[]) {
-      for (const id of ids) {
-        activeWaitsByAgentId.set(id, (activeWaitsByAgentId.get(id) ?? 0) + 1);
-      }
+      this.beginWait(ids);
     },
     decrementActiveWaits(ids: string[]) {
-      for (const id of ids) {
-        const nextCount = (activeWaitsByAgentId.get(id) ?? 0) - 1;
-        if (nextCount > 0) {
-          activeWaitsByAgentId.set(id, nextCount);
-        } else {
-          activeWaitsByAgentId.delete(id);
-        }
-      }
+      this.endWait(ids);
     },
     getCompletionVersion(agentId: string) {
-      return completionVersionByAgentId.get(agentId) ?? 0;
+      return completion.getVersion(agentId);
     },
     setCompletionVersion(agentId: string, version: number) {
-      completionVersionByAgentId.set(agentId, version);
+      completion.setVersion(agentId, version);
     },
     getCompletionSignature(agentId: string) {
-      return completionSignatureByAgentId.get(agentId);
+      return completion.getSignature(agentId);
     },
     setCompletionSignature(agentId: string, signature: string) {
-      completionSignatureByAgentId.set(agentId, signature);
+      completion.setSignature(agentId, signature);
     },
     getConsumedCompletionVersion(agentId: string) {
-      return consumedCompletionVersionByAgentId.get(agentId) ?? 0;
+      return completion.getConsumedVersion(agentId);
     },
     setConsumedCompletionVersion(agentId: string, version: number) {
-      consumedCompletionVersionByAgentId.set(agentId, version);
+      completion.setConsumedVersion(agentId, version);
     },
     getSuppressedCompletionVersion(agentId: string) {
-      return suppressedCompletionVersionByAgentId.get(agentId);
+      return completion.getSuppressedVersion(agentId);
     },
     setSuppressedCompletionVersion(agentId: string, version: number) {
-      suppressedCompletionVersionByAgentId.set(agentId, version);
+      completion.setSuppressedVersion(agentId, version);
+    },
+    completionState(agentId: string): RuntimeCompletionState {
+      return completion.get(agentId);
     },
     clearCompletionTracking(agentId: string) {
-      completionSignatureByAgentId.delete(agentId);
-      suppressedCompletionVersionByAgentId.delete(agentId);
+      completion.clear(agentId);
     },
     clearSuppressedCompletionVersion(agentId: string) {
-      suppressedCompletionVersionByAgentId.delete(agentId);
+      completion.clearSuppressed(agentId);
+    },
+    markRunning(agentId: string, patch: Partial<DurableChildRecord> = {}) {
+      const current = attachments.getDurable(agentId);
+      if (!current) return undefined;
+
+      const next: DurableChildRecord = {
+        ...current,
+        ...patch,
+        status: "live_running",
+        updatedAt: patch.updatedAt ?? new Date().toISOString(),
+      };
+      attachments.setDurable(agentId, next);
+      completion.clear(agentId);
+      return next;
+    },
+    markCompleted(agentId: string, patch: Partial<DurableChildRecord> = {}) {
+      const current = attachments.getDurable(agentId);
+      if (!current) return undefined;
+
+      const next: DurableChildRecord = {
+        ...current,
+        ...patch,
+        status: "live_idle",
+        updatedAt: patch.updatedAt ?? new Date().toISOString(),
+      };
+      attachments.setDurable(agentId, next);
+      completion.recordTerminal(agentId, next);
+
+      return next;
+    },
+    markFailed(agentId: string, patch: Partial<DurableChildRecord> = {}) {
+      const current = attachments.getDurable(agentId);
+      if (!current) return undefined;
+
+      const next: DurableChildRecord = {
+        ...current,
+        ...patch,
+        status: "failed",
+        updatedAt: patch.updatedAt ?? new Date().toISOString(),
+      };
+      attachments.setDurable(agentId, next);
+      completion.recordTerminal(agentId, next);
+
+      return next;
+    },
+    markClosed(agentId: string, patch: Partial<DurableChildRecord> = {}) {
+      const current = attachments.getDurable(agentId);
+      if (!current) return undefined;
+
+      const next: DurableChildRecord = {
+        ...current,
+        ...patch,
+        status: "closed",
+        updatedAt: patch.updatedAt ?? new Date().toISOString(),
+        closedAt: patch.closedAt ?? current.closedAt ?? new Date().toISOString(),
+      };
+      attachments.setDurable(agentId, next);
+      completion.recordTerminal(agentId, next);
+
+      return next;
     },
     snapshotActivities() {
       return snapshotSubagentActivities(subagentActivitiesById);
@@ -196,7 +295,7 @@ export function createSubagentRuntimeStore() {
       requestSubagentActivityRender();
     },
     getActivityIdentity(agentId: string) {
-      const record = durableChildrenById.get(agentId);
+      const record = attachments.getDurable(agentId);
       if (record) {
         return childSnapshot(record);
       }

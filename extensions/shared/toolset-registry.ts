@@ -28,11 +28,15 @@ export const TOOLSET_CONTRIBUTIONS = {
   },
   read: {
     extension: "read",
-    tools: [optional("read_file")],
+    tools: [optional("read")],
   },
   shell: {
     extension: "shell",
     tools: [optional("shell")],
+  },
+  skill: {
+    extension: "skill",
+    tools: [optional("skill")],
   },
   codexContent: {
     extension: "codex-content",
@@ -50,7 +54,6 @@ export const TOOLSET_CONTRIBUTIONS = {
   droidContent: {
     extension: "droid-content",
     tools: [
-      optional("Read"),
       optional("LS"),
       optional("Grep"),
       optional("Glob"),
@@ -60,24 +63,13 @@ export const TOOLSET_CONTRIBUTIONS = {
       optional("AskUser"),
       optional("TodoWrite"),
       optional("Execute"),
-      optional("Skill"),
-    ],
-  },
-  forgeContent: {
-    extension: "forge-content",
-    tools: [
-      optional("fs_search"),
-      optional("patch"),
-      optional("followup"),
-      optional("todos_write"),
-      optional("todos_read"),
     ],
   },
   subagentsCodex: {
     extension: "subagents-codex",
     tools: [
       optional("spawn_agent"),
-      optional("send_input"),
+      optional("send_message"),
       optional("wait_agent"),
       optional("close_agent"),
     ],
@@ -89,27 +81,21 @@ export const TOOLSET_CONTRIBUTIONS = {
 } satisfies Record<string, ToolsetContribution>;
 
 export const TOOLSET_MODE_ORDER = {
-  pi: ["piBuiltins", "web", "subagentsTask"],
-  codex: ["shell", "read", "web", "codexContent", "subagentsCodex"],
-  forge: ["piBuiltins", "shell", "read", "web", "forgeContent", "subagentsTask"],
-  droid: ["droidContent", "web", "subagentsTask"],
+  pi: ["piBuiltins", "web", "skill", "subagentsTask"],
+  codex: ["shell", "read", "web", "skill", "codexContent", "subagentsCodex"],
+  droid: ["read", "droidContent", "web", "skill", "subagentsTask"],
 } satisfies Record<ToolsetModeId, readonly (keyof typeof TOOLSET_CONTRIBUTIONS)[]>;
 
 export const TOOLSET_CONFLICT_RULES = [
   {
     owner: "codex-content",
     when: ["codex"],
-    hides: ["read", "grep", "find", "ls", "edit", "write", "bash"],
+    hides: ["grep", "find", "ls", "edit", "write", "bash"],
   },
   {
     owner: "droid-content",
     when: ["droid"],
-    hides: ["read", "grep", "find", "ls", "edit", "write", "bash", "shell", "read_file"],
-  },
-  {
-    owner: "forge-content",
-    when: ["forge"],
-    hides: ["read", "grep", "find", "ls", "edit", "bash"],
+    hides: ["grep", "find", "ls", "edit", "write", "bash", "shell"],
   },
   {
     owner: "shell",
@@ -123,14 +109,13 @@ export const TOOLSET_CONFLICT_RULES = [
   },
   {
     owner: "subagents-task",
-    when: ["pi", "forge", "droid"],
-    hides: ["spawn_agent", "send_input", "wait_agent", "close_agent"],
+    when: ["pi", "droid"],
+    hides: ["spawn_agent", "send_message", "wait_agent", "close_agent"],
   },
   {
     owner: "mode-conflicts",
-    when: ["pi", "codex", "forge"],
+    when: ["pi", "codex"],
     hides: [
-      "Read",
       "LS",
       "Grep",
       "Glob",
@@ -140,12 +125,11 @@ export const TOOLSET_CONFLICT_RULES = [
       "AskUser",
       "TodoWrite",
       "Execute",
-      "Skill",
     ],
   },
   {
     owner: "mode-conflicts",
-    when: ["pi", "droid", "forge"],
+    when: ["pi", "droid"],
     hides: [
       "update_plan",
       "read_plan",
@@ -156,10 +140,5 @@ export const TOOLSET_CONFLICT_RULES = [
       "apply_patch",
       "view_image",
     ],
-  },
-  {
-    owner: "mode-conflicts",
-    when: ["pi", "codex", "droid"],
-    hides: ["fs_search", "patch", "followup", "todos_write", "todos_read"],
   },
 ] satisfies readonly ToolsetConflictRule[];

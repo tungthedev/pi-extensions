@@ -7,8 +7,6 @@ import path from "node:path";
 import {
   applyPackageExtensionStateChanges,
   getPackageFilterState,
-  parseInstalledPackagesFromListOutput,
-  updateExtensionMarkers,
 } from "./packages.ts";
 
 async function withTempDir(run: (dir: string) => Promise<void>) {
@@ -19,30 +17,6 @@ async function withTempDir(run: (dir: string) => Promise<void>) {
     await rm(dir, { recursive: true, force: true });
   }
 }
-
-test("parseInstalledPackagesFromListOutput parses global and project package sections", () => {
-  const parsed = parseInstalledPackagesFromListOutput(`Global packages
-  npm:@scope/pkg (filtered)
-    /tmp/global-pkg
-
-Project packages
-  ./local-package
-    /work/local-package
-`);
-
-  assert.deepEqual(parsed, [
-    {
-      scope: "global",
-      source: "npm:@scope/pkg",
-      resolvedPath: "/tmp/global-pkg",
-    },
-    {
-      scope: "project",
-      source: "./local-package",
-      resolvedPath: "/work/local-package",
-    },
-  ]);
-});
 
 test("getPackageFilterState applies include patterns, excludes, and explicit markers", () => {
   assert.equal(getPackageFilterState(undefined, "extensions/a.ts"), "enabled");
@@ -66,25 +40,6 @@ test("getPackageFilterState applies include patterns, excludes, and explicit mar
     getPackageFilterState(["extensions/**", "-extensions/a.ts"], "extensions/a.ts"),
     "disabled",
   );
-});
-
-test("updateExtensionMarkers preserves non-marker tokens and replaces only changed markers", () => {
-  const next = updateExtensionMarkers(
-    ["extensions/**", "!extensions/private/**", "+old.ts", "-remove.ts"],
-    new Map([
-      ["z.ts", "enabled"],
-      ["a.ts", "disabled"],
-    ]),
-  );
-
-  assert.deepEqual(next, [
-    "extensions/**",
-    "!extensions/private/**",
-    "+old.ts",
-    "-remove.ts",
-    "-a.ts",
-    "+z.ts",
-  ]);
 });
 
 test("applyPackageExtensionStateChanges merges package settings markers into project settings", async () => {
@@ -129,5 +84,65 @@ test("applyPackageExtensionStateChanges merges package settings markers into pro
         extensions: ["extensions/**", "+keep.ts", "-fresh.ts", "+old.ts"],
       },
     ]);
+  });
+});
+
+test("applyPackageExtensionStateChanges preserves unrelated settings keys", async () => {
+  await withTempDir(async (cwd) => {
+    const settingsPath = path.join(cwd, ".pi", "settings.json");
+    await mkdir(path.dirname(settingsPath), { recursive: true });
+    await writeFile(
+      settingsPath,
+      JSON.stringify(
+        {
+          theme: "dark",
+          packages: ["npm:test-package"],
+        },
+        null,
+        2,
+      ),
+    );
+
+    const result = await applyPackageExtensionStateChanges(
+      "npm:test-package",
+      "project",
+      [{ extensionPath: "fresh.ts", target: "disabled" }],
+      cwd,
+    );
+
+    assert.deepEqual(result, { ok: true });
+
+    const updated = JSON.parse(await readFile(settingsPath, "utf8")) as {
+      theme?: string;
+      packages: Array<string | { source: string; extensions?: string[] }>;
+    };
+
+    assert.equal(updated.theme, "dark");
+    assert.deepEqual(updated.packages, [
+      {
+        source: "npm:test-package",
+        extensions: ["-fresh.ts"],
+      },
+    ]);
+  });
+});
+
+test("applyPackageExtensionStateChanges returns an error for invalid root settings format", async () => {
+  await withTempDir(async (cwd) => {
+    const settingsPath = path.join(cwd, ".pi", "settings.json");
+    await mkdir(path.dirname(settingsPath), { recursive: true });
+    await writeFile(settingsPath, "[]\n");
+
+    const result = await applyPackageExtensionStateChanges(
+      "npm:test-package",
+      "project",
+      [{ extensionPath: "fresh.ts", target: "disabled" }],
+      cwd,
+    );
+
+    assert.deepEqual(result, {
+      ok: false,
+      error: `Invalid settings format in ${settingsPath}: expected object`,
+    });
   });
 });

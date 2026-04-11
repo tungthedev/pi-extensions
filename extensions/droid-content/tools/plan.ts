@@ -7,14 +7,15 @@ import {
   applyTodoUpdates,
   createEmptyTodoSnapshot,
   formatTodoSummary,
+  normalizeTodoContent,
   renderTodoLines,
   restoreTodoSnapshot,
+  type TodoItem,
   type TodoSnapshot,
-  type TodoUpdate,
   type TodoWriteDetails,
 } from "../../todos/index.ts";
 import { syncTodoUi } from "../../todos/todo-widget.ts";
-import { buildDroidPlanUpdates } from "./plan-parser.ts";
+import { buildDroidPlanUpdates, parseDroidPlanRows, type DroidPlanRow } from "./plan-parser.ts";
 
 const WIDGET_KEY = "droid-content:plan";
 const STATUS_KEY = "droid-content:plan";
@@ -38,41 +39,86 @@ Status markers: \`[completed]\`, \`[in_progress]\`, \`[pending]\`
 Numbers are for readability only; item order is determined by line position.
 
 ## PERFORMANCE TIP
-Call TodoWrite IN PARALLEL with other tools to save time and tokens. When starting work on a task, create/update todos simultaneously with your first exploration tools (Read, Grep, LS, etc.). Don't wait to finish reading files before creating your todo list - do both at once. This parallelization significantly improves response time.`;
+Call TodoWrite IN PARALLEL with other tools to save time and tokens. When starting work on a task, create/update todos simultaneously with your first exploration tools (read, Grep, LS, etc.). Don't wait to finish reading files before creating your todo list - do both at once. This parallelization significantly improves response time.`;
+
+type DroidPlanWriteDetails = TodoWriteDetails & {
+  parsedRows?: DroidPlanRow[];
+};
 
 type WorkflowState = {
   snapshot: TodoSnapshot;
+  previousParsedRows: DroidPlanRow[];
 };
 
-function reconstructSnapshot(ctx: ExtensionContext): TodoSnapshot {
-  const detailsList: TodoWriteDetails[] = [];
+function reconstructState(ctx: ExtensionContext): WorkflowState {
+  const detailsList: DroidPlanWriteDetails[] = [];
+  let previousParsedRows: DroidPlanRow[] = [];
+
   for (const entry of ctx.sessionManager.getBranch()) {
     if (entry.type !== "message") continue;
     const message = entry.message;
     if (message.role !== "toolResult") continue;
     if (message.toolName !== "TodoWrite") continue;
-    const details = message.details as TodoWriteDetails | undefined;
-    if (details?.action === "todo_write") detailsList.push(details);
+    const details = message.details as DroidPlanWriteDetails | undefined;
+    if (details?.action !== "todos_write") continue;
+    detailsList.push(details);
+    previousParsedRows = details.parsedRows ?? [];
   }
-  return restoreTodoSnapshot(detailsList);
+
+  return {
+    snapshot: restoreTodoSnapshot(detailsList),
+    previousParsedRows,
+  };
 }
 
-function updatedTodoItems(snapshot: TodoSnapshot, updates: TodoUpdate[]) {
-  return updates
-    .map((update) => snapshot.items.find((item) => item.content === update.content))
-    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+function mapPlanRowsToSnapshotItems(snapshot: TodoSnapshot, rows: DroidPlanRow[]): Array<TodoItem | undefined> {
+  const matchedIds = new Set<string>();
+
+  return rows.map((row) => {
+    const content = normalizeTodoContent(row.content);
+    const item = snapshot.items.find((candidate) => candidate.content === content && !matchedIds.has(candidate.id));
+    if (item) {
+      matchedIds.add(item.id);
+    }
+    return item;
+  });
+}
+
+function updatedTodoItems(
+  snapshot: TodoSnapshot,
+  previousParsedRows: DroidPlanRow[],
+  currentParsedRows: DroidPlanRow[],
+): TodoItem[] {
+  const rowItems = mapPlanRowsToSnapshotItems(snapshot, currentParsedRows);
+  const changedItems: TodoItem[] = [];
+
+  for (const [index, row] of currentParsedRows.entries()) {
+    const previousRow = previousParsedRows[index];
+    if (!previousRow || previousRow.status === row.status) continue;
+
+    const item = rowItems[index];
+    if (item) {
+      changedItems.push(item);
+    }
+  }
+
+  return changedItems;
 }
 
 export function registerDroidPlanTool(pi: ExtensionAPI): void {
-  const state: WorkflowState = { snapshot: createEmptyTodoSnapshot() };
+  const state: WorkflowState = { snapshot: createEmptyTodoSnapshot(), previousParsedRows: [] };
 
   pi.on("session_start", async (_event, ctx) => {
-    state.snapshot = reconstructSnapshot(ctx);
+    const restoredState = reconstructState(ctx);
+    state.snapshot = restoredState.snapshot;
+    state.previousParsedRows = restoredState.previousParsedRows;
     syncTodoUi(ctx, state.snapshot.items, { widgetKey: WIDGET_KEY, statusKey: STATUS_KEY });
   });
 
   pi.on("session_tree", async (_event, ctx) => {
-    state.snapshot = reconstructSnapshot(ctx);
+    const restoredState = reconstructState(ctx);
+    state.snapshot = restoredState.snapshot;
+    state.previousParsedRows = restoredState.previousParsedRows;
     syncTodoUi(ctx, state.snapshot.items, { widgetKey: WIDGET_KEY, statusKey: STATUS_KEY });
   });
 
@@ -91,15 +137,19 @@ export function registerDroidPlanTool(pi: ExtensionAPI): void {
         throw new Error("TodoWrite currently supports the documented string todo format only");
       }
 
-      const updates = buildDroidPlanUpdates(params.todos);
+      const parsedRows = parseDroidPlanRows(params.todos);
+      const updates = buildDroidPlanUpdates(parsedRows);
       state.snapshot = applyTodoUpdates(state.snapshot, updates);
+      const changedItems = updatedTodoItems(state.snapshot, state.previousParsedRows, parsedRows);
+      state.previousParsedRows = parsedRows;
       syncTodoUi(ctx, state.snapshot.items, { widgetKey: WIDGET_KEY, statusKey: STATUS_KEY });
 
-      const details: TodoWriteDetails = {
-        action: "todo_write",
+      const details: DroidPlanWriteDetails = {
+        action: "todos_write",
         items: [...state.snapshot.items],
         nextId: state.snapshot.nextId,
-        updatedItems: updatedTodoItems(state.snapshot, updates),
+        updatedItems: changedItems,
+        parsedRows: [...parsedRows],
       };
 
       return {
@@ -111,7 +161,7 @@ export function registerDroidPlanTool(pi: ExtensionAPI): void {
       return new Text(theme.fg("toolTitle", theme.bold("Update plan")), 0, 0);
     },
     renderResult(result, _options, theme) {
-      const details = result.details as TodoWriteDetails | undefined;
+      const details = result.details as DroidPlanWriteDetails | undefined;
       const items = details?.updatedItems ?? [];
       if (items.length === 0) {
         return new Text(theme.fg("muted", "All todos completed"), 0, 0);

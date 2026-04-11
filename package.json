@@ -1,10 +1,10 @@
 {
   "name": "@tungthedev/pi-extensions",
   "version": "1.1.0",
-  "description": "A Pi package containing editor, mermaid, read, web-search, codex-content, subagents, forge-content, system-md, shell, settings, and ext-manager extensions.",
+  "description": "A Pi package containing editor, mermaid, read, web, skill, codex-content, subagents, droid-content, system-md, shell, settings, and ext-manager extensions.",
   "keywords": [
     "codex",
-    "forge",
+    "droid",
     "mermaid",
     "pi",
     "pi-extension",
@@ -36,7 +36,7 @@
     "format:check": "oxfmt --check .",
     "lint": "oxlint extensions",
     "lint:fix": "oxlint --fix extensions",
-    "test": "bun test ./extensions/editor ./extensions/read ./extensions/web-search ./extensions/codex-content ./extensions/subagents ./extensions/ext-manager ./extensions/forge-content ./extensions/system-md ./extensions/todos ./extensions/shell ./extensions/ask-user ./extensions/settings",
+    "test": "bun test ./extensions/editor ./extensions/read ./extensions/web ./extensions/skill ./extensions/codex-content ./extensions/droid-content ./extensions/subagents ./extensions/ext-manager ./extensions/system-md ./extensions/todos ./extensions/shell ./extensions/ask-user ./extensions/settings ./extensions/mermaid ./extensions/shared ./extensions/web-search ./extensions/cloudflare-crawl",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -46,8 +46,8 @@
     "file-type": "^21.1.1"
   },
   "devDependencies": {
-    "@mariozechner/pi-coding-agent": "0.62.0",
-    "@mariozechner/pi-tui": "0.62.0",
+    "@mariozechner/pi-coding-agent": "0.65.2",
+    "@mariozechner/pi-tui": "0.65.2",
     "@sinclair/typebox": "0.34.48",
     "@types/node": "^24.3.0",
     "oxfmt": "0.41.0",
@@ -69,11 +69,11 @@
       "./extensions/editor/index.ts",
       "./extensions/mermaid/index.ts",
       "./extensions/read/index.ts",
-      "./extensions/web-search/index.ts",
-      "./extensions/cloudflare-crawl/index.ts",
+      "./extensions/web/index.ts",
+      "./extensions/skill/index.ts",
       "./extensions/codex-content/index.ts",
+      "./extensions/droid-content/index.ts",
       "./extensions/subagents/index.ts",
-      "./extensions/forge-content/index.ts",
       "./extensions/system-md/index.ts",
       "./extensions/shell/index.ts",
       "./extensions/ext-manager/index.ts",

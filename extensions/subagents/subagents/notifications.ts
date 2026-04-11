@@ -1,4 +1,5 @@
-import type { AgentSnapshot } from "./types.ts";
+import type { AgentSnapshot, PublicAgentSnapshot } from "./types.ts";
+import { toPublicAgentSnapshot } from "./results.ts";
 
 export const SUBAGENT_NOTIFICATION_CUSTOM_TYPE = "subagent-notification";
 export const LEGACY_SUBAGENT_NOTIFICATION_CUSTOM_TYPE = "codex-subagent-notification";
@@ -14,12 +15,12 @@ const SUBAGENT_NOTIFICATION_OPEN_TAG = "<subagent_notification>";
 const SUBAGENT_NOTIFICATION_CLOSE_TAG = "</subagent_notification>";
 
 type NotificationPayload = {
-  agent_id: string;
+  name: string;
   status: AgentSnapshot["status"];
   durable_status: AgentSnapshot["durable_status"];
-  name?: string;
   last_assistant_text?: string;
   last_error?: string;
+  task_summary?: string;
 };
 
 export function formatSubagentNotificationMessage(
@@ -27,14 +28,18 @@ export function formatSubagentNotificationMessage(
     AgentSnapshot,
     "agent_id" | "status" | "durable_status" | "name" | "last_assistant_text" | "last_error"
   >,
+  options: { taskSummary?: string } = {},
 ): string {
+  const publicSnapshot = toPublicAgentSnapshot(snapshot as AgentSnapshot);
   const payload: NotificationPayload = {
-    agent_id: snapshot.agent_id,
-    status: snapshot.status,
-    durable_status: snapshot.durable_status,
-    ...(snapshot.name ? { name: snapshot.name } : {}),
-    ...(snapshot.last_assistant_text ? { last_assistant_text: snapshot.last_assistant_text } : {}),
-    ...(snapshot.last_error ? { last_error: snapshot.last_error } : {}),
+    name: publicSnapshot.name,
+    status: publicSnapshot.status,
+    durable_status: publicSnapshot.durable_status,
+    ...(publicSnapshot.last_assistant_text
+      ? { last_assistant_text: publicSnapshot.last_assistant_text }
+      : {}),
+    ...(publicSnapshot.last_error ? { last_error: publicSnapshot.last_error } : {}),
+    ...(options.taskSummary ? { task_summary: options.taskSummary } : {}),
   };
 
   return [
@@ -46,7 +51,7 @@ export function formatSubagentNotificationMessage(
 
 export function parseSubagentNotificationMessage(
   content: string | undefined,
-): NotificationPayload | undefined {
+): (PublicAgentSnapshot & { task_summary?: string }) | undefined {
   const trimmed = content?.trim();
   if (!trimmed) return undefined;
 
@@ -57,17 +62,17 @@ export function parseSubagentNotificationMessage(
   }
 
   try {
-    return JSON.parse(
-      trimmed.slice(prefix.length, trimmed.length - suffix.length),
-    ) as NotificationPayload;
+    return JSON.parse(trimmed.slice(prefix.length, trimmed.length - suffix.length)) as PublicAgentSnapshot & {
+      task_summary?: string;
+    };
   } catch {
     return undefined;
   }
 }
 
-export function buildWaitAgentContent(snapshots: AgentSnapshot[], timedOut: boolean): string {
+export function buildWaitAgentContent(snapshots: PublicAgentSnapshot[], timedOut: boolean): string {
   return JSON.stringify({
-    status: Object.fromEntries(snapshots.map((snapshot) => [snapshot.agent_id, snapshot.status])),
+    status: Object.fromEntries(snapshots.map((snapshot) => [snapshot.name, snapshot.status])),
     timed_out: timedOut,
     agents: snapshots,
   });

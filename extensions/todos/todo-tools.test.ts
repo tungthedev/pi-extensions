@@ -73,56 +73,6 @@ function createHarness(config?: Partial<Parameters<typeof registerTodoTools>[1]>
   };
 }
 
-function trimRenderedLines(lines: string[]): string[] {
-  return lines.map((line) => line.trimEnd());
-}
-
-test("registerTodoTools registers configurable write and read tool names", () => {
-  const { tools } = createHarness();
-  assert.ok(tools.has("custom_write"));
-  assert.ok(tools.has("custom_read"));
-});
-
-test("shared todo write renders compact call and result lines for updated todos", async () => {
-  const { tools, theme, ui } = createHarness();
-  const todoWrite = tools.get("custom_write");
-  assert.ok(todoWrite);
-
-  assert.deepEqual(trimRenderedLines(todoWrite.renderCall({}, theme).render(80)), ["Update todo"]);
-
-  await todoWrite.execute(
-    "call-1",
-    {
-      todos: [
-        { content: "Task A", status: "in_progress" },
-        { content: "Task B", status: "pending" },
-      ],
-    },
-    undefined,
-    undefined,
-    { ui },
-  );
-
-  const result = await todoWrite.execute(
-    "call-2",
-    {
-      todos: [
-        { content: "Task A", status: "completed" },
-        { content: "Task B", status: "in_progress" },
-        { content: "Task C", status: "pending" },
-      ],
-    },
-    undefined,
-    undefined,
-    { ui },
-  );
-
-  assert.deepEqual(
-    trimRenderedLines(todoWrite.renderResult(result, { expanded: false }, theme).render(120)),
-    ["󰄵 ~~#1 Task A~~", "󰄗 #2 Task B", "󰄱 #3 Task C"],
-  );
-});
-
 test("shared todo write adds reminder content and hides widget when nothing is in progress", async () => {
   const { tools, ui, statuses, widgets } = createHarness();
   const todoWrite = tools.get("custom_write");
@@ -175,62 +125,6 @@ test("shared todo write adds reminder content and hides widget when nothing is i
   });
 });
 
-test("shared todo write renders all-complete message when no updated todo lines remain", () => {
-  const { tools, theme } = createHarness();
-  const todoWrite = tools.get("custom_write");
-  assert.ok(todoWrite);
-
-  assert.deepEqual(
-    trimRenderedLines(
-      todoWrite
-        .renderResult(
-          {
-            details: {
-              action: "todo_write",
-              items: [],
-              nextId: 1,
-              updatedItems: [],
-            },
-            content: [],
-          },
-          { expanded: false },
-          theme,
-        )
-        .render(120),
-    ),
-    ["All todos completed"],
-  );
-});
-
-test("shared todo read renders the current todos with the same compact styling", () => {
-  const { tools, theme } = createHarness();
-  const todoRead = tools.get("custom_read");
-  assert.ok(todoRead);
-
-  assert.deepEqual(trimRenderedLines(todoRead.renderCall({}, theme).render(80)), ["Read todo"]);
-  assert.deepEqual(
-    trimRenderedLines(
-      todoRead
-        .renderResult(
-          {
-            details: {
-              items: [
-                { id: "1", content: "Task A", status: "completed" },
-                { id: "2", content: "Task B", status: "in_progress" },
-                { id: "3", content: "Task C", status: "pending" },
-              ],
-            },
-            content: [],
-          },
-          { expanded: false },
-          theme,
-        )
-        .render(120),
-    ),
-    ["󰄵 ~~#1 Task A~~", "󰄗 #2 Task B", "󰄱 #3 Task C"],
-  );
-});
-
 test("shared todo read reconstructs state using the configured write tool name", async () => {
   const { tools, ui } = createHarness();
   const todoRead = tools.get("custom_read");
@@ -246,7 +140,7 @@ test("shared todo read reconstructs state using the configured write tool name",
             role: "toolResult",
             toolName: "custom_write",
             details: {
-              action: "todo_write",
+              action: "todos_write",
               items: [{ id: "1", content: "Restored", status: "in_progress" }],
               nextId: 2,
             },
@@ -257,4 +151,68 @@ test("shared todo read reconstructs state using the configured write tool name",
   });
 
   assert.equal(result.content[0]?.text, "[in_progress] #1 Restored");
+});
+
+test("shared todo read preserves duplicate todo ids when replaying session history", async () => {
+  const { tools, ui } = createHarness();
+  const todoRead = tools.get("custom_read");
+  assert.ok(todoRead);
+
+  const result = await todoRead.execute("call-1", {}, undefined, undefined, {
+    ui,
+    sessionManager: {
+      getBranch: () => [
+        {
+          type: "message",
+          message: {
+            role: "toolResult",
+            toolName: "custom_write",
+            details: {
+              action: "todos_write",
+              items: [
+                { id: "1", content: "Duplicate", status: "pending" },
+                { id: "2", content: "Duplicate", status: "in_progress" },
+              ],
+              nextId: 3,
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(result.content[0]?.text, "[pending] #1 Duplicate\n[in_progress] #2 Duplicate");
+});
+
+test("shared todo write returns updatedItems for id-targeted duplicate updates", async () => {
+  const { tools, ui } = createHarness();
+  const todoWrite = tools.get("custom_write");
+  assert.ok(todoWrite);
+
+  await todoWrite.execute(
+    "call-1",
+    {
+      todos: [
+        { content: "Duplicate", status: "pending" },
+        { content: "Duplicate", status: "pending" },
+      ],
+    },
+    undefined,
+    undefined,
+    { ui },
+  );
+
+  const result = await todoWrite.execute(
+    "call-2",
+    {
+      todos: [{ id: "2", content: "Duplicate", status: "completed" }],
+    },
+    undefined,
+    undefined,
+    { ui },
+  );
+
+  assert.deepEqual(result.details.updatedItems, [
+    { id: "2", content: "Duplicate", status: "completed" },
+  ]);
 });

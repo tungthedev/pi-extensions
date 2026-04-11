@@ -2,109 +2,107 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@m
 
 import {
   TOOL_SET_CHANGED_EVENT,
-  formatToolSetLabel,
-  readTungthedevSettings,
-  writeCustomShellToolSetting,
+  readPiModeSettings,
+  writeIncludePiPromptSectionSetting,
   writeSystemMdPromptSetting,
   writeToolSetSetting,
   type ToolSetChangedPayload,
   type ToolSetPack,
-  type TungthedevSettings,
+  type PiModeSettings,
 } from "./config.ts";
 import {
   ensureSessionToolSetSnapshot,
   resolveSessionToolSet,
   writeSessionToolSetSnapshot,
 } from "./session.ts";
+import { applyToolSetTransition } from "./tool-set-transition.ts";
 import {
   formatSystemMdPromptLabel,
-  openTungthedevSettingsUi,
+  openPiModeSettingsUi,
   parseSettingsCommand,
 } from "./ui.ts";
 
-export type TungthedevCommandDeps = {
-  readSettings: () => Promise<TungthedevSettings>;
+export type PiModeCommandDeps = {
+  readSettings: () => Promise<PiModeSettings>;
   writeToolSet: (value: ToolSetPack) => Promise<void>;
   writeSessionToolSet: (value: ToolSetPack) => Promise<void> | void;
-  writeCustomShellTool: (value: boolean) => Promise<void>;
   writeSystemMdPrompt: (value: boolean) => Promise<void>;
+  writeIncludePiPromptSection: (value: boolean) => Promise<void>;
   emitToolSetChange?: (value: ToolSetPack) => Promise<void> | void;
-  openSettingsUi: (
-    ctx: ExtensionCommandContext,
-    options: { focus?: "toolSet" | "customShellTool" | "systemMdPrompt" },
-  ) => Promise<void>;
+  openSettingsUi: (ctx: ExtensionCommandContext, options: { focus?: "toolSet" | "systemMdPrompt" | "includePiPromptSection" }) => Promise<void>;
 };
 
 function getNextToolSet(current: ToolSetPack): ToolSetPack {
   if (current === "pi") return "codex";
-  if (current === "codex") return "forge";
+  if (current === "codex") return "droid";
   return "pi";
 }
 
 async function applyToolSetSelection(
   ctx: Pick<ExtensionContext, "hasUI" | "ui">,
   deps: Pick<
-    TungthedevCommandDeps,
+    PiModeCommandDeps,
     "writeToolSet" | "writeSessionToolSet" | "emitToolSetChange"
   >,
   toolSet: ToolSetPack,
 ): Promise<void> {
-  await deps.writeToolSet(toolSet);
-  await deps.writeSessionToolSet(toolSet);
-  await deps.emitToolSetChange?.(toolSet);
-
-  if (ctx.hasUI) {
-    ctx.ui.notify(`Tool set: ${formatToolSetLabel(toolSet)}`, "info");
-  }
+  await applyToolSetTransition(ctx, deps, toolSet);
 }
 
 async function cycleToolSet(
   ctx: Pick<ExtensionContext, "hasUI" | "ui" | "sessionManager">,
-  deps: Pick<TungthedevCommandDeps, "writeToolSet" | "writeSessionToolSet" | "emitToolSetChange">,
+  deps: Pick<PiModeCommandDeps, "writeToolSet" | "writeSessionToolSet" | "emitToolSetChange">,
 ): Promise<void> {
   const nextToolSet = getNextToolSet(await resolveSessionToolSet(ctx.sessionManager));
   await applyToolSetSelection(ctx, deps, nextToolSet);
 }
 
-function createDefaultDeps(pi: ExtensionAPI): TungthedevCommandDeps {
+function createDefaultDeps(pi: ExtensionAPI): PiModeCommandDeps {
   return {
-    readSettings: () => readTungthedevSettings(),
+    readSettings: () => readPiModeSettings(),
     writeToolSet: (value) => writeToolSetSetting(value),
     writeSessionToolSet: (value) => writeSessionToolSetSnapshot(pi, value),
-    writeCustomShellTool: (value) => writeCustomShellToolSetting(value),
     writeSystemMdPrompt: (value) => writeSystemMdPromptSetting(value),
+    writeIncludePiPromptSection: (value) => writeIncludePiPromptSectionSetting(value),
     emitToolSetChange: (value) => {
       pi.events.emit(TOOL_SET_CHANGED_EVENT, {
         toolSet: value,
       } satisfies ToolSetChangedPayload);
     },
     openSettingsUi: (ctx, options) =>
-      openTungthedevSettingsUi(ctx, {
+      openPiModeSettingsUi(ctx, {
         focus: options.focus,
         readSettings: async () => {
-          const settings = await readTungthedevSettings();
+          const settings = await readPiModeSettings();
           return {
             ...settings,
             toolSet: await resolveSessionToolSet(ctx.sessionManager),
           };
         },
-        writeToolSet: (value) => writeToolSetSetting(value),
-        writeCustomShellTool: (value) => writeCustomShellToolSetting(value),
         writeSystemMdPrompt: (value) => writeSystemMdPromptSetting(value),
-        onToolSetChange: async (value) => {
-          writeSessionToolSetSnapshot(pi, value);
-          pi.events.emit(TOOL_SET_CHANGED_EVENT, {
-            toolSet: value,
-          } satisfies ToolSetChangedPayload);
-        },
+        writeIncludePiPromptSection: (value) => writeIncludePiPromptSectionSetting(value),
+        applyToolSetTransition: (ctx, value) =>
+          applyToolSetTransition(
+            ctx,
+            {
+              writeToolSet: (toolSet) => writeToolSetSetting(toolSet),
+              writeSessionToolSet: (toolSet) => writeSessionToolSetSnapshot(pi, toolSet),
+              emitToolSetChange: (toolSet) => {
+                pi.events.emit(TOOL_SET_CHANGED_EVENT, {
+                  toolSet,
+                } satisfies ToolSetChangedPayload);
+              },
+            },
+            value,
+          ),
       }),
   };
 }
 
-export async function handleTungthedevCommand(
+export async function handlePiModeCommand(
   args: string,
   ctx: ExtensionCommandContext,
-  deps: TungthedevCommandDeps,
+  deps: PiModeCommandDeps,
 ): Promise<void> {
   const action = parseSettingsCommand(args);
 
@@ -118,15 +116,18 @@ export async function handleTungthedevCommand(
     return;
   }
 
-  if (action.action === "set-custom-shell-tool") {
-    await deps.writeCustomShellTool(action.value);
-    ctx.ui.notify(`Custom shell tool: ${action.value ? "Enabled" : "Disabled"}`, "info");
+  if (action.action === "set-system-md-prompt") {
+    await deps.writeSystemMdPrompt(action.value);
+    ctx.ui.notify(`Inject SYSTEM.md: ${formatSystemMdPromptLabel(action.value)}`, "info");
     return;
   }
 
-  if (action.action === "set-system-md-prompt") {
-    await deps.writeSystemMdPrompt(action.value);
-    ctx.ui.notify(`System.md prompt: ${formatSystemMdPromptLabel(action.value)}`, "info");
+  if (action.action === "set-include-pi-prompt-section") {
+    await deps.writeIncludePiPromptSection(action.value);
+    ctx.ui.notify(
+      `Include Pi prompt section: ${action.value ? "Enabled" : "Disabled"}`,
+      "info",
+    );
     return;
   }
 
@@ -134,29 +135,29 @@ export async function handleTungthedevCommand(
     focus:
       action.action === "open-tool-set"
         ? "toolSet"
-        : action.action === "open-custom-shell-tool"
-          ? "customShellTool"
-          : action.action === "open-system-md-prompt"
-            ? "systemMdPrompt"
+        : action.action === "open-system-md-prompt"
+          ? "systemMdPrompt"
+          : action.action === "open-include-pi-prompt-section"
+            ? "includePiPromptSection"
             : undefined,
   });
 }
 
-export function registerTungthedevCommand(
+export function registerPiModeCommand(
   pi: ExtensionAPI,
-  deps: TungthedevCommandDeps = createDefaultDeps(pi),
+  deps: PiModeCommandDeps = createDefaultDeps(pi),
 ): void {
   pi.registerCommand("pi-mode", {
     description: "Open Pi Mode settings or update a package setting",
     handler: async (args, ctx) => {
-      await handleTungthedevCommand(args, ctx, deps);
+      await handlePiModeCommand(args, ctx, deps);
     },
   });
 }
 
-export function registerTungthedevShortcut(
+export function registerPiModeShortcut(
   pi: ExtensionAPI,
-  deps: TungthedevCommandDeps = createDefaultDeps(pi),
+  deps: PiModeCommandDeps = createDefaultDeps(pi),
 ): void {
   if (typeof pi.registerShortcut !== "function") return;
 
@@ -168,17 +169,13 @@ export function registerTungthedevShortcut(
   });
 }
 
-export default function registerTungthedevSettingsExtension(pi: ExtensionAPI) {
+export default function registerPiModeSettingsExtension(pi: ExtensionAPI) {
   const deps = createDefaultDeps(pi);
 
   pi.on("session_start", async (_event, ctx) => {
     await ensureSessionToolSetSnapshot(pi, ctx.sessionManager);
   });
 
-  pi.on("session_switch", async (_event, ctx) => {
-    await ensureSessionToolSetSnapshot(pi, ctx.sessionManager);
-  });
-
-  registerTungthedevCommand(pi, deps);
-  registerTungthedevShortcut(pi, deps);
+  registerPiModeCommand(pi, deps);
+  registerPiModeShortcut(pi, deps);
 }

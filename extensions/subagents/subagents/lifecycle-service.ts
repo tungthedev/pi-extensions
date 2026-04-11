@@ -1,7 +1,6 @@
 import type { ExtensionContext, SessionEntry } from "@mariozechner/pi-coding-agent";
 
 import { randomUUID } from "node:crypto";
-import path from "node:path";
 
 import type { AppliedSpawnProfile } from "./profiles-apply.ts";
 import type {
@@ -15,27 +14,27 @@ import type {
 } from "./types.ts";
 
 import { applySpawnAgentProfile } from "./profiles-apply.ts";
+import { validateSubagentName } from "./naming.ts";
 import { resolveAgentProfiles } from "./profiles.ts";
+import { resolveSessionToolSet } from "../../settings/session.ts";
 
 export type SpawnLifecycleRequest = {
   mode: "codex" | "task";
   ctx: ExtensionContext;
+  name: string;
   prompt: string;
   requestedAgentType?: string;
-  workdir?: string;
   requestedModel?: string;
   requestedReasoningEffort?: string;
   runInBackground?: boolean;
   interactive?: boolean;
   forkContext?: boolean;
-  displayNameHint?: string;
-  nameSeed: string;
   taskSummary?: string;
 };
 
 export type SpawnLifecycleResult = {
   agentId: string;
-  nickname?: string;
+  name: string;
   prompt: string;
   taskSummary?: string;
   record: DurableChildRecord;
@@ -97,15 +96,17 @@ export type SubagentLifecycleServiceDeps = {
     currentCwd: string;
     childCwd: string;
   }) => string;
-  resolveName: (displayNameHint: string | undefined, nameSeed: string) => string;
+  findAddressableChildByName: (name: string) => DurableChildRecord | undefined;
   attachChild: (
     record: DurableChildRecord,
     mode: "fresh" | "resume" | "fork",
+    toolSet?: "pi" | "codex" | "droid",
   ) => Promise<{ attachment: RpcLiveChildAttachment; record: DurableChildRecord }>;
   launchInteractiveChild: (options: {
     record: DurableChildRecord;
     prompt: string;
     profileBootstrap: AppliedSpawnProfile["bootstrap"];
+    toolSet: "pi" | "codex" | "droid";
     forkedSessionFile?: string;
   }) => Promise<{
     attachment: LiveChildAttachment;
@@ -137,6 +138,7 @@ export type SubagentLifecycleServiceDeps = {
     attachment: LiveChildAttachment,
     disposition: NonNullable<LiveChildAttachment["closingDisposition"]>,
   ) => Promise<void>;
+  listWaitableChildIds: () => string[];
   waitForReadySnapshots: (ids: string[], options: { timeoutMs?: number; claim?: boolean }) => Promise<AgentSnapshot[]>;
   incrementActiveWaits: (ids: string[]) => void;
   decrementActiveWaits: (ids: string[]) => void;
@@ -184,16 +186,15 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
     agentId: string,
     transport: ChildTransport,
     appliedProfile: AppliedSpawnProfile,
-    workdir: string,
-    nickname: string,
+    name: string,
     forkedSessionFile?: string,
   ): DurableChildRecord => ({
     agentId,
     transport,
     agentType: appliedProfile.agentType,
-    cwd: workdir,
+    cwd: request.ctx.cwd,
     model: appliedProfile.effectiveModel,
-    name: nickname,
+    name,
     ...(request.taskSummary ? { taskSummary: request.taskSummary } : {}),
     status: "live_running",
     createdAt: new Date().toISOString(),
@@ -216,9 +217,12 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
     }
   };
 
-  return {
-    async spawn(request: SpawnLifecycleRequest): Promise<SpawnLifecycleResult> {
-      const workdir = request.workdir ? path.resolve(request.ctx.cwd, request.workdir) : request.ctx.cwd;
+  const spawn = async (request: SpawnLifecycleRequest): Promise<SpawnLifecycleResult> => {
+      const publicName = validateSubagentName(request.name);
+      if (deps.findAddressableChildByName(publicName)) {
+        throw new Error(`name is already in use: ${publicName}`);
+      }
+
       const transport: ChildTransport = request.mode === "codex" && request.interactive ? "interactive" : "rpc";
       if (transport === "interactive" && !deps.isMuxAvailable()) {
         throw deps.muxUnavailableError();
@@ -226,6 +230,7 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
 
       const agentId = randomUUID();
       const appliedProfile = resolveAppliedProfile(request);
+      const toolSet = await resolveSessionToolSet(request.ctx.sessionManager as { getBranch(): Array<unknown> }, process.env);
       const thinkingLevel = deps.normalizeReasoningEffortToThinkingLevel(
         appliedProfile.effectiveReasoningEffort,
       );
@@ -235,17 +240,15 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
               sessionFile: request.ctx.sessionManager.getSessionFile(),
               leafId: request.ctx.sessionManager.getLeafId(),
               currentCwd: request.ctx.cwd,
-              childCwd: workdir,
+              childCwd: request.ctx.cwd,
             })
           : undefined;
-      const nickname = deps.resolveName(request.displayNameHint, request.nameSeed);
       const baseRecord = buildBaseRecord(
         request,
         agentId,
         transport,
         appliedProfile,
-        workdir,
-        nickname,
+        publicName,
         forkedSessionFile,
       );
 
@@ -257,9 +260,10 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
               record: baseRecord,
               prompt: request.prompt,
               profileBootstrap: appliedProfile.bootstrap,
+              toolSet,
               forkedSessionFile,
             })
-          : await deps.attachChild(baseRecord, forkedSessionFile ? "fork" : "fresh");
+          : await deps.attachChild(baseRecord, forkedSessionFile ? "fork" : "fresh", toolSet);
 
       try {
         let durableRecord: DurableChildRecord;
@@ -286,7 +290,7 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
         if (request.runInBackground) {
           return {
             agentId,
-            nickname,
+            name: publicName,
             prompt: request.prompt,
             taskSummary: request.taskSummary,
             record: durableRecord,
@@ -297,7 +301,7 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
         const completedAgent = await finalizeForegroundSpawn(agentId, attachment);
         return {
           agentId,
-          nickname,
+          name: publicName,
           prompt: request.prompt,
           taskSummary: request.taskSummary,
           record: durableRecord,
@@ -318,17 +322,18 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
         await deps.closeLiveAttachment(attachment, "discard").catch(() => undefined);
         throw error;
       }
-    },
+    };
 
-    async resume(request: ResumeLifecycleRequest): Promise<ResumeLifecycleResult> {
+  const resume = async (request: ResumeLifecycleRequest): Promise<ResumeLifecycleResult> => {
       const attachment = await deps.ensureLiveAttachment(request.agentId);
       return await deps.queueAgentOperation(attachment, async () => {
         const record = deps.requireDurableChild(request.agentId);
+        const agentName = record.name ?? request.agentId;
         if (record.status === "closed") {
-          throw new Error(`Agent ${request.agentId} is already closed`);
+          throw new Error(`Agent ${agentName} is already closed`);
         }
         if (record.status === "failed" && request.mode === "codex" && !deps.isInteractiveAttachment(attachment)) {
-          throw new Error(record.lastError ?? `Agent ${request.agentId} is in a failed state`);
+          throw new Error(record.lastError ?? `Agent ${agentName} is in a failed state`);
         }
 
         let commandType: "prompt" | "follow_up" | "steer" | "interactive_input";
@@ -369,9 +374,9 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
           snapshot,
         };
       });
-    },
+    };
 
-    async wait(request: WaitLifecycleRequest): Promise<WaitLifecycleResult> {
+  const wait = async (request: WaitLifecycleRequest): Promise<WaitLifecycleResult> => {
       deps.incrementActiveWaits(request.ids);
       let snapshots: AgentSnapshot[] = [];
       try {
@@ -388,16 +393,24 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
         snapshots,
         timedOut: snapshots.length === 0,
       };
-    },
+    };
 
-    getSnapshot(agentId: string): SnapshotLifecycleResult {
-      const record = deps.requireDurableChild(agentId);
-      return {
-        snapshot: deps.childSnapshot(record),
-      };
-    },
+  const waitAny = async (request: { timeoutMs: number }): Promise<WaitLifecycleResult> => {
+    const ids = deps.listWaitableChildIds();
+    if (ids.length === 0) {
+      throw new Error("No child agents are available to wait on");
+    }
+    return await wait({ ids, timeoutMs: request.timeoutMs });
+  };
 
-    async stop(agentId: string): Promise<StopLifecycleResult> {
+  const getSnapshot = (agentId: string): SnapshotLifecycleResult => {
+    const record = deps.requireDurableChild(agentId);
+    return {
+      snapshot: deps.childSnapshot(record),
+    };
+  };
+
+  const stop = async (agentId: string): Promise<StopLifecycleResult> => {
       const record = deps.requireDurableChild(agentId);
       const attachment = await deps.ensureLiveAttachment(agentId).catch(() => undefined);
 
@@ -427,6 +440,53 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
       return {
         snapshot: deps.childSnapshot(closedRecord),
       };
-    },
+    };
+
+  const resolveAgentIdByName = (name: string, fieldName = "name"): string => {
+    const publicName = validateSubagentName(name, fieldName);
+    const record = deps.findAddressableChildByName(publicName);
+    if (!record) {
+      throw new Error(`Unknown ${fieldName}: ${publicName}`);
+    }
+    return record.agentId;
+  };
+
+  const resumeByName = async (
+    request: Omit<ResumeLifecycleRequest, "agentId"> & { name: string },
+  ): Promise<ResumeLifecycleResult> => {
+    return await resume({
+      ...request,
+      agentId: resolveAgentIdByName(request.name),
+    });
+  };
+
+  const waitByNames = async (request: {
+    names: string[];
+    timeoutMs: number;
+  }): Promise<WaitLifecycleResult> => {
+    const ids = [...new Set(request.names.map((name) => resolveAgentIdByName(name)))];
+    return await wait({ ids, timeoutMs: request.timeoutMs });
+  };
+
+  const getSnapshotByName = (name: string): SnapshotLifecycleResult => {
+    return getSnapshot(resolveAgentIdByName(name));
+  };
+
+  const stopByName = async (name: string): Promise<StopLifecycleResult> => {
+    return await stop(resolveAgentIdByName(name));
+  };
+
+  return {
+    spawn,
+    resume,
+    wait,
+    waitAny,
+    getSnapshot,
+    stop,
+    resolveAgentIdByName,
+    resumeByName,
+    waitByNames,
+    getSnapshotByName,
+    stopByName,
   };
 }

@@ -1,67 +1,53 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  detectShellFamily,
-  exitStatusVar,
-  selectPreservedInteractiveEnv,
-  shellCdPrefix,
-  shellDoneSentinelCommand,
-  shellExternalCommand,
-} from "./interactive.ts";
+import { createInteractiveContext } from "./interactive/context.ts";
+import { createTmuxSurfaceSplit, submitTmuxInput } from "./interactive/backends/tmux.ts";
+import { createWezTermSurfaceSplit } from "./interactive/backends/wezterm.ts";
+import { getMuxBackend } from "./interactive.ts";
 
-test("detectShellFamily recognizes nu, fish, and posix shells", () => {
-  assert.equal(detectShellFamily("/opt/homebrew/bin/nu"), "nu");
-  assert.equal(detectShellFamily("/usr/local/bin/fish"), "fish");
-  assert.equal(detectShellFamily("/bin/zsh"), "posix");
+test("getMuxBackend respects context-scoped command detection without leaking between invocations", () => {
+  const firstContext = createInteractiveContext({
+    env: { PI_SUBAGENT_MUX: "tmux", TMUX: "1" },
+    hasCommand: (command) => command === "tmux",
+  });
+  const secondContext = createInteractiveContext({
+    env: { PI_SUBAGENT_MUX: "tmux", TMUX: "1" },
+    hasCommand: () => false,
+  });
+
+  assert.equal(getMuxBackend(firstContext), "tmux");
+  assert.equal(getMuxBackend(secondContext), null);
 });
 
-test("exitStatusVar uses shell-appropriate exit status variables", () => {
-  assert.equal(exitStatusVar("/opt/homebrew/bin/nu"), "$env.LAST_EXIT_CODE");
-  assert.equal(exitStatusVar("/usr/local/bin/fish"), "$status");
-  assert.equal(exitStatusVar("/bin/bash"), "$?");
-});
+test("backend adapters build stable tmux and wezterm command invocations", () => {
+  const tmuxCalls: string[][] = [];
+  const weztermCalls: string[][] = [];
 
-test("shellCdPrefix uses ';' for nu and '&&' for other shells", () => {
-  assert.equal(shellCdPrefix("/tmp/project", "/opt/homebrew/bin/nu"), "cd '/tmp/project'; ");
-  assert.equal(shellCdPrefix("/tmp/project", "/bin/zsh"), "cd '/tmp/project' && ");
-});
+  const tmuxContext = createInteractiveContext({
+    execFileSync: ((_file: string, args: string[]) => {
+      tmuxCalls.push(args as string[]);
+      return args.includes("-F") ? "%12\n" : "";
+    }) as never,
+  });
+  const weztermContext = createInteractiveContext({
+    cwd: () => "/tmp/project",
+    execFileSync: ((_file: string, args: string[]) => {
+      weztermCalls.push(args as string[]);
+      return args[1] === "split-pane" ? "42\n" : "";
+    }) as never,
+  });
 
-test("selectPreservedInteractiveEnv keeps only requested provider env prefixes", () => {
-  assert.deepEqual(
-    selectPreservedInteractiveEnv({
-      _AI_GATEWAY_TOKEN: "gateway",
-      GEMINI_API_KEY: "gemini",
-      CLOUDFLARE_API_TOKEN: "cf",
-      OPENAI_API_KEY: "openai",
-      PATH: "/usr/bin",
-      EMPTY: undefined,
-    }),
-    {
-      _AI_GATEWAY_TOKEN: "gateway",
-      GEMINI_API_KEY: "gemini",
-      CLOUDFLARE_API_TOKEN: "cf",
-    },
-  );
-});
+  const tmuxPane = createTmuxSurfaceSplit(tmuxContext, "review", "left", "%5");
+  submitTmuxInput(tmuxContext, tmuxPane);
+  const weztermPane = createWezTermSurfaceSplit(weztermContext, "review", "down", "7");
 
-test("shellDoneSentinelCommand uses shell-compatible syntax", () => {
-  assert.equal(shellDoneSentinelCommand("/opt/homebrew/bin/nu"), "print $'__SUBAGENT_DONE_($env.LAST_EXIT_CODE)__'");
-  assert.equal(shellDoneSentinelCommand("/usr/local/bin/fish"), "echo '__SUBAGENT_DONE_'$status'__'");
-  assert.equal(shellDoneSentinelCommand("/bin/bash"), "echo '__SUBAGENT_DONE_'$?'__'");
-});
+  assert.equal(tmuxPane, "%12");
+  assert.deepEqual(tmuxCalls[0], ["split-window", "-h", "-b", "-t", "%5", "-P", "-F", "#{pane_id}"]);
+  assert.deepEqual(tmuxCalls[1], ["select-pane", "-t", "%12", "-T", "review"]);
+  assert.deepEqual(tmuxCalls[2], ["send-keys", "-t", "%12", "Enter"]);
 
-test("shellExternalCommand uses Nu external-command syntax", () => {
-  assert.equal(
-    shellExternalCommand(
-      "/Users/hoalong/.local/share/mise/installs/node/24.3.0/bin/node",
-      ["/tmp/launcher.mjs", "/tmp/config.json"],
-      "/opt/homebrew/bin/nu",
-    ),
-    "^'/Users/hoalong/.local/share/mise/installs/node/24.3.0/bin/node' '/tmp/launcher.mjs' '/tmp/config.json'",
-  );
-  assert.equal(
-    shellExternalCommand("/usr/bin/node", ["/tmp/launcher.mjs"], "/bin/zsh"),
-    "'/usr/bin/node' '/tmp/launcher.mjs'",
-  );
+  assert.equal(weztermPane, "42");
+  assert.deepEqual(weztermCalls[0], ["cli", "split-pane", "--bottom", "--cwd", "/tmp/project", "--pane-id", "7"]);
+  assert.deepEqual(weztermCalls[1], ["cli", "set-tab-title", "--pane-id", "42", "review"]);
 });

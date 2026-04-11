@@ -2,10 +2,10 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { Type } from "@sinclair/typebox";
 
-import { applyPatch as runNativeApplyPatch } from "../../codex-content/apply-patch.ts";
-import { renderApplyPatchResult } from "../../codex-content/renderers/apply-patch.ts";
-import { renderFallbackResult, renderToolCall } from "../../codex-content/renderers/common.ts";
-import { trimToBudget } from "../../codex-content/tools/runtime.ts";
+import { applyPatch as runNativeApplyPatch } from "../../shared/patch/apply.ts";
+import { renderApplyPatchResult } from "../../shared/patch/render.ts";
+import { renderEmptySlot, renderFallbackResult, renderToolCall } from "../../shared/renderers/common.ts";
+import { trimToBudget } from "../../shared/runtime-paths.ts";
 
 const DROID_APPLY_PATCH_DESCRIPTION = `Use this tool to edit files.
 Your patch language is a stripped‑down, file‑oriented diff format designed to be easy to parse and safe to apply. You can think of it as a high‑level envelope:
@@ -55,8 +55,8 @@ export function registerDroidApplyPatchTool(pi: ExtensionAPI): void {
         };
       }
     },
-    renderCall(_args, theme) {
-      return renderToolCall(theme, "Apply patch");
+    renderCall() {
+      return renderEmptySlot()
     },
     renderResult(result, options, theme) {
       if (options.isPartial) return renderFallbackResult(result);

@@ -1,11 +1,8 @@
 export {
   CUSTOM_INPUT_OPTION,
-  RequestOptionObjectSchema,
-  RequestOptionSchema,
   RequestQuestionSchema,
   type AskUserParams,
   type RequestAnswer,
-  type RequestOption,
   type RequestQuestion,
   type RequestUserInputDetails,
 } from "../../ask-user/types.ts";

@@ -3,7 +3,7 @@ import { accessSync, constants as fsConstants } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { findExecutableOnPath, getPiBinDir } from "../codex-content/tools/runtime.ts";
+import { findExecutableOnPath, getPiBinDir } from "../shared/runtime-paths.ts";
 import { getGlobalPiSettingsPath } from "../settings/config.ts";
 
 type GlobalPiSettings = {

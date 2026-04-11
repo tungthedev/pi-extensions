@@ -1,36 +1,33 @@
 import { getSettingsListTheme, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Container, SettingsList, Text, type SettingItem } from "@mariozechner/pi-tui";
 
-import { formatToolSetLabel, type ToolSetPack, type TungthedevSettings } from "./config.ts";
+import { formatToolSetLabel, type PiModeSettings, type ToolSetPack } from "./config.ts";
 
 export type SettingsCommandAction =
   | { action: "open-root" }
   | { action: "open-tool-set" }
-  | { action: "open-custom-shell-tool" }
   | { action: "open-system-md-prompt" }
+  | { action: "open-include-pi-prompt-section" }
   | { action: "set-tool-set"; value: ToolSetPack }
-  | { action: "set-custom-shell-tool"; value: boolean }
   | { action: "set-system-md-prompt"; value: boolean }
+  | { action: "set-include-pi-prompt-section"; value: boolean }
   | { action: "invalid"; message: string };
 
 export type OpenSettingsUiOptions = {
-  focus?: "toolSet" | "customShellTool" | "systemMdPrompt";
-  readSettings: () => Promise<TungthedevSettings>;
-  writeToolSet: (value: ToolSetPack) => Promise<void>;
-  writeCustomShellTool: (value: boolean) => Promise<void>;
+  focus?: "toolSet" | "systemMdPrompt" | "includePiPromptSection";
+  readSettings: () => Promise<PiModeSettings>;
+  applyToolSetTransition: (
+    ctx: Pick<ExtensionContext, "hasUI" | "ui">,
+    value: ToolSetPack,
+  ) => Promise<void>;
   writeSystemMdPrompt: (value: boolean) => Promise<void>;
-  onToolSetChange?: (value: ToolSetPack) => Promise<void> | void;
+  writeIncludePiPromptSection: (value: boolean) => Promise<void>;
 };
 
-const TOOL_SET_LABELS: Record<"Pi" | "Codex" | "Forge", ToolSetPack> = {
+const TOOL_SET_LABELS: Record<"Pi" | "Codex" | "Droid", ToolSetPack> = {
   Pi: "pi",
   Codex: "codex",
-  Forge: "forge",
-};
-
-const CUSTOM_SHELL_TOOL_LABELS: Record<"Enabled" | "Disabled", boolean> = {
-  Enabled: true,
-  Disabled: false,
+  Droid: "droid",
 };
 
 const SYSTEM_MD_PROMPT_LABELS: Record<"Enabled" | "Disabled", boolean> = {
@@ -38,37 +35,43 @@ const SYSTEM_MD_PROMPT_LABELS: Record<"Enabled" | "Disabled", boolean> = {
   Disabled: false,
 };
 
-export function formatCustomShellToolLabel(value: boolean): "Enabled" | "Disabled" {
-  return value ? "Enabled" : "Disabled";
-}
+const INCLUDE_PI_PROMPT_SECTION_LABELS: Record<"Enabled" | "Disabled", boolean> = {
+  Enabled: true,
+  Disabled: false,
+};
 
 export function formatSystemMdPromptLabel(value: boolean): "Enabled" | "Disabled" {
   return value ? "Enabled" : "Disabled";
 }
 
-export function buildTungthedevSettingItems(settings: TungthedevSettings): SettingItem[] {
+export function formatIncludePiPromptSectionLabel(value: boolean): "Enabled" | "Disabled" {
+  return value ? "Enabled" : "Disabled";
+}
+
+export function buildPiModeSettingItems(settings: PiModeSettings): SettingItem[] {
   return [
     {
       id: "toolSet",
-      label: "Tool set",
+      label: "Mode",
       description:
-        "Selects the Pi, Codex, or Forge tool and prompt behavior for this package. Pi keeps native Pi tools only.",
+        "Selects the Pi, Codex, or Droid mode behavior for this package. Pi keeps native Pi tools only.",
       currentValue: formatToolSetLabel(settings.toolSet),
-      values: ["Pi", "Codex", "Forge"],
-    },
-    {
-      id: "customShellTool",
-      label: "Custom shell tool",
-      description: "Switches between the package shell tool and Pi's built-in bash tool.",
-      currentValue: formatCustomShellToolLabel(settings.customShellTool),
-      values: ["Enabled", "Disabled"],
+      values: ["Pi", "Codex", "Droid"],
     },
     {
       id: "systemMdPrompt",
-      label: "System.md prompt",
+      label: "Inject SYSTEM.md",
       description:
-        "Loads the repo root SYSTEM.md and overrides the active Pi, Codex, or Forge system prompt when enabled.",
+        "Injects the repo root SYSTEM.md into the active Pi, Codex, or Droid system prompt when enabled.",
       currentValue: formatSystemMdPromptLabel(settings.systemMdPrompt),
+      values: ["Enabled", "Disabled"],
+    },
+    {
+      id: "includePiPromptSection",
+      label: "Include Pi prompt section",
+      description:
+        "Keeps the incoming Pi coding-environment prompt and appends the selected Codex or Droid prompt after it when enabled.",
+      currentValue: formatIncludePiPromptSectionLabel(settings.includePiPromptSection),
       values: ["Enabled", "Disabled"],
     },
   ];
@@ -81,27 +84,16 @@ export function parseSettingsCommand(args: string): SettingsCommandAction {
   if (parts[0] === "system-prompt") {
     return {
       action: "invalid",
-      message: "System prompts now follow the selected tool set. Use: tool-set pi|codex|forge",
+      message: "System prompts now follow the selected tool set. Use: tool-set pi|codex|droid",
     };
   }
 
   if (parts[0] === "content-pack" || parts[0] === "tool-set") {
     if (parts.length === 1) return { action: "open-tool-set" };
-    if (parts[1] === "pi" || parts[1] === "codex" || parts[1] === "forge") {
+    if (parts[1] === "pi" || parts[1] === "codex" || parts[1] === "droid") {
       return { action: "set-tool-set", value: parts[1] };
     }
     return { action: "invalid", message: `Unknown tool set: ${parts[1]}` };
-  }
-
-  if (parts[0] === "custom-shell-tool") {
-    if (parts.length === 1) return { action: "open-custom-shell-tool" };
-    if (parts[1] === "on" || parts[1] === "enabled") {
-      return { action: "set-custom-shell-tool", value: true };
-    }
-    if (parts[1] === "off" || parts[1] === "disabled") {
-      return { action: "set-custom-shell-tool", value: false };
-    }
-    return { action: "invalid", message: `Unknown custom shell tool value: ${parts[1]}` };
   }
 
   if (parts[0] === "system-md") {
@@ -115,17 +107,28 @@ export function parseSettingsCommand(args: string): SettingsCommandAction {
     return { action: "invalid", message: `Unknown system-md value: ${parts[1]}` };
   }
 
+  if (parts[0] === "include-pi-prompt") {
+    if (parts.length === 1) return { action: "open-include-pi-prompt-section" };
+    if (parts[1] === "on" || parts[1] === "enabled") {
+      return { action: "set-include-pi-prompt-section", value: true };
+    }
+    if (parts[1] === "off" || parts[1] === "disabled") {
+      return { action: "set-include-pi-prompt-section", value: false };
+    }
+    return { action: "invalid", message: `Unknown include-pi-prompt value: ${parts[1]}` };
+  }
+
   return { action: "invalid", message: `Unknown setting: ${parts[0]}` };
 }
 
-export async function openTungthedevSettingsUi(
+export async function openPiModeSettingsUi(
   ctx: ExtensionContext,
   options: OpenSettingsUiOptions,
 ): Promise<void> {
   if (!ctx.hasUI) return;
 
   const settings = await options.readSettings();
-  const items = buildTungthedevSettingItems(settings);
+  const items = buildPiModeSettingItems(settings);
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     const container = new Container();
@@ -140,29 +143,12 @@ export async function openTungthedevSettingsUi(
           const nextValue = TOOL_SET_LABELS[newValue as keyof typeof TOOL_SET_LABELS];
           if (nextValue === undefined) return;
 
-          await options.writeToolSet(nextValue);
-          await options.onToolSetChange?.(nextValue);
+          await options.applyToolSetTransition(ctx, nextValue);
           const itemIndex = items.findIndex((item) => item.id === id);
           items[itemIndex] = {
             ...items[itemIndex],
             currentValue: formatToolSetLabel(nextValue),
           };
-          ctx.ui.notify(`Tool set: ${formatToolSetLabel(nextValue)}`, "info");
-          return;
-        }
-
-        if (id === "customShellTool") {
-          const nextValue =
-            CUSTOM_SHELL_TOOL_LABELS[newValue as keyof typeof CUSTOM_SHELL_TOOL_LABELS];
-          if (nextValue === undefined) return;
-
-          await options.writeCustomShellTool(nextValue);
-          const itemIndex = items.findIndex((item) => item.id === id);
-          items[itemIndex] = {
-            ...items[itemIndex],
-            currentValue: formatCustomShellToolLabel(nextValue),
-          };
-          ctx.ui.notify(`Custom shell tool: ${formatCustomShellToolLabel(nextValue)}`, "info");
           return;
         }
 
@@ -177,7 +163,27 @@ export async function openTungthedevSettingsUi(
             ...items[itemIndex],
             currentValue: formatSystemMdPromptLabel(nextValue),
           };
-          ctx.ui.notify(`System.md prompt: ${formatSystemMdPromptLabel(nextValue)}`, "info");
+          ctx.ui.notify(`Inject SYSTEM.md: ${formatSystemMdPromptLabel(nextValue)}`, "info");
+          return;
+        }
+
+        if (id === "includePiPromptSection") {
+          const nextValue =
+            INCLUDE_PI_PROMPT_SECTION_LABELS[
+              newValue as keyof typeof INCLUDE_PI_PROMPT_SECTION_LABELS
+            ];
+          if (nextValue === undefined) return;
+
+          await options.writeIncludePiPromptSection(nextValue);
+          const itemIndex = items.findIndex((item) => item.id === id);
+          items[itemIndex] = {
+            ...items[itemIndex],
+            currentValue: formatIncludePiPromptSectionLabel(nextValue),
+          };
+          ctx.ui.notify(
+            `Include Pi prompt section: ${formatIncludePiPromptSectionLabel(nextValue)}`,
+            "info",
+          );
         }
       },
       () => done(undefined),

@@ -1,27 +1,15 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { setSystemMdPromptEnabledForTests } from "../system-md/state.ts";
 import {
-  buildCodexPrompt,
   handleCodexSystemPromptBeforeAgentStart,
-  injectCodexPrompt,
-  parseCodexPersonality,
-  readCodexPersonality,
-  readFallbackModelsCatalog,
-  readModelsCatalog,
-  registerCodexSystemPrompt,
-  resolveCodexHome,
-  resolveCodexModelsCachePath,
   resolveCodexPromptBody,
-  resolveConfiguredModelCatalogPath,
   type CodexSystemPromptDeps,
 } from "./system-prompt.ts";
 
-function createContext(toolSet: "pi" | "codex" | "forge") {
+function createContext(toolSet: "pi" | "codex") {
   return {
     model: { id: "gpt-5.4" },
     sessionManager: {
@@ -31,118 +19,6 @@ function createContext(toolSet: "pi" | "codex" | "forge") {
     },
   };
 }
-
-test("resolveCodexHome uses CODEX_HOME when it points to a directory", async () => {
-  const tempDir = await import("node:fs/promises").then((fs) =>
-    fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-home-")),
-  );
-
-  assert.equal(resolveCodexHome({ CODEX_HOME: tempDir }, "/Users/test"), fs.realpathSync(tempDir));
-});
-
-test("parseCodexPersonality reads top-level personality", () => {
-  assert.equal(parseCodexPersonality('model = "gpt-5.4"\npersonality = "friendly"\n'), "friendly");
-  assert.equal(parseCodexPersonality('personality = "pragmatic" # comment\n'), "pragmatic");
-  assert.equal(parseCodexPersonality('personality = "unknown"\n'), undefined);
-});
-
-test("readCodexPersonality reads personality from CODEX_HOME config.toml", async () => {
-  const fs = await import("node:fs/promises");
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-config-"));
-  await fs.writeFile(path.join(tempDir, "config.toml"), 'personality = "friendly"\n');
-
-  assert.equal(readCodexPersonality({ CODEX_HOME: tempDir }, "/Users/test"), "friendly");
-});
-
-test("resolveConfiguredModelCatalogPath uses PI_CODEX_MODEL_CATALOG_PATH when it points to a file", async () => {
-  const fs = await import("node:fs/promises");
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-model-catalog-"));
-  const catalogPath = path.join(tempDir, "catalog.json");
-  await fs.writeFile(catalogPath, '{"models":[]}');
-
-  assert.equal(
-    resolveConfiguredModelCatalogPath({ PI_CODEX_MODEL_CATALOG_PATH: catalogPath }),
-    await fs.realpath(catalogPath),
-  );
-});
-
-test("resolveCodexModelsCachePath points to models_cache.json under codex home", async () => {
-  const fs = await import("node:fs/promises");
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-model-cache-home-"));
-  const codexHome = path.join(tempDir, ".codex");
-  await fs.mkdir(codexHome);
-
-  assert.equal(
-    resolveCodexModelsCachePath({ CODEX_HOME: codexHome }, "/Users/test"),
-    path.join(await fs.realpath(codexHome), "models_cache.json"),
-  );
-});
-
-test("readFallbackModelsCatalog prefers configured catalog, then ~/.codex/models_cache.json", async () => {
-  const fs = await import("node:fs/promises");
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-fallback-catalog-"));
-  const configuredCatalogPath = path.join(tempDir, "configured.json");
-  const codexHome = path.join(tempDir, ".codex");
-  await fs.mkdir(codexHome);
-  await fs.writeFile(
-    configuredCatalogPath,
-    JSON.stringify({ models: [{ slug: "configured-model" }] }),
-  );
-  await fs.writeFile(
-    path.join(codexHome, "models_cache.json"),
-    JSON.stringify({ models: [{ slug: "cache-model" }] }),
-  );
-
-  assert.deepEqual(
-    readFallbackModelsCatalog(
-      { PI_CODEX_MODEL_CATALOG_PATH: configuredCatalogPath, CODEX_HOME: codexHome },
-      "/Users/test",
-    ),
-    {
-      fetched_at: undefined,
-      etag: undefined,
-      client_version: undefined,
-      models: [{ slug: "configured-model" }],
-    },
-  );
-
-  await fs.writeFile(configuredCatalogPath, "not-json");
-
-  assert.deepEqual(
-    readFallbackModelsCatalog(
-      { PI_CODEX_MODEL_CATALOG_PATH: configuredCatalogPath, CODEX_HOME: codexHome },
-      "/Users/test",
-    ),
-    {
-      fetched_at: undefined,
-      etag: undefined,
-      client_version: undefined,
-      models: [{ slug: "cache-model" }],
-    },
-  );
-});
-
-test("readModelsCatalog parses codex models_cache.json metadata and models array", async () => {
-  const fs = await import("node:fs/promises");
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-models-cache-format-"));
-  const catalogPath = path.join(tempDir, "models_cache.json");
-  await fs.writeFile(
-    catalogPath,
-    JSON.stringify({
-      fetched_at: "2026-03-25T01:12:09.045949Z",
-      etag: 'W/"abc"',
-      client_version: "0.0.0",
-      models: [{ slug: "gpt-5.4", base_instructions: "prompt" }, null],
-    }),
-  );
-
-  assert.deepEqual(readModelsCatalog(catalogPath), {
-    fetched_at: "2026-03-25T01:12:09.045949Z",
-    etag: 'W/"abc"',
-    client_version: "0.0.0",
-    models: [{ slug: "gpt-5.4", base_instructions: "prompt" }],
-  });
-});
 
 test("resolveCodexPromptBody uses exact model match and GPT fallback", () => {
   const exact = resolveCodexPromptBody("claude-sonnet", [
@@ -157,83 +33,107 @@ test("resolveCodexPromptBody uses exact model match and GPT fallback", () => {
   assert.equal(fallback, "gpt fallback");
 });
 
-test("injectCodexPrompt replaces the incoming prompt", () => {
-  const codexPrompt = buildCodexPrompt("Base Codex prompt");
-  assert.equal(injectCodexPrompt("Existing system prompt", codexPrompt), "Base Codex prompt");
-  assert.equal(injectCodexPrompt(undefined, codexPrompt), "Base Codex prompt");
-});
-
 test("handleCodexSystemPromptBeforeAgentStart returns no-op when Codex prompt is not selected", async () => {
   const deps: CodexSystemPromptDeps = {
     readSettings: async () => ({
-      toolSet: "forge",
+      toolSet: "pi",
       systemMdPrompt: true,
+      includePiPromptSection: false,
     }),
     buildPromptForModel: () => "Codex block",
   };
 
   const result = await handleCodexSystemPromptBeforeAgentStart(
     { systemPrompt: "Base" } as never,
-    createContext("forge") as never,
+    createContext("pi") as never,
     deps,
   );
 
   assert.equal(result, undefined);
 });
 
-test("handleCodexSystemPromptBeforeAgentStart returns no-op when system-md is enabled", async () => {
+test("handleCodexSystemPromptBeforeAgentStart defers to SYSTEM.md when enabled and present", async () => {
+  const fs = await import("node:fs/promises");
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-system-md-"));
+  await fs.writeFile(path.join(tempDir, "SYSTEM.md"), "System MD prompt\n");
+
   const deps: CodexSystemPromptDeps = {
     readSettings: async () => ({
       toolSet: "codex",
       systemMdPrompt: true,
+      includePiPromptSection: false,
     }),
     buildPromptForModel: () => "Codex block",
   };
 
-  setSystemMdPromptEnabledForTests(true);
+  const result = await handleCodexSystemPromptBeforeAgentStart(
+    { systemPrompt: "Base" } as never,
+    {
+      ...createContext("codex"),
+      cwd: tempDir,
+    } as never,
+    deps,
+  );
 
-  try {
-    const result = await handleCodexSystemPromptBeforeAgentStart(
-      { systemPrompt: "Base" } as never,
-      createContext("codex") as never,
-      deps,
-    );
-
-    assert.equal(result, undefined);
-  } finally {
-    setSystemMdPromptEnabledForTests(false);
-  }
+  assert.deepEqual(result, { systemPrompt: "System MD prompt" });
 });
 
-test("handleCodexSystemPromptBeforeAgentStart still replaces when system-md is loaded but disabled in settings", async () => {
+test("handleCodexSystemPromptBeforeAgentStart still replaces when SYSTEM.md is enabled but missing", async () => {
+  const fs = await import("node:fs/promises");
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-no-system-md-"));
+  const deps: CodexSystemPromptDeps = {
+    readSettings: async () => ({
+      toolSet: "codex",
+      systemMdPrompt: true,
+      includePiPromptSection: false,
+    }),
+    buildPromptForModel: () => "Codex block",
+  };
+
+  const result = await handleCodexSystemPromptBeforeAgentStart(
+    { systemPrompt: "Base" } as never,
+    {
+      ...createContext("codex"),
+      cwd: tempDir,
+    } as never,
+    deps,
+  );
+
+  assert.deepEqual(result, { systemPrompt: "Codex block" });
+});
+
+test("handleCodexSystemPromptBeforeAgentStart uses the Codex prompt when SYSTEM.md injection is disabled", async () => {
+  const fs = await import("node:fs/promises");
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-system-md-disabled-"));
+  await fs.writeFile(path.join(tempDir, "SYSTEM.md"), "System MD prompt\n");
+
   const deps: CodexSystemPromptDeps = {
     readSettings: async () => ({
       toolSet: "codex",
       systemMdPrompt: false,
+      includePiPromptSection: false,
     }),
     buildPromptForModel: () => "Codex block",
   };
 
-  setSystemMdPromptEnabledForTests(true);
+  const result = await handleCodexSystemPromptBeforeAgentStart(
+    { systemPrompt: "Base" } as never,
+    {
+      ...createContext("codex"),
+      cwd: tempDir,
+    } as never,
+    deps,
+  );
 
-  try {
-    const result = await handleCodexSystemPromptBeforeAgentStart(
-      { systemPrompt: "Base" } as never,
-      createContext("codex") as never,
-      deps,
-    );
-
-    assert.deepEqual(result, { systemPrompt: "Codex block" });
-  } finally {
-    setSystemMdPromptEnabledForTests(false);
-  }
+  assert.deepEqual(result, { systemPrompt: "Codex block" });
 });
 
-test("handleCodexSystemPromptBeforeAgentStart replaces the selected Codex prompt", async () => {
+test("handleCodexSystemPromptBeforeAgentStart still replaces when SYSTEM.md is not configured", async () => {
   const deps: CodexSystemPromptDeps = {
     readSettings: async () => ({
       toolSet: "codex",
-      systemMdPrompt: true,
+      systemMdPrompt: false,
+      includePiPromptSection: false,
     }),
     buildPromptForModel: () => "Codex block",
   };
@@ -247,14 +147,40 @@ test("handleCodexSystemPromptBeforeAgentStart replaces the selected Codex prompt
   assert.deepEqual(result, { systemPrompt: "Codex block" });
 });
 
-test("registerCodexSystemPrompt registers before_agent_start", () => {
-  let eventName: string | undefined;
+test("handleCodexSystemPromptBeforeAgentStart replaces the selected Codex prompt", async () => {
+  const deps: CodexSystemPromptDeps = {
+    readSettings: async () => ({
+      toolSet: "codex",
+      systemMdPrompt: true,
+      includePiPromptSection: false,
+    }),
+    buildPromptForModel: () => "Codex block",
+  };
 
-  registerCodexSystemPrompt({
-    on(name: string) {
-      eventName = name;
-    },
-  } as never);
+  const result = await handleCodexSystemPromptBeforeAgentStart(
+    { systemPrompt: "Base" } as never,
+    createContext("codex") as never,
+    deps,
+  );
 
-  assert.equal(eventName, "before_agent_start");
+  assert.deepEqual(result, { systemPrompt: "Codex block" });
+});
+
+test("handleCodexSystemPromptBeforeAgentStart appends the Codex prompt after the Pi prompt when enabled", async () => {
+  const deps: CodexSystemPromptDeps = {
+    readSettings: async () => ({
+      toolSet: "codex",
+      systemMdPrompt: false,
+      includePiPromptSection: true,
+    }),
+    buildPromptForModel: () => "Codex block",
+  };
+
+  const result = await handleCodexSystemPromptBeforeAgentStart(
+    { systemPrompt: "Pi base" } as never,
+    createContext("codex") as never,
+    deps,
+  );
+
+  assert.deepEqual(result, { systemPrompt: "Pi base\n\nCodex block" });
 });

@@ -6,9 +6,15 @@ import type {
 
 import fs from "node:fs";
 
-import { readTungthedevSettings, type TungthedevSettings } from "../settings/config.ts";
+import { readSettings, type PiModeSettings } from "../settings/config.ts";
 import { resolveSessionToolSet } from "../settings/session.ts";
-import { isSystemMdPromptEnabled } from "../system-md/state.ts";
+import {
+  appendPromptContribution,
+  buildPromptResult,
+  replacePromptContribution,
+  resolvePromptContribution,
+} from "../shared/prompt-composition.ts";
+import { resolveSystemMdPromptContribution } from "../system-md/state.ts";
 
 const DROID_IDENTITY_PATH = new URL("./assets/identity.txt", import.meta.url);
 const DROID_BASE_PATH = new URL("./assets/base.txt", import.meta.url);
@@ -32,13 +38,13 @@ const DROID_GOOGLE_TODO_GUIDELINES_PATH = new URL(
 );
 
 export type DroidSystemPromptDeps = {
-  readSettings: () => Promise<TungthedevSettings>;
+  readSettings: () => Promise<PiModeSettings>;
   buildPromptForModel: (modelId: string | undefined) => string;
 };
 
 function createDefaultDeps(): DroidSystemPromptDeps {
   return {
-    readSettings: () => readTungthedevSettings(),
+    readSettings: () => readSettings(),
     buildPromptForModel: (modelId) => buildSelectedDroidPrompt(modelId),
   };
 }
@@ -114,17 +120,19 @@ export async function handleDroidSystemPromptBeforeAgentStart(
   deps: DroidSystemPromptDeps = createDefaultDeps(),
 ): Promise<{ systemPrompt: string } | undefined> {
   const settings = await deps.readSettings();
-  if (isSystemMdPromptEnabled() && settings.systemMdPrompt) {
-    return undefined;
-  }
-
   if ((await resolveSessionToolSet(ctx.sessionManager)) !== "droid") {
     return undefined;
   }
 
-  return {
-    systemPrompt: deps.buildPromptForModel(ctx.model?.id),
-  };
+  return buildPromptResult(
+    _event.systemPrompt,
+    resolvePromptContribution([
+      resolveSystemMdPromptContribution(ctx.cwd, settings.systemMdPrompt),
+      settings.includePiPromptSection
+        ? appendPromptContribution(deps.buildPromptForModel(ctx.model?.id))
+        : replacePromptContribution(deps.buildPromptForModel(ctx.model?.id)),
+    ]),
+  );
 }
 
 export function registerDroidSystemPrompt(

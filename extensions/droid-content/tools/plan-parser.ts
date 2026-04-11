@@ -2,8 +2,13 @@ import type { TodoUpdate } from "../../todos/index.ts";
 
 const TODO_LINE_RE = /^(?:\d+\.\s*)?\[(pending|in_progress|completed)\]\s+(.+)$/i;
 
-export function buildDroidPlanUpdates(todosText: string): TodoUpdate[] {
-  const updates: TodoUpdate[] = [];
+export type DroidPlanRow = {
+  status: Extract<TodoUpdate["status"], "pending" | "in_progress" | "completed">;
+  content: string;
+};
+
+export function parseDroidPlanRows(todosText: string): DroidPlanRow[] {
+  const rows: DroidPlanRow[] = [];
 
   for (const rawLine of todosText.replace(/\r/g, "").split("\n")) {
     const line = rawLine.trim();
@@ -14,15 +19,22 @@ export function buildDroidPlanUpdates(todosText: string): TodoUpdate[] {
       throw new Error(`Invalid todo line: ${line}`);
     }
 
-    updates.push({
-      status: (match[1] ?? "pending").toLowerCase() as TodoUpdate["status"],
+    rows.push({
+      status: (match[1] ?? "pending").toLowerCase() as DroidPlanRow["status"],
       content: match[2]?.trim() ?? "",
     });
   }
 
-  if (updates.length === 0) {
+  if (rows.length === 0) {
     throw new Error("TodoWrite requires at least one todo line");
   }
 
-  return updates;
+  return rows;
+}
+
+export function buildDroidPlanUpdates(rows: DroidPlanRow[]): TodoUpdate[] {
+  return rows.map((row) => ({
+    status: row.status,
+    content: row.content,
+  }));
 }

@@ -4,11 +4,19 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Raised the supported Pi baseline to `0.65.0`.
+
+### Notes
+
+- If you are using Pi `<0.65.0`, stay on `@tungthedev/pi-extensions@1.1.0`.
+
 ### Changed
 
 - Updated `codex-system-prompt` to resolve prompts from the bundled catalog first, `PI_CODEX_MODEL_CATALOG_PATH` second, and `~/.codex/models_cache.json` third, before falling back to the `gpt-5.4` prompt for any unknown model.
 - Renamed the `codex-subagents` extension surface to `subagents` in the package manifest and README while keeping the existing subagent tool contracts.
-- Updated the built-in `explorer` role to use the Forge Sage research prompt as its developer instructions.
+- Updated the built-in `explorer` role to use the Sage research prompt as its developer instructions.
 
 ### Fixed
 

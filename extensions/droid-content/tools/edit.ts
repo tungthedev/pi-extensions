@@ -5,13 +5,13 @@ import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 
-import { shortenPath } from "../../codex-content/shared/text.ts";
-import { resolveAbsolutePath } from "../../codex-content/tools/runtime.ts";
+import { shortenPath } from "../../shared/text.ts";
+import { resolveAbsolutePath } from "../../shared/runtime-paths.ts";
 
 const DROID_EDIT_DESCRIPTION = `
 Edit the contents of a file by finding and replacing text.
 
-Make sure the Read tool was called first before making edits, as this tool requires the file to be read first.
+Make sure the read tool was called first before making edits, as this tool requires the file to be read first.
 Preserve the exact indentation (tabs or spaces).
 Never write a new file with this tool; prefer using Create tool for that.
 'old_str' must be unique in the file, or 'change_all' must be true to replace all occurrences (for example, it's useful for variable renaming).

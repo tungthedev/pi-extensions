@@ -4,12 +4,13 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-import type { LocalExtensionEntry, Scope, State } from "../types.ts";
+import type { LocalExtensionEntry, Scope } from "../types.ts";
 
-import { fileExists } from "../shared/fs.ts";
-import { readSummary } from "../shared/summary.ts";
-
-const DISABLED_SUFFIX = ".disabled";
+import {
+  probeExtensionDirectory,
+  probeExtensionFile,
+  shortenHomePath,
+} from "./probe.ts";
 
 interface RootConfig {
   root: string;
@@ -19,155 +20,6 @@ interface RootConfig {
 
 interface SettingsFile {
   extensions?: string[];
-}
-
-async function parseTopLevelFile(
-  root: string,
-  label: string,
-  scope: Scope,
-  fileName: string,
-): Promise<LocalExtensionEntry | undefined> {
-  const isEnabledTsJs = /\.(ts|js)$/i.test(fileName) && !fileName.endsWith(DISABLED_SUFFIX);
-  const isDisabledTsJs = /\.(ts|js)\.disabled$/i.test(fileName);
-  if (!isEnabledTsJs && !isDisabledTsJs) return undefined;
-
-  const currentPath = join(root, fileName);
-  const activePath = isDisabledTsJs ? currentPath.slice(0, -DISABLED_SUFFIX.length) : currentPath;
-  const disabledPath = `${activePath}${DISABLED_SUFFIX}`;
-  const state: State = isDisabledTsJs ? "disabled" : "enabled";
-  const summary = await readSummary(state === "enabled" ? activePath : disabledPath);
-  const relativePath = relative(root, activePath).replace(/\.disabled$/i, "");
-
-  return {
-    id: `${scope}:${activePath}`,
-    scope,
-    state,
-    activePath,
-    disabledPath,
-    displayName: `${label}/${relativePath}`,
-    summary,
-  };
-}
-
-async function parseDirectoryIndex(
-  root: string,
-  label: string,
-  scope: Scope,
-  dirName: string,
-): Promise<LocalExtensionEntry | undefined> {
-  const dir = join(root, dirName);
-
-  for (const ext of [".ts", ".js"]) {
-    const activePath = join(dir, `index${ext}`);
-    const disabledPath = `${activePath}${DISABLED_SUFFIX}`;
-
-    if (await fileExists(activePath)) {
-      return {
-        id: `${scope}:${activePath}`,
-        scope,
-        state: "enabled",
-        activePath,
-        disabledPath,
-        displayName: `${label}/${dirName}/index${ext}`,
-        summary: await readSummary(activePath),
-      };
-    }
-
-    if (await fileExists(disabledPath)) {
-      return {
-        id: `${scope}:${activePath}`,
-        scope,
-        state: "disabled",
-        activePath,
-        disabledPath,
-        displayName: `${label}/${dirName}/index${ext}`,
-        summary: await readSummary(disabledPath),
-      };
-    }
-  }
-
-  return undefined;
-}
-
-function shortenHome(path: string): string {
-  const home = homedir();
-  return path.startsWith(home) ? `~${path.slice(home.length)}` : path;
-}
-
-async function parseConfiguredFile(
-  configuredPath: string,
-  scope: Scope,
-): Promise<LocalExtensionEntry | undefined> {
-  const fileName = configuredPath.split("/").pop() ?? configuredPath;
-  const isEnabledTsJs = /\.(ts|js)$/i.test(fileName) && !fileName.endsWith(DISABLED_SUFFIX);
-  const isDisabledTsJs = /\.(ts|js)\.disabled$/i.test(fileName);
-  if (!isEnabledTsJs && !isDisabledTsJs) return undefined;
-
-  const activePath = isDisabledTsJs
-    ? configuredPath.slice(0, -DISABLED_SUFFIX.length)
-    : configuredPath;
-  const disabledPath = `${activePath}${DISABLED_SUFFIX}`;
-  const enabledExists = await fileExists(activePath);
-  const disabledExists = await fileExists(disabledPath);
-
-  if (!enabledExists && !disabledExists) {
-    return undefined;
-  }
-
-  const state: State = isDisabledTsJs
-    ? disabledExists
-      ? "disabled"
-      : "enabled"
-    : enabledExists
-      ? "enabled"
-      : "disabled";
-  const summary = await readSummary(state === "enabled" ? activePath : disabledPath);
-
-  return {
-    id: `${scope}:${activePath}`,
-    scope,
-    state,
-    activePath,
-    disabledPath,
-    displayName: shortenHome(activePath),
-    summary,
-  };
-}
-
-async function parseConfiguredDirectory(
-  configuredPath: string,
-  scope: Scope,
-): Promise<LocalExtensionEntry | undefined> {
-  for (const ext of [".ts", ".js"]) {
-    const activePath = join(configuredPath, `index${ext}`);
-    const disabledPath = `${activePath}${DISABLED_SUFFIX}`;
-
-    if (await fileExists(activePath)) {
-      return {
-        id: `${scope}:${activePath}`,
-        scope,
-        state: "enabled",
-        activePath,
-        disabledPath,
-        displayName: shortenHome(activePath),
-        summary: await readSummary(activePath),
-      };
-    }
-
-    if (await fileExists(disabledPath)) {
-      return {
-        id: `${scope}:${activePath}`,
-        scope,
-        state: "disabled",
-        activePath,
-        disabledPath,
-        displayName: shortenHome(activePath),
-        summary: await readSummary(disabledPath),
-      };
-    }
-  }
-
-  return undefined;
 }
 
 function resolveSettingsPath(rawPath: string, settingsFilePath: string): string | undefined {
@@ -212,11 +64,15 @@ async function discoverConfiguredExtensions(
     try {
       const pathStat = await stat(resolvedPath);
       const entry = pathStat.isDirectory()
-        ? await parseConfiguredDirectory(resolvedPath, scope)
-        : await parseConfiguredFile(resolvedPath, scope);
+        ? await probeExtensionDirectory(resolvedPath, scope, (activePath) => shortenHomePath(activePath))
+        : await probeExtensionFile(resolvedPath, scope, shortenHomePath(resolvedPath), {
+            allowAlternateState: true,
+          });
       if (entry) entries.push(entry);
     } catch {
-      const entry = await parseConfiguredFile(resolvedPath, scope);
+      const entry = await probeExtensionFile(resolvedPath, scope, shortenHomePath(resolvedPath), {
+        allowAlternateState: true,
+      });
       if (entry) entries.push(entry);
     }
   }
@@ -238,13 +94,23 @@ async function discoverInRoot(config: RootConfig): Promise<LocalExtensionEntry[]
     if (item.name.startsWith(".")) continue;
 
     if (item.isFile()) {
-      const entry = await parseTopLevelFile(config.root, config.label, config.scope, item.name);
+      const currentPath = join(config.root, item.name);
+      const entry = await probeExtensionFile(
+        currentPath,
+        config.scope,
+        `${config.label}/${relative(config.root, currentPath).replace(/\.disabled$/i, "")}`,
+      );
       if (entry) entries.push(entry);
       continue;
     }
 
     if (item.isDirectory()) {
-      const entry = await parseDirectoryIndex(config.root, config.label, config.scope, item.name);
+      const directoryPath = join(config.root, item.name);
+      const entry = await probeExtensionDirectory(
+        directoryPath,
+        config.scope,
+        (activePath) => `${config.label}/${relative(config.root, activePath)}`,
+      );
       if (entry) entries.push(entry);
     }
   }

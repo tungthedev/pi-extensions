@@ -1,6 +1,11 @@
 import fs from "node:fs";
 
 import type { AgentProfileConfig, ResolvedAgentProfiles } from "./profiles-types.ts";
+import {
+  matchTomlString,
+  matchTomlStringArray,
+  matchTomlTripleQuotedString,
+} from "../../shared/toml-lite.ts";
 
 type BuiltInProfileDeclaration = {
   name: string;
@@ -19,52 +24,26 @@ type ParsedRoleAsset = {
 const BUILTIN_PROFILE_DECLARATIONS: BuiltInProfileDeclaration[] = [
   {
     name: "default",
-    description: "Default agent.",
+    description: [
+      "Use `default` for general-purpose delegated work that does not require a specialized research role.",
+      "Default agents should complete the assigned task directly, follow the caller's scope closely, and avoid unrelated changes.",
+      "They are the fallback choice for bounded implementation, execution, and synthesis tasks.",
+    ].join("\n"),
+    assetFile: "default.toml",
     visible: true,
   },
   {
-    name: "explorer",
+    name: "researcher",
     description: [
-      "Use `explorer` for specific codebase questions.",
-      "Explorers are fast and authoritative.",
-      "They must be used to ask specific, well-scoped questions on the codebase.",
+      "Use `researcher` for deep codebase investigation and repository understanding.",
+      "Researchers focus on evidence-backed findings and repository analysis.",
+      "They should be used for bounded, read-heavy investigation tasks.",
       "Rules:",
-      "- In order to avoid redundant work, you should avoid exploring the same problem that explorers have already covered. Typically, you should trust the explorer results without additional verification. You are still allowed to inspect the code yourself to gain the needed context!",
-      "- You are encouraged to spawn multiple explorers in parallel when you have multiple distinct questions to ask about the codebase that can be answered independently.",
-      "- Reuse existing explorers for related questions.",
+      "- Prefer code tracing, architecture understanding, and evidence-backed findings.",
+      "- Do not modify code unless the delegated instructions explicitly ask for it.",
+      "- Keep findings concrete, scoped, and grounded in specific files or modules.",
     ].join("\n"),
-    assetFile: "explorer.toml",
-    visible: true,
-  },
-  {
-    name: "worker",
-    description: [
-      "Use for execution and production work.",
-      "Typical tasks:",
-      "- Implement part of a feature",
-      "- Fix tests or bugs",
-      "- Split large refactors into independent chunks",
-      "Rules:",
-      "- Explicitly assign ownership of the task (files / responsibility).",
-      "- Always tell workers they are not alone in the codebase and should adapt to concurrent changes instead of reverting others' work.",
-    ].join("\n"),
-    assetFile: "worker.toml",
-    visible: true,
-  },
-  {
-    name: "reviewer",
-    description: [
-      "Use `reviewer` for code review and change-risk assessment.",
-      "Typical tasks:",
-      "- Review diffs for correctness, regressions, and maintainability",
-      "- Call out missing tests, edge cases, and rollout risks",
-      "- Summarize actionable fixes in priority order",
-      "Rules:",
-      "- Focus on findings and concrete risks, not style nits unless they affect correctness or readability.",
-      "- Cite file paths and explain why each issue matters.",
-      "- If the change looks good, say so clearly and mention any residual risk.",
-    ].join("\n"),
-    assetFile: "reviewer.toml",
+    assetFile: "researcher.toml",
     visible: true,
   },
 ];
@@ -73,42 +52,12 @@ function readBundledRoleAsset(assetFile: string): string {
   return fs.readFileSync(new URL(`../assets/agents/${assetFile}`, import.meta.url), "utf8");
 }
 
-function normalizeArrayItems(raw: string): string[] {
-  return raw
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map((item) => item.replace(/^"|"$/g, "").replace(/^'|'$/g, ""))
-    .filter(Boolean);
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function matchTomlTripleQuotedString(contents: string, key: string): string | undefined {
-  const match = contents.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*"""([\\s\\S]*?)"""`, "m"));
-  return match?.[1]?.trim();
-}
-
-function matchTomlSingleQuotedString(contents: string, key: string): string | undefined {
-  const match = contents.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*"([^"]*)"`, "m"));
-  return match?.[1]?.trim();
-}
-
-function matchTomlStringArray(contents: string, key: string): string[] | undefined {
-  const match = contents.match(new RegExp(`^${escapeRegExp(key)}\\s*=\\s*\\[([^\\]]*)\\]`, "m"));
-  if (!match?.[1]) return undefined;
-  const values = normalizeArrayItems(match[1]);
-  return values.length > 0 ? values : undefined;
-}
-
 export function parseBundledRoleAsset(contents: string): ParsedRoleAsset {
   const developerInstructions =
     matchTomlTripleQuotedString(contents, "developer_instructions") ??
-    matchTomlSingleQuotedString(contents, "developer_instructions");
-  const model = matchTomlSingleQuotedString(contents, "model");
-  const reasoningEffort = matchTomlSingleQuotedString(contents, "model_reasoning_effort");
+    matchTomlString(contents, "developer_instructions");
+  const model = matchTomlString(contents, "model");
+  const reasoningEffort = matchTomlString(contents, "model_reasoning_effort");
   const nicknameCandidates = matchTomlStringArray(contents, "nickname_candidates");
 
   return {

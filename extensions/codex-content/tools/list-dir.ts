@@ -2,7 +2,7 @@ import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
 import type { Dirent } from "node:fs";
 
 import { createLsToolDefinition } from "@mariozechner/pi-coding-agent";
-import { Container, Text } from "@mariozechner/pi-tui";
+import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -261,10 +261,6 @@ export function registerListDirTool(pi: ExtensionAPI): void {
       return renderListDirCall(theme, args);
     },
     renderResult(result, options, theme, context) {
-      if (!options.expanded) {
-        return new Container();
-      }
-
       return nativeLsDefinition.renderResult!(
         result as never,
         options,

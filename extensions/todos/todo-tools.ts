@@ -7,13 +7,13 @@ import {
   createEmptyTodoSnapshot,
   formatTodoSummary,
   normalizeTodoContent,
-  restoreTodoSnapshot,
   type TodoItem,
   type TodoSnapshot,
-  type TodoStatus,
   type TodoUpdate,
   type TodoWriteDetails,
 } from "./todo-state.ts";
+import { restoreTodoSnapshotFromHistory } from "./session-replay.ts";
+import { renderTodoLines } from "./todo-render.ts";
 import { syncTodoUi } from "./todo-widget.ts";
 
 export type RegisterTodoToolsOptions = {
@@ -37,12 +37,6 @@ type WorkflowState = {
   snapshot: TodoSnapshot;
 };
 
-const TODO_STATUS_ICONS: Record<Extract<TodoStatus, "pending" | "in_progress" | "completed">, string> = {
-  pending: "󰄱",
-  in_progress: "󰄗",
-  completed: "󰄵",
-};
-
 const TodoStatusSchema = Type.Union([
   Type.Literal("pending"),
   Type.Literal("in_progress"),
@@ -51,23 +45,13 @@ const TodoStatusSchema = Type.Union([
 ]);
 
 const TodoWriteItemSchema = Type.Object({
+  id: Type.Optional(Type.String({ description: "Stable todo id to update when known." })),
   content: Type.String({ description: "Description of the task to create or update." }),
   status: TodoStatusSchema,
 });
 
 function reconstructSnapshot(ctx: ExtensionContext, writeToolName: string): TodoSnapshot {
-  const detailsList: TodoWriteDetails[] = [];
-  for (const entry of ctx.sessionManager.getBranch()) {
-    if (entry.type !== "message") continue;
-    const message = entry.message;
-    if (message.role !== "toolResult") continue;
-    if (message.toolName !== writeToolName) continue;
-    const details = message.details as TodoWriteDetails | undefined;
-    if (details?.action === "todo_write") {
-      detailsList.push(details);
-    }
-  }
-  return restoreTodoSnapshot(detailsList);
+  return restoreTodoSnapshotFromHistory(ctx.sessionManager.getBranch(), writeToolName);
 }
 
 function resetWorkflowState(
@@ -108,7 +92,9 @@ function updatedTodoItems(snapshot: TodoSnapshot, updates: TodoUpdate[]): TodoIt
     const content = normalizeTodoContent(update.content);
     if (!content) continue;
 
-    const item = snapshot.items.find((entry) => entry.content === content);
+    const item = update.id
+      ? snapshot.items.find((entry) => entry.id === update.id)
+      : snapshot.items.find((entry) => entry.content === content);
     if (item) {
       items.push(item);
     }
@@ -117,35 +103,12 @@ function updatedTodoItems(snapshot: TodoSnapshot, updates: TodoUpdate[]): TodoIt
   return items;
 }
 
-function renderTodoLine(item: TodoItem, theme: ExtensionContext["ui"]["theme"]): string {
-  if (item.status === "completed") {
-    return (
-      theme.fg("success", `${TODO_STATUS_ICONS.completed} `) +
-      theme.fg("muted", theme.strikethrough(`#${item.id} ${item.content}`))
-    );
-  }
-
-  if (item.status === "in_progress") {
-    return theme.fg("accent", `${TODO_STATUS_ICONS.in_progress} #${item.id} ${item.content}`);
-  }
-
-  return theme.fg("text", `${TODO_STATUS_ICONS.pending} #${item.id} ${item.content}`);
-}
-
 export function registerTodoTools(pi: ExtensionAPI, options: RegisterTodoToolsOptions): void {
   const state: WorkflowState = {
     snapshot: createEmptyTodoSnapshot(),
   };
 
   pi.on("session_start", async (_event, ctx) => {
-    resetWorkflowState(ctx, state, options);
-  });
-
-  pi.on("session_switch", async (_event, ctx) => {
-    resetWorkflowState(ctx, state, options);
-  });
-
-  pi.on("session_fork", async (_event, ctx) => {
     resetWorkflowState(ctx, state, options);
   });
 
@@ -173,7 +136,7 @@ export function registerTodoTools(pi: ExtensionAPI, options: RegisterTodoToolsOp
       });
 
       const details: TodoWriteDetails = {
-        action: "todo_write",
+        action: "todos_write",
         items: [...state.snapshot.items],
         nextId: state.snapshot.nextId,
         updatedItems: updatedTodoItems(state.snapshot, updates),
@@ -195,9 +158,7 @@ export function registerTodoTools(pi: ExtensionAPI, options: RegisterTodoToolsOp
 
       const items = details.updatedItems ?? [];
       return new Text(
-        items.length > 0
-          ? items.map((item) => renderTodoLine(item, theme)).join("\n")
-          : theme.fg("muted", "All todos completed"),
+        items.length > 0 ? renderTodoLines(items, theme) : theme.fg("muted", "All todos completed"),
         0,
         0,
       );
@@ -228,11 +189,7 @@ export function registerTodoTools(pi: ExtensionAPI, options: RegisterTodoToolsOp
     renderResult(result, _options, theme) {
       const details = result.details as { items?: TodoItem[] } | undefined;
       const items = details?.items ?? [];
-      return new Text(
-        items.length > 0 ? items.map((item) => renderTodoLine(item, theme)).join("\n") : theme.fg("dim", "No todos"),
-        0,
-        0,
-      );
+      return new Text(items.length > 0 ? renderTodoLines(items, theme) : theme.fg("dim", "No todos"), 0, 0);
     },
   });
 }

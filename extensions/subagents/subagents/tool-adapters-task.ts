@@ -3,7 +3,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { Container, Spacer, Text } from "@mariozechner/pi-tui";
 
-import type { AgentSnapshot } from "./types.ts";
+import type { PublicAgentSnapshot } from "./types.ts";
 
 import {
   renderEmptySlot,
@@ -11,8 +11,10 @@ import {
   renderLines,
   titleLine,
   toolCallLine,
-} from "../../codex-content/renderers/common.ts";
+} from "../../shared/renderers/common.ts";
+import { validateSubagentName } from "./naming.ts";
 import { shorten } from "./render.ts";
+import { toPublicAgentSnapshot } from "./results.ts";
 import { getSubagentCompletionLabel, getSubagentDisplayName, summarizeTaskRequest } from "./rendering.ts";
 import {
   buildTaskTitle,
@@ -20,13 +22,11 @@ import {
   normalizeTaskOutput,
   renderTaskOutput,
 } from "./renderers.ts";
+import { buildSpawnAgentTypeDescription, resolveAgentProfiles } from "./profiles.ts";
 import type { createSubagentLifecycleService } from "./lifecycle-service.ts";
-import type { SubagentRuntimeStore } from "./runtime-store.ts";
 
 export type TaskToolAdapterDeps = {
-  store: SubagentRuntimeStore;
   lifecycle: ReturnType<typeof createSubagentLifecycleService>;
-  toSnapshot: (record: unknown, attachment?: unknown) => AgentSnapshot;
   normalizeWaitAgentTimeoutMs: (timeoutMs: number | undefined) => number;
 };
 
@@ -34,44 +34,47 @@ export function registerTaskToolAdapters(
   pi: Pick<ExtensionAPI, "registerTool">,
   deps: TaskToolAdapterDeps,
 ): void {
+  const agentTypeDescription = buildSpawnAgentTypeDescription(resolveAgentProfiles());
+
   pi.registerTool({
     name: "Task",
     label: "Task",
     description:
-      "Spawn a persistent background task (child agent) to perform delegated work asynchronously.\n\nEach task runs in its own isolated agent session. Use TaskOutput to retrieve results and TaskStop to terminate a running task.\n\nKey behaviors:\n- Returns a task_id immediately when run_in_background=true\n- Blocks until completion when run_in_background=false (default)\n- Tasks can be resumed after completion using the resume field",
+      "Spawn a persistent background task (child agent) to perform delegated work asynchronously. Use TaskOutput to retrieve results and TaskStop to terminate a running task.",
     parameters: Type.Object({
       subagent_type: Type.Optional(
         Type.String({
-          description: "Optional agent type for the task. Defaults to the standard agent type.",
+          description: agentTypeDescription,
         }),
       ),
       description: Type.Optional(
         Type.String({
-          description: "Optional descriptive label for the task.",
+          description: "A short (3-5 word) description of the task.",
+        }),
+      ),
+      name: Type.Optional(
+        Type.String({
+          description: "Required lowercase public name when spawning a new child task. May include hyphens and underscores.",
         }),
       ),
       prompt: Type.String({
-        description: "The task prompt to send to the child agent.",
+        description: "The task for the agent to perform.",
       }),
       complexity: Type.Optional(
         Type.String({
-          description: "Reasoning effort for the child agent. One of: low, medium, high, xhigh.",
+          description:
+            "Optional complexity tier. When set, Task model selection follows the configured complexity-to-model routing in settings.",
         }),
       ),
       run_in_background: Type.Optional(
         Type.Boolean({
           description:
-            "If true, return immediately with a task_id. If false, wait for completion.",
+            "Run the task in the background. Returns immediately with the public task name. Use TaskOutput to check results.",
         }),
       ),
       resume: Type.Optional(
         Type.String({
-          description: "task_id of an existing task to resume with a new prompt.",
-        }),
-      ),
-      workdir: Type.Optional(
-        Type.String({
-          description: "Working directory for the task. Defaults to current cwd.",
+          description: "Public name from a previous invocation to resume with full context preserved.",
         }),
       ),
       model: Type.Optional(
@@ -81,59 +84,63 @@ export function registerTaskToolAdapters(
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const taskSummary = summarizeTaskRequest(params.description, params.prompt);
+
       if (params.resume) {
-        const taskSummary = summarizeTaskRequest(params.description, params.prompt);
-        const resumed = await deps.lifecycle.resume({
+        const name = validateSubagentName(params.resume, "resume");
+        const resumed = await deps.lifecycle.resumeByName({
           mode: "task",
-          agentId: params.resume,
+          name,
           input: params.prompt,
           taskSummary,
         });
         return {
-          content: [{ type: "text", text: JSON.stringify({ submission_id: resumed.submissionId }) }],
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ name, submission_id: resumed.submissionId }),
+            },
+          ],
           details: {
-            task_id: params.resume,
             submission_id: resumed.submissionId,
             task_summary: taskSummary,
-            ...resumed.snapshot,
+            ...toPublicAgentSnapshot(resumed.snapshot),
             input: params.prompt,
             command: resumed.commandType,
           },
         };
       }
 
-      const taskSummary = summarizeTaskRequest(params.description, params.prompt);
+      const name = validateSubagentName(params.name);
       const spawned = await deps.lifecycle.spawn({
         mode: "task",
         ctx,
+        name,
         prompt: params.prompt,
         requestedAgentType: params.subagent_type,
-        workdir: params.workdir,
         requestedModel: params.model,
         requestedReasoningEffort: params.complexity,
         runInBackground: params.run_in_background,
-        displayNameHint: params.description,
-        nameSeed: JSON.stringify({ prompt: params.prompt, type: params.subagent_type, workdir: params.workdir ?? ctx.cwd }),
         taskSummary,
       });
 
       if (!params.run_in_background && spawned.completedAgent) {
+        const completedAgent = toPublicAgentSnapshot(spawned.completedAgent);
         return {
           content: [
             {
               type: "text",
               text: JSON.stringify({
-                task_id: spawned.agentId,
-                status: spawned.completedAgent.status,
-                output: spawned.completedAgent.last_assistant_text ?? spawned.completedAgent.last_error ?? "",
+                name,
+                status: completedAgent.status,
+                output: completedAgent.last_assistant_text ?? completedAgent.last_error ?? "",
               }),
             },
           ],
           details: {
-            task_id: spawned.agentId,
-            nickname: spawned.nickname ?? null,
+            name,
             task_summary: taskSummary,
-            agents: [spawned.completedAgent],
+            agents: [completedAgent],
             timed_out: false,
           },
         };
@@ -143,14 +150,12 @@ export function registerTaskToolAdapters(
         content: [
           {
             type: "text",
-            text: JSON.stringify({ task_id: spawned.agentId, status: "running", nickname: spawned.nickname }),
+            text: JSON.stringify({ name, status: "running" }),
           },
         ],
         details: {
-          task_id: spawned.agentId,
-          nickname: spawned.nickname ?? null,
           task_summary: taskSummary,
-          ...deps.toSnapshot(spawned.record, spawned.attachment),
+          ...toPublicAgentSnapshot(deps.lifecycle.getSnapshotByName(name).snapshot),
         },
       };
     },
@@ -165,7 +170,7 @@ export function registerTaskToolAdapters(
       }
 
       const details = result.details as
-        | { agents?: AgentSnapshot[]; nickname?: string; task_id?: string; task_summary?: string }
+        | { agents?: PublicAgentSnapshot[]; name?: string; task_summary?: string }
         | undefined;
       if (details?.agents?.length) {
         const completedAgent = details.agents[0];
@@ -184,60 +189,58 @@ export function registerTaskToolAdapters(
     name: "TaskOutput",
     label: "Result",
     description:
-      "Retrieve the output or current status of a background task.\n\nWhen block=true, waits for the task to finish before returning.\nWhen block=false, returns the current state immediately without waiting.",
+      "Retrieves output from a running or completed background task. Use block=true (default) to wait for task completion, use block=false for a non-blocking status check, and use timeout to control the maximum wait time.",
     parameters: Type.Object({
-      task_id: Type.String({
-        description: "The task_id returned by the Task tool.",
+      name: Type.String({
+        description: "The public name returned by a previously launched background Task.",
       }),
       block: Type.Optional(
         Type.Boolean({
-          description: "If true, wait for task completion. If false, return current status immediately. Defaults to true.",
+          description: "Whether to wait for completion. Defaults to true.",
         }),
       ),
       timeout: Type.Optional(
         Type.Number({
-          description: "Maximum time to wait in milliseconds when block=true. Defaults to 45000.",
+          description: "Max wait time in milliseconds when block=true. Defaults to 45000, min 30000, max 90000.",
         }),
       ),
     }),
     async execute(_toolCallId, params) {
-      const agentId = params.task_id?.trim();
-      if (!agentId) {
-        throw new Error("task_id is required");
-      }
+      const name = validateSubagentName(params.name);
 
       if (params.block === false) {
-        const { snapshot } = deps.lifecycle.getSnapshot(agentId);
+        const snapshot = toPublicAgentSnapshot(deps.lifecycle.getSnapshotByName(name).snapshot);
         return {
           content: [
             {
               type: "text",
               text: JSON.stringify({
-                task_id: agentId,
+                name,
                 status: snapshot.status,
                 output: snapshot.last_assistant_text ?? snapshot.last_error ?? "",
               }),
             },
           ],
           details: {
-            task_id: agentId,
+            name,
             agents: [snapshot],
             timed_out: false,
           },
         };
       }
 
-      const waited = await deps.lifecycle.wait({
-        ids: [agentId],
+      const waited = await deps.lifecycle.waitByNames({
+        names: [name],
         timeoutMs: deps.normalizeWaitAgentTimeoutMs(params.timeout),
       });
-      const snapshot = waited.snapshots[0];
+      const snapshots = waited.snapshots.map(toPublicAgentSnapshot);
+      const snapshot = snapshots[0];
       return {
         content: [
           {
             type: "text",
             text: JSON.stringify({
-              task_id: agentId,
+              name,
               status: snapshot?.status ?? "running",
               output: snapshot?.last_assistant_text ?? snapshot?.last_error ?? "",
               timed_out: waited.timedOut,
@@ -245,27 +248,25 @@ export function registerTaskToolAdapters(
           },
         ],
         details: {
-          task_id: agentId,
-          agents: waited.snapshots,
+          name,
+          agents: snapshots,
           timed_out: waited.timedOut,
         },
       };
     },
     renderCall(args, theme) {
-      const taskId = typeof args.task_id === "string" && args.task_id.trim().length > 0 ? args.task_id.trim() : "task";
-      const record = deps.store.getDurableChild(taskId);
-      const displayName = record ? getSubagentDisplayName(deps.toSnapshot(record)) : shorten(taskId, 20);
-      return new Text(toolCallLine(theme, "Task output", theme.fg("accent", displayName)), 0, 0);
+      const name = typeof args.name === "string" && args.name.trim().length > 0 ? args.name.trim() : "task";
+      return new Text(toolCallLine(theme, "Task output", theme.fg("accent", name)), 0, 0);
     },
     renderResult(result, { expanded }, theme) {
-      const details = result.details as { agents?: AgentSnapshot[]; timed_out?: boolean; task_id?: string } | undefined;
+      const details = result.details as { agents?: PublicAgentSnapshot[]; timed_out?: boolean; name?: string } | undefined;
       const agents = details?.agents ?? [];
       const timedOut = Boolean(details?.timed_out);
-      const taskId = details?.task_id;
+      const name = details?.name;
 
       if (agents.length === 0) {
         const label = timedOut ? "Still running" : "No output available";
-        const suffix = taskId ? theme.fg("accent", shorten(taskId, 20)) : undefined;
+        const suffix = name ? theme.fg("accent", shorten(name, 20)) : undefined;
         return renderLines([titleLine(theme, timedOut ? "accent" : "text", label, suffix)]);
       }
 
@@ -299,37 +300,37 @@ export function registerTaskToolAdapters(
     name: "TaskStop",
     label: "TaskStop",
     description:
-      "Stop a running background task cleanly. Terminates the child agent associated with the given task_id and retains a closed record.",
+      "Stops a running background task by its public name. Terminates the child agent associated with the task and returns the resulting closed status.",
     parameters: Type.Object({
-      task_id: Type.String({
-        description: "The task_id of the task to stop.",
+      name: Type.String({
+        description: "The public name of the background task to stop.",
       }),
     }),
     async execute(_toolCallId, params) {
-      const agentId = params.task_id?.trim();
-      if (!agentId) {
-        throw new Error("task_id is required");
-      }
-
-      const result = await deps.lifecycle.stop(agentId);
+      const name = validateSubagentName(params.name);
+      const result = await deps.lifecycle.stopByName(name);
+      const snapshot = toPublicAgentSnapshot(result.snapshot);
       return {
-        content: [{ type: "text", text: `Stopped task ${agentId}` }],
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ name: snapshot.name, status: snapshot.status }),
+          },
+        ],
         details: {
-          task_id: agentId,
-          status: result.snapshot,
+          name,
+          status: snapshot,
         },
       };
     },
     renderCall(args, theme) {
-      const taskId = typeof args.task_id === "string" && args.task_id.trim().length > 0 ? args.task_id.trim() : "task";
-      const record = deps.store.getDurableChild(taskId);
-      const displayName = record ? getSubagentDisplayName(deps.toSnapshot(record)) : shorten(taskId, 20);
-      return new Text(toolCallLine(theme, "Stop task", theme.fg("accent", displayName)), 0, 0);
+      const name = typeof args.name === "string" && args.name.trim().length > 0 ? args.name.trim() : "task";
+      return new Text(toolCallLine(theme, "Stop task", theme.fg("accent", name)), 0, 0);
     },
     renderResult(result, _options, theme) {
-      const details = result.details as { status?: AgentSnapshot; task_id?: string } | undefined;
+      const details = result.details as { status?: PublicAgentSnapshot; name?: string } | undefined;
       const snapshot = extractSnapshotDetails(details?.status ?? details);
-      const displayName = snapshot ? getSubagentDisplayName(snapshot) : details?.task_id ?? "task";
+      const displayName = snapshot ? getSubagentDisplayName(snapshot) : details?.name ?? "task";
       return new Text(titleLine(theme, "text", "Stopped", theme.fg("accent", displayName)), 0, 0);
     },
   });

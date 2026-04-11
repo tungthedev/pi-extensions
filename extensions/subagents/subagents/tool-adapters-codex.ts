@@ -3,7 +3,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Type } from "@sinclair/typebox";
 import { Text } from "@mariozechner/pi-tui";
 
-import type { AgentSnapshot } from "./types.ts";
+import type { PublicAgentSnapshot } from "./types.ts";
 
 import {
   detailLine,
@@ -12,7 +12,8 @@ import {
   renderLines,
   titleLine,
   toolCallLine,
-} from "../../codex-content/renderers/common.ts";
+} from "../../shared/renderers/common.ts";
+import { validateSubagentName } from "./naming.ts";
 import { buildWaitAgentContent } from "./notifications.ts";
 import type { createSubagentLifecycleService } from "./lifecycle-service.ts";
 import {
@@ -20,89 +21,99 @@ import {
   resolveAgentProfiles,
 } from "./profiles.ts";
 import { resolveRequestedAgentType } from "./profiles-apply.ts";
-import { formatSubagentModelLabel, getSubagentDisplayName } from "./rendering.ts";
+import {
+  buildSendMessageContent,
+  buildSpawnAgentContent,
+  toPublicAgentSnapshot,
+} from "./results.ts";
+import { formatSubagentModelLabel } from "./rendering.ts";
 import {
   extractSnapshotDetails,
   previewTaskText,
   renderAgentCompletionResult,
 } from "./renderers.ts";
-import type { SubagentRuntimeStore } from "./runtime-store.ts";
-
-const CollabInputItemSchema = Type.Object({
-  type: Type.Optional(
-    Type.String({
-      description: "Input item type: text, image, local_image, skill, or mention.",
-    }),
-  ),
-  text: Type.Optional(Type.String({ description: "Text content when type is text." })),
-  image_url: Type.Optional(Type.String({ description: "Image URL when type is image." })),
-  path: Type.Optional(
-    Type.String({
-      description:
-        "Path when type is local_image/skill, or structured mention target when type is mention.",
-    }),
-  ),
-  name: Type.Optional(Type.String({ description: "Display name when type is skill or mention." })),
-});
 
 export type CodexToolAdapterDeps = {
-  store: SubagentRuntimeStore;
   lifecycle: ReturnType<typeof createSubagentLifecycleService>;
-  resolveSpawnPrompt: (args: {
-    task?: string;
-    context?: string;
-    message?: string;
-    items?: Array<{ type?: string; text?: string; image_url?: string; path?: string; name?: string }>;
-  }) => string;
-  resolveAgentIdsAlias: (args: { id?: string; agent_id?: string; ids?: string[]; agent_ids?: string[] }) => string[];
-  resolveAgentIdAlias: (args: { id?: string; agent_id?: string }, fieldName?: string) => string;
-  predictSpawnName: (args: Record<string, unknown>) => string;
   renderSpawnPromptPreview: (prompt: string, theme: ExtensionContext["ui"]["theme"]) => Text;
-  toSnapshot: (record: unknown, attachment?: unknown) => AgentSnapshot;
   normalizeWaitAgentTimeoutMs: (timeoutMs: number | undefined) => number;
 };
+
+function buildSpawnAgentToolDescription(agentRoleGuidance: string): string {
+  const toolDescription = [
+    agentRoleGuidance,
+    "Spawn a sub-agent for a well-scoped task. Returns the public child-agent name, plus completion details when available.",
+  ].join("\n");
+
+  const agentRoleUsageHint = agentRoleGuidance
+    ? "Agent-role guidance below only helps choose which agent to use after spawning is already authorized; it never authorizes spawning by itself."
+    : "";
+
+  return [
+    toolDescription,
+    "This spawn_agent tool provides you access to smaller but more efficient sub-agents. A mini model can solve many tasks faster than the main model. You should follow the rules and guidelines below to use this tool.",
+    "",
+    "Only use `spawn_agent` if and only if the user explicitly asks for sub-agents, delegation, or parallel agent work.",
+    "Requests for depth, thoroughness, research, investigation, or detailed codebase analysis do not count as permission to spawn.",
+    agentRoleUsageHint,
+    "",
+    "### When to delegate vs. do the subtask yourself",
+    "- First, quickly analyze the overall user task and form a succinct high-level plan. Identify which tasks are immediate blockers on the critical path, and which tasks are sidecar tasks that are needed but can run in parallel without blocking the next local step. As part of that plan, explicitly decide what immediate task you should do locally right now. Do this planning step before delegating to agents so you do not hand off the immediate blocking task to a submodel and then waste time waiting on it.",
+    "- Use the smaller subagent when a subtask is easy enough for it to handle and can run in parallel with your local work. Prefer delegating concrete, bounded sidecar tasks that materially advance the main task without blocking your immediate next local step.",
+    "- Do not delegate urgent blocking work when your immediate next step depends on that result. If the very next action is blocked on that task, the main rollout should usually do it locally to keep the critical path moving.",
+    "- Keep work local when the subtask is too difficult to delegate well and when it is tightly coupled, urgent, or likely to block your immediate next step.",
+    "",
+    "### Designing delegated subtasks",
+    "- Subtasks must be concrete, well-defined, and self-contained.",
+    "- Delegated subtasks must materially advance the main task.",
+    "- Do not duplicate work between the main rollout and delegated subtasks.",
+    "- Avoid issuing multiple delegate calls on the same unresolved thread unless the new delegated task is genuinely different and necessary.",
+    "- Narrow the delegated ask to the concrete output you need next.",
+    "- For coding tasks, prefer delegating concrete code-change worker subtasks over read-only explorer analysis when the subagent can make a bounded patch in a clear write scope.",
+    "- When delegating coding work, instruct the submodel to edit files directly in its forked workspace and list the file paths it changed in the final answer.",
+    "- For code-edit subtasks, decompose work so each delegated task has a disjoint write set.",
+    "",
+    "### After you delegate",
+    "- Call wait_agent very sparingly. Only call wait_agent when you need the result immediately for the next critical-path step and you are blocked until it returns.",
+    "- Do not redo delegated subagent tasks yourself; focus on integrating results or tackling non-overlapping work.",
+    "- While the subagent is running in the background, do meaningful non-overlapping work immediately.",
+    "- Do not repeatedly wait by reflex.",
+    "- When a delegated coding task returns, quickly review the uploaded changes, then integrate or refine them.",
+    "",
+    "### Parallel delegation patterns",
+    "- Run multiple independent information-seeking subtasks in parallel when you have distinct questions that can be answered independently.",
+    "- Split implementation into disjoint codebase slices and spawn multiple agents for them in parallel when the write scopes do not overlap.",
+    "- Delegate verification only when it can run in parallel with ongoing implementation and is likely to catch a concrete risk before final integration.",
+    "- The key is to find opportunities to spawn multiple independent subtasks in parallel within the same round, while ensuring each subtask is well-defined, self-contained, and materially advances the main task.",
+  ].filter((line, index, lines) => !(line === "" && lines[index - 1] === "")).join("\n");
+}
 
 export function registerCodexToolAdapters(
   pi: Pick<ExtensionAPI, "registerTool">,
   deps: CodexToolAdapterDeps,
 ): void {
+  const agentTypeDescription = buildSpawnAgentTypeDescription(resolveAgentProfiles());
+
   pi.registerTool({
     name: "spawn_agent",
     label: "spawn_agent",
-    description:
-      "Spawn a persistent local child pi agent in RPC mode, optionally wait for completion, and immediately start it on a delegated task.",
+    description: buildSpawnAgentToolDescription(agentTypeDescription),
     parameters: Type.Object({
-      task: Type.Optional(Type.String({ description: "Legacy task field for the child agent." })),
-      context: Type.Optional(
-        Type.String({
-          description: "Optional extra context summary prepended to the delegated task.",
-        }),
-      ),
-      message: Type.Optional(
-        Type.String({
-          description: "Initial plain-text task for the new agent. Use either message or items.",
-        }),
-      ),
-      items: Type.Optional(
-        Type.Array(CollabInputItemSchema, {
-          description:
-            "Structured input items. Use this to pass explicit mentions or local-image references.",
-        }),
-      ),
+      name: Type.String({
+        description: "Required lowercase public name for the child agent. May include hyphens and underscores.",
+      }),
+      message: Type.String({
+        description: "Initial plain-text task for the new agent.",
+      }),
       agent_type: Type.Optional(
         Type.String({
-          description: buildSpawnAgentTypeDescription(resolveAgentProfiles()),
+          description: agentTypeDescription,
         }),
       ),
       fork_context: Type.Optional(
         Type.Boolean({
           description:
             "Clone the current persisted session branch into the child before sending the initial task.",
-        }),
-      ),
-      workdir: Type.Optional(
-        Type.String({
-          description: "Optional working directory for the child agent. Defaults to the current cwd.",
         }),
       ),
       model: Type.Optional(
@@ -127,86 +138,66 @@ export function registerCodexToolAdapters(
             "If true, launch the child in a visible multiplexer pane/tab for direct user interaction. Default false. Only use when the user explicitly asks to work in the child session.",
         }),
       ),
-      name: Type.Optional(
-        Type.String({
-          description: "Optional descriptive label for the child agent.",
-        }),
-      ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const prompt = deps.resolveSpawnPrompt(params);
+      const prompt = params.message?.trim();
+      if (!prompt) {
+        throw new Error("message is required");
+      }
+
       const result = await deps.lifecycle.spawn({
         mode: "codex",
         ctx,
+        name: validateSubagentName(params.name),
         prompt,
         requestedAgentType: params.agent_type,
-        workdir: params.workdir,
         requestedModel: params.model,
         requestedReasoningEffort: params.reasoning_effort,
         runInBackground: params.run_in_background,
         interactive: params.interactive,
         forkContext: params.fork_context,
-        displayNameHint: params.name,
-        nameSeed: JSON.stringify({
-          task: params.task ?? null,
-          context: params.context ?? null,
-          message: params.message ?? null,
-          items: params.items ?? null,
-          agent_type: params.agent_type ?? null,
-          model: params.model ?? null,
-          reasoning_effort: params.reasoning_effort ?? null,
-          workdir: params.workdir ?? null,
-          interactive: params.interactive ?? null,
-        }),
       });
+
+      const completedAgent = result.completedAgent
+        ? toPublicAgentSnapshot(result.completedAgent)
+        : undefined;
 
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify({
-              agent_id: result.agentId,
-              nickname: result.nickname ?? null,
-              ...(result.completedAgent
-                ? {
-                    status: { [result.agentId]: result.completedAgent.status },
-                    timed_out: false,
-                    agent: result.completedAgent,
-                    agents: [result.completedAgent],
-                  }
-                : {}),
-            }),
+            text: buildSpawnAgentContent(result.name, completedAgent),
           },
         ],
-        details: result.completedAgent
+        details: completedAgent
           ? {
-              agent_id: result.agentId,
-              nickname: result.nickname ?? null,
-              agents: [result.completedAgent],
-              status: { [result.agentId]: result.completedAgent.status },
+              name: result.name,
+              agents: [completedAgent],
+              status: { [result.name]: completedAgent.status },
               timed_out: false,
               prompt,
             }
           : {
-              ...result.record,
-              nickname: result.nickname ?? null,
+              name: result.name,
               prompt,
             },
       };
     },
     renderCall(args, theme) {
-      const predictedName = deps.predictSpawnName(args as Record<string, unknown>);
+      const publicName =
+        typeof args.name === "string" && args.name.trim().length > 0 ? args.name.trim() : "agent";
       const agentType = resolveRequestedAgentType(args.agent_type);
       const roleLabel = agentType !== "default" ? ` [${agentType}]` : "";
       const modelLabel = formatSubagentModelLabel(args.model, args.reasoning_effort);
       const transportLabel = args.interactive ? theme.fg("muted", " (interactive)") : "";
-      const agentName = `${theme.fg("accent", `${predictedName}${roleLabel}`)}${modelLabel ? theme.fg("muted", ` (${modelLabel})`) : ""}${transportLabel}`;
+      const agentName = `${theme.fg("accent", `${publicName}${roleLabel}`)}${modelLabel ? theme.fg("muted", ` (${modelLabel})`) : ""}${transportLabel}`;
       return new Text(toolCallLine(theme, "Spawn", agentName), 0, 0);
     },
     renderResult(result, options, theme) {
       const details =
         (result.details as
-          | ({ agents?: AgentSnapshot[]; timed_out?: boolean; prompt?: string } & AgentSnapshot)
+          | ({ agents?: PublicAgentSnapshot[]; timed_out?: boolean; prompt?: string; name?: string } &
+              Partial<PublicAgentSnapshot>)
           | undefined) ?? undefined;
       if (details?.agents) {
         return renderAgentCompletionResult(details, Boolean(options.expanded), theme);
@@ -219,24 +210,15 @@ export function registerCodexToolAdapters(
   });
 
   pi.registerTool({
-    name: "send_input",
-    label: "send_input",
+    name: "send_message",
+    label: "send_message",
     description:
       "Send more work to a persistent child agent. Automatically resumes detached agents, uses queued follow-up semantics by default, and uses steering when interrupt is true.",
     parameters: Type.Object({
-      id: Type.Optional(Type.String({ description: "Agent id to message (from spawn_agent)." })),
-      agent_id: Type.Optional(Type.String({ description: "Identifier returned by spawn_agent." })),
-      message: Type.Optional(
-        Type.String({
-          description: "Plain-text message to send to the agent.",
-        }),
-      ),
-      items: Type.Optional(
-        Type.Array(CollabInputItemSchema, {
-          description:
-            "Structured input items. Use this to pass explicit mentions or local-image references.",
-        }),
-      ),
+      target: Type.String({ description: "Public name of the child agent to message." }),
+      message: Type.String({
+        description: "Plain-text message to send to the agent.",
+      }),
       interrupt: Type.Optional(
         Type.Boolean({
           description: "Use steering semantics when the child is already running.",
@@ -244,56 +226,49 @@ export function registerCodexToolAdapters(
       ),
     }),
     async execute(_toolCallId, params) {
-      const agentId = deps.resolveAgentIdAlias(params);
-      const input = [params.message?.trim(), params.items?.length ? deps.resolveSpawnPrompt({ items: params.items }) : undefined]
-        .filter((value): value is string => Boolean(value))
-        .join("\n\n")
-        .trim();
+      const target = validateSubagentName(params.target, "target");
+      const input = params.message?.trim();
       if (!input) {
-        throw new Error("input, message, or items is required");
+        throw new Error("message is required");
       }
 
-      const result = await deps.lifecycle.resume({
+      const result = await deps.lifecycle.resumeByName({
         mode: "codex",
-        agentId,
+        name: target,
         input,
         interrupt: params.interrupt,
       });
 
       return {
-        content: [{ type: "text", text: JSON.stringify({ submission_id: result.submissionId }) }],
+        content: [{ type: "text", text: buildSendMessageContent(result.submissionId) }],
         details: {
           submission_id: result.submissionId,
-          ...result.snapshot,
+          ...toPublicAgentSnapshot(result.snapshot),
           input,
           command: result.commandType,
         },
       };
     },
     renderCall(args, theme) {
-      const agentId =
-        (typeof args.id === "string" && args.id.trim()) ||
-        (typeof args.agent_id === "string" && args.agent_id.trim()) ||
-        undefined;
-      const record = agentId ? deps.store.getDurableChild(agentId) : undefined;
-      const displayName = record
-        ? getSubagentDisplayName(deps.toSnapshot(record))
-        : agentId ?? "agent";
-      return new Text(toolCallLine(theme, "Send input", theme.fg("accent", displayName)), 0, 0);
+      const target =
+        typeof args.target === "string" && args.target.trim().length > 0
+          ? args.target.trim()
+          : "agent";
+      return new Text(toolCallLine(theme, "Send message", theme.fg("accent", target)), 0, 0);
     },
     renderResult(result, options, theme) {
-      const details = (result.details ?? {}) as AgentSnapshot & { input: string };
+      const details = (result.details ?? {}) as PublicAgentSnapshot & { input: string };
       if (typeof details.input !== "string") {
         return renderFallbackResult(result, theme.fg("muted", "messaged subagent"));
       }
 
       const snapshot = extractSnapshotDetails(details);
-      const displayName = snapshot ? getSubagentDisplayName(snapshot) : "agent";
+      const displayName = snapshot?.name ?? "agent";
       const preview = previewTaskText(
         details.input,
         options.expanded ? Number.MAX_SAFE_INTEGER : 5,
       );
-      const lines = [titleLine(theme, "text", "Sent input", theme.fg("accent", displayName))];
+      const lines = [titleLine(theme, "text", "Sent message", theme.fg("accent", displayName))];
 
       for (const [index, line] of preview.visibleLines.entries()) {
         lines.push(detailLine(theme, line, index === 0));
@@ -310,43 +285,36 @@ export function registerCodexToolAdapters(
   pi.registerTool({
     name: "wait_agent",
     label: "wait_agent",
-    description: "Wait for agents to reach a final status. Returns empty status when timed out.",
+    description:
+      "Wait for any child agent to complete a turn. Completed statuses may include the agent's final message. Returns empty status when timed out. Once the agent reaches a completed status, a notification message will be received containing the same completed status.",
     parameters: Type.Object({
-      ids: Type.Array(Type.String(), {
-        description: "Agent ids to wait on. Pass multiple ids to wait for whichever finishes first.",
-      }),
       timeout_ms: Type.Optional(
         Type.Number({
-          description: "Maximum time to wait before returning. Defaults to 45000, min 30000, max 90000.",
+          description:
+            "Optional timeout in milliseconds. Defaults to 45000, min 30000, max 90000.",
         }),
       ),
     }),
     async execute(_toolCallId, params) {
-      const ids = deps.resolveAgentIdsAlias({ ids: params.ids });
-      if (ids.length === 0) {
-        throw new Error("ids must be non-empty");
-      }
-
-      const result = await deps.lifecycle.wait({
-        ids,
+      const result = await deps.lifecycle.waitAny({
         timeoutMs: deps.normalizeWaitAgentTimeoutMs(params.timeout_ms),
       });
+      const snapshots = result.snapshots.map(toPublicAgentSnapshot);
       return {
-        content: [{ type: "text", text: buildWaitAgentContent(result.snapshots, result.timedOut) }],
+        content: [{ type: "text", text: buildWaitAgentContent(snapshots, result.timedOut) }],
         details: {
-          agents: result.snapshots,
-          status: Object.fromEntries(result.snapshots.map((snapshot) => [snapshot.agent_id, snapshot.status])),
+          agents: snapshots,
+          status: Object.fromEntries(snapshots.map((snapshot) => [snapshot.name, snapshot.status])),
           timed_out: result.timedOut,
         },
       };
     },
-    renderCall(args, theme) {
-      const ids = Array.isArray(args.ids) ? args.ids.filter((id): id is string => typeof id === "string") : [];
-      const summary = ids.length === 1 ? ids[0]! : `${ids.length} agents`;
-      return new Text(toolCallLine(theme, "Wait", theme.fg("accent", summary)), 0, 0);
+    renderCall(_args, theme) {
+      return new Text(toolCallLine(theme, "Wait", theme.fg("accent", "any agent")), 0, 0);
     },
     renderResult(result, options, theme) {
-      const details = result.details as { agents?: AgentSnapshot[]; timed_out?: boolean } | undefined;
+      const details =
+        result.details as { agents?: PublicAgentSnapshot[]; timed_out?: boolean } | undefined;
       if (!details) {
         return renderFallbackResult(result, theme.fg("muted", buildWaitAgentContent([], false)));
       }
@@ -357,44 +325,40 @@ export function registerCodexToolAdapters(
   pi.registerTool({
     name: "close_agent",
     label: "close_agent",
-    description:
-      "Close one or more persistent child agents. Closed agents cannot be resumed.",
+    description: "Close a persistent child agent. Closed agents cannot be resumed.",
     parameters: Type.Object({
-      id: Type.Optional(Type.String({ description: "Single agent id to close." })),
-      agent_id: Type.Optional(Type.String({ description: "Alias for id." })),
-      ids: Type.Optional(Type.Array(Type.String(), { description: "Agent ids to close." })),
-      agent_ids: Type.Optional(
-        Type.Array(Type.String(), { description: "Alias for ids." }),
-      ),
+      target: Type.String({ description: "Public name of the agent to close." }),
     }),
     async execute(_toolCallId, params) {
-      const agentId = deps.resolveAgentIdAlias(params);
-      const result = await deps.lifecycle.stop(agentId);
+      const target = validateSubagentName(params.target, "target");
+      const result = await deps.lifecycle.stopByName(target);
+      const snapshot = toPublicAgentSnapshot(result.snapshot);
       return {
-        content: [{ type: "text", text: `Closed agent ${agentId}` }],
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ name: snapshot.name, status: snapshot.status }),
+          },
+        ],
         details: {
-          status: result.snapshot,
+          status: snapshot,
         },
       };
     },
     renderCall(args, theme) {
-      const agentId =
-        (typeof args.id === "string" && args.id.trim()) ||
-        (typeof args.agent_id === "string" && args.agent_id.trim()) ||
-        undefined;
-      const record = agentId ? deps.store.getDurableChild(agentId) : undefined;
-      const displayName = record
-        ? getSubagentDisplayName(deps.toSnapshot(record))
-        : agentId ?? "agent";
-      return new Text(toolCallLine(theme, "Close", theme.fg("accent", displayName)), 0, 0);
+      const target =
+        typeof args.target === "string" && args.target.trim().length > 0
+          ? args.target.trim()
+          : "agent";
+      return new Text(toolCallLine(theme, "Close", theme.fg("accent", target)), 0, 0);
     },
     renderResult(result, _options, theme) {
-      const details = result.details as { status?: AgentSnapshot } | AgentSnapshot | undefined;
+      const details = result.details as { status?: PublicAgentSnapshot } | PublicAgentSnapshot | undefined;
       const snapshot = extractSnapshotDetails(details);
       if (!snapshot) {
         return renderFallbackResult(result, theme.fg("muted", "closed"));
       }
-      const displayName = getSubagentDisplayName(snapshot);
+      const displayName = snapshot.name ?? "agent";
       return new Text(titleLine(theme, "text", "Closed", theme.fg("accent", displayName)), 0, 0);
     },
   });

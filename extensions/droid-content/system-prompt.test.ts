@@ -1,15 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { setSystemMdPromptEnabledForTests } from "../system-md/state.ts";
 import {
-  buildSelectedDroidPrompt,
   handleDroidSystemPromptBeforeAgentStart,
-  registerDroidSystemPrompt,
   type DroidSystemPromptDeps,
 } from "./system-prompt.ts";
 
-function createContext(toolSet: "pi" | "codex" | "forge" | "droid", modelId = "gpt-5.4") {
+function createContext(toolSet: "pi" | "codex" | "droid", modelId = "gpt-5.4") {
   return {
     model: { id: modelId },
     sessionManager: {
@@ -20,101 +17,113 @@ function createContext(toolSet: "pi" | "codex" | "forge" | "droid", modelId = "g
   };
 }
 
-test("buildSelectedDroidPrompt includes exact extracted Droid base prompt text", () => {
-  const prompt = buildSelectedDroidPrompt("gpt-5.4");
-
-  assert.match(prompt, /^You are Droid, an AI software engineering agent built by Factory\./m);
-  assert.match(prompt, /When you need clarification from the user, ALWAYS use the AskUser tool/);
-  assert.match(prompt, /Do exactly what the user asks, no more, no less/);
-});
-
-test("buildSelectedDroidPrompt adds OpenAI-specific prompt blocks for GPT models", () => {
-  const prompt = buildSelectedDroidPrompt("gpt-5.4");
-
-  assert.match(prompt, /<markdown_spec>/);
-  assert.match(prompt, /<solution_persistence>/);
-});
-
-test("buildSelectedDroidPrompt adds Google-specific prompt blocks for Gemini models", () => {
-  const prompt = buildSelectedDroidPrompt("gemini-2.5-flash");
-
-  assert.match(prompt, /riskLevelReason and riskLevel/);
-  assert.match(prompt, /<tool_usage_rules>/);
-  assert.match(prompt, /<spec_mode_guidelines>/);
-  assert.match(prompt, /<todo_tool_guidelines>/);
-});
-
 test("handleDroidSystemPromptBeforeAgentStart returns no-op when Droid prompt is not selected", async () => {
   const deps: DroidSystemPromptDeps = {
     readSettings: async () => ({
-      toolSet: "forge",
+      toolSet: "pi",
       systemMdPrompt: true,
+      includePiPromptSection: false,
     }),
     buildPromptForModel: () => "Droid block",
   };
 
   const result = await handleDroidSystemPromptBeforeAgentStart(
     { systemPrompt: "Base" } as never,
-    createContext("forge") as never,
+    createContext("pi") as never,
     deps,
   );
 
   assert.equal(result, undefined);
 });
 
-test("handleDroidSystemPromptBeforeAgentStart returns no-op when system-md is enabled", async () => {
+test("handleDroidSystemPromptBeforeAgentStart defers to SYSTEM.md when enabled and present", async () => {
+  const fs = await import("node:fs/promises");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-droid-system-md-"));
+  await fs.writeFile(path.join(tempDir, "SYSTEM.md"), "System MD prompt\n");
+
   const deps: DroidSystemPromptDeps = {
     readSettings: async () => ({
       toolSet: "droid",
       systemMdPrompt: true,
+      includePiPromptSection: false,
     }),
     buildPromptForModel: () => "Droid block",
   };
 
-  setSystemMdPromptEnabledForTests(true);
+  const result = await handleDroidSystemPromptBeforeAgentStart(
+    { systemPrompt: "Base" } as never,
+    {
+      ...createContext("droid"),
+      cwd: tempDir,
+    } as never,
+    deps,
+  );
 
-  try {
-    const result = await handleDroidSystemPromptBeforeAgentStart(
-      { systemPrompt: "Base" } as never,
-      createContext("droid") as never,
-      deps,
-    );
-
-    assert.equal(result, undefined);
-  } finally {
-    setSystemMdPromptEnabledForTests(false);
-  }
+  assert.deepEqual(result, { systemPrompt: "System MD prompt" });
 });
 
-test("handleDroidSystemPromptBeforeAgentStart still replaces when system-md is loaded but disabled in settings", async () => {
+test("handleDroidSystemPromptBeforeAgentStart still replaces when SYSTEM.md is enabled but missing", async () => {
+  const fs = await import("node:fs/promises");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-droid-no-system-md-"));
+  const deps: DroidSystemPromptDeps = {
+    readSettings: async () => ({
+      toolSet: "droid",
+      systemMdPrompt: true,
+      includePiPromptSection: false,
+    }),
+    buildPromptForModel: () => "Droid block",
+  };
+
+  const result = await handleDroidSystemPromptBeforeAgentStart(
+    { systemPrompt: "Base" } as never,
+    {
+      ...createContext("droid"),
+      cwd: tempDir,
+    } as never,
+    deps,
+  );
+
+  assert.deepEqual(result, { systemPrompt: "Droid block" });
+});
+
+test("handleDroidSystemPromptBeforeAgentStart uses the Droid prompt when SYSTEM.md injection is disabled", async () => {
+  const fs = await import("node:fs/promises");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-droid-system-md-disabled-"));
+  await fs.writeFile(path.join(tempDir, "SYSTEM.md"), "System MD prompt\n");
+
   const deps: DroidSystemPromptDeps = {
     readSettings: async () => ({
       toolSet: "droid",
       systemMdPrompt: false,
+      includePiPromptSection: false,
     }),
     buildPromptForModel: () => "Droid block",
   };
 
-  setSystemMdPromptEnabledForTests(true);
+  const result = await handleDroidSystemPromptBeforeAgentStart(
+    { systemPrompt: "Base" } as never,
+    {
+      ...createContext("droid"),
+      cwd: tempDir,
+    } as never,
+    deps,
+  );
 
-  try {
-    const result = await handleDroidSystemPromptBeforeAgentStart(
-      { systemPrompt: "Base" } as never,
-      createContext("droid") as never,
-      deps,
-    );
-
-    assert.deepEqual(result, { systemPrompt: "Droid block" });
-  } finally {
-    setSystemMdPromptEnabledForTests(false);
-  }
+  assert.deepEqual(result, { systemPrompt: "Droid block" });
 });
 
-test("handleDroidSystemPromptBeforeAgentStart replaces the active system prompt", async () => {
+test("handleDroidSystemPromptBeforeAgentStart still replaces when SYSTEM.md is not configured", async () => {
   const deps: DroidSystemPromptDeps = {
     readSettings: async () => ({
       toolSet: "droid",
-      systemMdPrompt: true,
+      systemMdPrompt: false,
+      includePiPromptSection: false,
     }),
     buildPromptForModel: () => "Droid block",
   };
@@ -128,14 +137,40 @@ test("handleDroidSystemPromptBeforeAgentStart replaces the active system prompt"
   assert.deepEqual(result, { systemPrompt: "Droid block" });
 });
 
-test("registerDroidSystemPrompt registers before_agent_start", () => {
-  let eventName: string | undefined;
+test("handleDroidSystemPromptBeforeAgentStart replaces the active system prompt", async () => {
+  const deps: DroidSystemPromptDeps = {
+    readSettings: async () => ({
+      toolSet: "droid",
+      systemMdPrompt: true,
+      includePiPromptSection: false,
+    }),
+    buildPromptForModel: () => "Droid block",
+  };
 
-  registerDroidSystemPrompt({
-    on(name: string) {
-      eventName = name;
-    },
-  } as never);
+  const result = await handleDroidSystemPromptBeforeAgentStart(
+    { systemPrompt: "Base" } as never,
+    createContext("droid") as never,
+    deps,
+  );
 
-  assert.equal(eventName, "before_agent_start");
+  assert.deepEqual(result, { systemPrompt: "Droid block" });
+});
+
+test("handleDroidSystemPromptBeforeAgentStart appends the Droid prompt after the Pi prompt when enabled", async () => {
+  const deps: DroidSystemPromptDeps = {
+    readSettings: async () => ({
+      toolSet: "droid",
+      systemMdPrompt: false,
+      includePiPromptSection: true,
+    }),
+    buildPromptForModel: () => "Droid block",
+  };
+
+  const result = await handleDroidSystemPromptBeforeAgentStart(
+    { systemPrompt: "Pi base" } as never,
+    createContext("droid") as never,
+    deps,
+  );
+
+  assert.deepEqual(result, { systemPrompt: "Pi base\n\nDroid block" });
 });

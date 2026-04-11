@@ -1,36 +1,32 @@
 import { SessionManager } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import subagentsExtension from "./index.ts";
+import childEntry from "./child-entry.ts";
+import interactiveChildEntry from "./interactive-child-entry.ts";
 import {
-  buildSendInputContent,
+  buildSendMessageContent,
   buildSpawnAgentContent,
   buildWaitAgentContent,
-  SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
-  deriveDurableStatusFromState,
-  extractLastAssistantText,
-  flattenCollabItems,
+  createSubagentRuntimeStore,
   formatSubagentNotificationMessage,
-  getWaitAgentResultTitle,
-  isResumable,
-  normalizeReasoningEffortToThinkingLevel,
   normalizeWaitAgentTimeoutMs,
-  normalizeThinkingLevelToReasoningEffort,
   parseSubagentNotificationMessage,
-  rebuildDurableRegistry,
-  resolveAgentIdAlias,
-  resolveAgentIdsAlias,
   resolveForkContextSessionFile,
   resolveParentSpawnDefaults,
-  resolveSpawnPrompt,
-  summarizeTaskRequest,
-  wrapInteractiveSpawnPrompt,
-} from "./index.ts";
-import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "../shared/toolset-resolver.ts";
+  validateSubagentName,
+} from "./internal-test-helpers.ts";
+import { registerCodexToolAdapters } from "./subagents/tool-adapters-codex.ts";
+import { registerTaskToolAdapters } from "./subagents/tool-adapters-task.ts";
 import { getSubagentNotificationDeliveryOptions } from "./subagents/notifications.ts";
+import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "../shared/toolset-resolver.ts";
+
+const EXISTING_FILE = "/Volumes/Data/Projects/exp/pi-extensions/package.json";
 
 function createPersistedSessionFixture() {
   const root = mkdtempSync(path.join(tmpdir(), "codex-subagents-"));
@@ -94,124 +90,259 @@ function createPersistedSessionFixture() {
   };
 }
 
-test("extractLastAssistantText returns the most recent assistant text blocks", () => {
-  const text = extractLastAssistantText([
-    {
-      role: "assistant",
-      content: [{ type: "text", text: "older" }],
+function createMockCtx(cwd = "/tmp/project") {
+  return {
+    cwd,
+    model: undefined,
+    sessionManager: {
+      getEntries: () => [],
+      getLeafId: () => null,
+      getSessionFile: () => "/tmp/session.jsonl",
     },
-    {
-      role: "assistant",
-      content: [
-        { type: "text", text: "latest line 1" },
-        { type: "image", data: "..." },
-        { type: "text", text: "latest line 2" },
-      ],
-    },
-  ]);
+  } as never;
+}
 
-  assert.equal(text, "latest line 1\nlatest line 2");
-});
+function createCodexLifecycleMock() {
+  const calls: Record<string, unknown[]> = {
+    spawn: [],
+    resumeByName: [],
+    waitAny: [],
+    stopByName: [],
+  };
 
-test("deriveDurableStatusFromState distinguishes running and idle child states", () => {
-  assert.equal(deriveDurableStatusFromState(undefined), "live_running");
-  assert.equal(deriveDurableStatusFromState({ isStreaming: true }), "live_running");
-  assert.equal(deriveDurableStatusFromState({ pendingMessageCount: 1 }), "live_running");
-  assert.equal(
-    deriveDurableStatusFromState({
-      isStreaming: false,
-      pendingMessageCount: 0,
-    }),
-    "live_idle",
-  );
-});
-
-test("rebuildDurableRegistry reconstructs the latest durable record and closes stale live states", () => {
-  const records = rebuildDurableRegistry([
-    {
-      type: "custom",
-      customType: "subagent:create",
-      data: {
-        record: {
-          agentId: "agent-1",
-          cwd: "/tmp/project",
-          status: "live_running",
-          createdAt: "2026-03-17T00:00:00.000Z",
-          updatedAt: "2026-03-17T00:00:00.000Z",
-        },
+  return {
+    calls,
+    lifecycle: {
+      async spawn(request: { name: string; prompt: string; runInBackground?: boolean }) {
+        calls.spawn.push(request);
+        return {
+          agentId: "internal-1",
+          name: request.name,
+          prompt: request.prompt,
+          record: {
+            agentId: "internal-1",
+            transport: "rpc",
+            cwd: "/tmp/project",
+            name: request.name,
+            status: "live_running",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          attachment: {} as never,
+          completedAgent: request.runInBackground
+            ? undefined
+            : {
+                agent_id: "internal-1",
+                name: request.name,
+                status: "idle",
+                durable_status: "live_idle",
+                cwd: "/tmp/project",
+                last_assistant_text: "child done",
+              },
+        };
+      },
+      async resumeByName(request: { name: string; input: string; interrupt?: boolean }) {
+        calls.resumeByName.push(request);
+        return {
+          submissionId: "submission-1",
+          commandType: request.interrupt ? "steer" : "follow_up",
+          input: request.input,
+          snapshot: {
+            agent_id: "internal-1",
+            name: request.name,
+            status: "running",
+            durable_status: "live_running",
+            cwd: "/tmp/project",
+          },
+        };
+      },
+      async waitAny(request: { timeoutMs: number }) {
+        calls.waitAny.push(request);
+        return {
+          snapshots: [{
+            agent_id: "internal-researcher_one",
+            name: "researcher_one",
+            status: "idle" as const,
+            durable_status: "live_idle" as const,
+            cwd: "/tmp/project",
+            last_assistant_text: "researcher_one done",
+          }],
+          timedOut: false,
+        };
+      },
+      getSnapshotByName(name: string) {
+        return {
+          snapshot: {
+            agent_id: `internal-${name}`,
+            name,
+            status: "idle" as const,
+            durable_status: "live_idle" as const,
+            cwd: "/tmp/project",
+            last_assistant_text: `${name} done`,
+          },
+        };
+      },
+      async stopByName(name: string) {
+        calls.stopByName.push({ name });
+        return {
+          snapshot: {
+            agent_id: `internal-${name}`,
+            name,
+            status: "closed" as const,
+            durable_status: "closed" as const,
+            cwd: "/tmp/project",
+          },
+        };
       },
     },
-    {
-      type: "custom",
-      customType: "subagent:update",
-      data: {
-        record: {
-          agentId: "agent-1",
-          cwd: "/tmp/project",
-          status: "live_idle",
-          createdAt: "2026-03-17T00:00:00.000Z",
-          updatedAt: "2026-03-17T00:01:00.000Z",
-          sessionFile: "/tmp/project/.pi/session.jsonl",
-        },
-      },
-    },
-  ] as never);
+  };
+}
 
-  assert.equal(records.size, 1);
-  assert.deepEqual(records.get("agent-1"), {
-    agentId: "agent-1",
+function captureTools(register: (pi: { registerTool(def: unknown): void }) => void) {
+  const tools = new Map<string, Record<string, unknown>>();
+  register({
+    registerTool(def: Record<string, unknown>) {
+      tools.set(def.name as string, def);
+    },
+  });
+  return tools;
+}
+
+test("subagents public entrypoint registers tools and sync hooks for parent sessions", () => {
+  const tools: string[] = [];
+  const events: string[] = [];
+
+  subagentsExtension({
+    registerTool(tool: { name: string }) {
+      tools.push(tool.name);
+    },
+    on(event: string) {
+      events.push(event);
+    },
+    registerCommand() {},
+    registerMessageRenderer() {},
+    sendMessage() {},
+    appendEntry() {},
+    getAllTools: () => [],
+    setActiveTools() {},
+  } as never);
+
+  assert.ok(tools.length > 0);
+  assert.equal(events.includes("session_start"), true);
+  assert.equal(events.includes("before_agent_start"), true);
+});
+
+test("child entrypoints register codex plus shell, web, and skill tools", () => {
+  const childTools: string[] = [];
+  const childEvents: string[] = [];
+
+  const pi = {
+    registerTool(tool: { name: string }) {
+      childTools.push(tool.name);
+    },
+    on(event: string) {
+      childEvents.push(event);
+    },
+    registerCommand() {},
+    registerMessageRenderer() {},
+    sendMessage() {},
+    appendEntry() {},
+    getAllTools: () => [],
+    setActiveTools() {},
+  } as never;
+
+  childEntry(pi);
+  interactiveChildEntry(pi);
+
+  assert.equal(childTools.includes("shell"), true);
+  assert.equal(childTools.includes("skill"), true);
+  assert.equal(childTools.includes("FetchUrl"), true);
+  assert.equal(childTools.includes("request_user_input"), true);
+  assert.equal(childTools.includes("Execute"), true);
+  assert.equal(childTools.includes("TodoWrite"), true);
+  assert.equal(childTools.includes("spawn_agent"), false);
+  assert.equal(childTools.includes("send_message"), false);
+  assert.equal(childTools.includes("wait_agent"), false);
+  assert.equal(childTools.includes("close_agent"), false);
+  assert.equal(childTools.includes("Task"), false);
+  assert.equal(childTools.includes("TaskOutput"), false);
+  assert.equal(childTools.includes("TaskStop"), false);
+  assert.equal(childEvents.includes("session_start"), true);
+  assert.equal(childEvents.includes("before_agent_start"), true);
+});
+
+test("validateSubagentName accepts lowercase names and rejects invalid ones", () => {
+  assert.equal(validateSubagentName("research_auth"), "research_auth");
+  assert.equal(validateSubagentName("research-auth"), "research-auth");
+  assert.equal(validateSubagentName(" task2 "), "task2");
+  assert.equal(validateSubagentName("a_1"), "a_1");
+  assert.throws(() => validateSubagentName("BadName"), /lowercase letters, digits, underscores, and hyphens/);
+  assert.throws(() => validateSubagentName("has space"), /lowercase letters, digits, underscores, and hyphens/);
+  assert.throws(() => validateSubagentName(""), /name is required/);
+});
+
+test("runtime store resolves only publicly addressable names and releases closed names", () => {
+  const store = createSubagentRuntimeStore();
+  store.setDurableChild("live", {
+    agentId: "live",
     transport: "rpc",
     cwd: "/tmp/project",
-    status: "closed",
-    createdAt: "2026-03-17T00:00:00.000Z",
-    updatedAt: "2026-03-17T00:01:00.000Z",
-    sessionFile: "/tmp/project/.pi/session.jsonl",
+    name: "worker_one",
+    status: "live_running",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   });
+  store.setDurableChild("detached-rpc", {
+    agentId: "detached-rpc",
+    transport: "rpc",
+    cwd: "/tmp/project",
+    name: "worker_two",
+    status: "detached",
+    sessionFile: EXISTING_FILE,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  store.setDurableChild("detached-interactive", {
+    agentId: "detached-interactive",
+    transport: "interactive",
+    cwd: "/tmp/project",
+    name: "worker_three",
+    status: "detached",
+    sessionFile: EXISTING_FILE,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  store.setDurableChild("failed", {
+    agentId: "failed",
+    transport: "rpc",
+    cwd: "/tmp/project",
+    name: "worker_four",
+    status: "failed",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  store.setDurableChild("closed", {
+    agentId: "closed",
+    transport: "rpc",
+    cwd: "/tmp/project",
+    name: "worker_five",
+    status: "closed",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+
+  assert.equal(store.findChildByPublicName("worker_one")?.agentId, "live");
+  assert.equal(store.findChildByPublicName("worker_two")?.agentId, "detached-rpc");
+  assert.equal(store.findChildByPublicName("worker_four")?.agentId, "failed");
+  assert.equal(store.findChildByPublicName("worker_three"), undefined);
+  assert.equal(store.findChildByPublicName("worker_five"), undefined);
+  assert.equal(store.hasAddressableChildName("worker_five"), false);
 });
 
-test("resolveAgentIdAlias and resolveAgentIdsAlias accept Codex and legacy field names", () => {
-  assert.equal(resolveAgentIdAlias({ id: "agent-a" }), "agent-a");
-  assert.equal(resolveAgentIdAlias({ agent_id: "agent-b" }), "agent-b");
-  assert.deepEqual(
-    resolveAgentIdsAlias({
-      id: "agent-a",
-      ids: ["agent-b"],
-      agent_ids: ["agent-b", "agent-c"],
-    }),
-    ["agent-a", "agent-b", "agent-c"],
-  );
-});
-
-test("flattenCollabItems and resolveSpawnPrompt compose Codex-style item payloads", () => {
-  const items = [
-    { type: "text", text: "Inspect the auth flow" },
-    { type: "mention", path: "app://github" },
-    { type: "local_image", path: "./screenshot.png" },
-  ];
-
-  assert.equal(
-    flattenCollabItems(items),
-    ["Inspect the auth flow", "mention: app://github", "local_image: ./screenshot.png"].join("\n"),
-  );
-
-  assert.equal(
-    resolveSpawnPrompt({
-      context: "Focus on login bugs.",
-      message: "Check the repo.",
-      items,
-    }),
-    [
-      "Focus on login bugs.",
-      "Check the repo.",
-      "Inspect the auth flow\nmention: app://github\nlocal_image: ./screenshot.png",
-    ].join("\n\n"),
-  );
-});
-
-test("shared resolver switches between Codex and Task subagent lifecycle tools by mode", () => {
+test("shared resolver switches Codex subagent tool family to send_message", () => {
   const toolInfos = resolveRegisteredToolInfos([
     { name: "spawn_agent", description: "subagent" },
-    { name: "send_input", description: "subagent" },
+    { name: "send_message", description: "subagent" },
     { name: "wait_agent", description: "subagent" },
     { name: "close_agent", description: "subagent" },
     { name: "Task", description: "task" },
@@ -223,7 +354,7 @@ test("shared resolver switches between Codex and Task subagent lifecycle tools b
   assert.deepEqual(resolveToolsetToolNames("codex", toolInfos), [
     "WebSearch",
     "spawn_agent",
-    "send_input",
+    "send_message",
     "wait_agent",
     "close_agent",
   ]);
@@ -235,51 +366,267 @@ test("shared resolver switches between Codex and Task subagent lifecycle tools b
   ]);
 });
 
-test("wrapInteractiveSpawnPrompt instructs the child to summarize and call subagent_done", () => {
-  const wrapped = wrapInteractiveSpawnPrompt("Inspect the auth flow and report back.");
-
-  assert.match(wrapped, /interactive delegated child session/i);
-  assert.match(wrapped, /call the subagent_done tool/i);
-  assert.match(wrapped, /FINAL assistant message/i);
-  assert.match(wrapped, /Inspect the auth flow and report back\./);
-});
-
-test("normalizeReasoningEffortToThinkingLevel maps Codex effort values to Pi thinking levels", () => {
-  assert.equal(normalizeReasoningEffortToThinkingLevel(undefined), undefined);
-  assert.equal(normalizeReasoningEffortToThinkingLevel("minimal"), "minimal");
-  assert.equal(normalizeReasoningEffortToThinkingLevel("low"), "low");
-  assert.equal(normalizeReasoningEffortToThinkingLevel("medium"), "medium");
-  assert.equal(normalizeReasoningEffortToThinkingLevel("high"), "high");
-  assert.equal(normalizeReasoningEffortToThinkingLevel("xhigh"), "xhigh");
-  assert.equal(normalizeReasoningEffortToThinkingLevel("none"), "off");
-  assert.equal(normalizeReasoningEffortToThinkingLevel("off"), "off");
-  assert.equal(normalizeReasoningEffortToThinkingLevel(" High "), "high");
-});
-
-test("normalizeReasoningEffortToThinkingLevel rejects unsupported values", () => {
-  assert.throws(
-    () => normalizeReasoningEffortToThinkingLevel("turbo"),
-    /Unsupported reasoning_effort: turbo/,
+test("codex tool adapters use public names and do not leak agent ids", async () => {
+  const { lifecycle, calls } = createCodexLifecycleMock();
+  const tools = captureTools((pi) =>
+    registerCodexToolAdapters(pi as never, {
+      lifecycle: lifecycle as never,
+      renderSpawnPromptPreview: () => new Text("preview", 0, 0),
+      normalizeWaitAgentTimeoutMs,
+    }),
   );
+
+  const spawnAgent = tools.get("spawn_agent");
+  const sendMessage = tools.get("send_message");
+  const waitAgent = tools.get("wait_agent");
+  const closeAgent = tools.get("close_agent");
+
+  assert.ok(spawnAgent);
+  assert.ok(sendMessage);
+  assert.ok(waitAgent);
+  assert.ok(closeAgent);
+
+  const spawnResult = await (spawnAgent!.execute as (...args: unknown[]) => Promise<any>)("call-1", {
+    name: "researcher_one",
+    message: "Investigate auth flow",
+  }, undefined, undefined, createMockCtx());
+  assert.equal(calls.spawn.length, 1);
+  assert.equal((calls.spawn[0] as { name: string }).name, "researcher_one");
+  assert.deepEqual(JSON.parse(spawnResult.content[0].text), {
+    name: "researcher_one",
+    status: { researcher_one: "idle" },
+    timed_out: false,
+    agent: {
+      name: "researcher_one",
+      status: "idle",
+      durable_status: "live_idle",
+      cwd: "/tmp/project",
+      last_assistant_text: "child done",
+    },
+    agents: [
+      {
+        name: "researcher_one",
+        status: "idle",
+        durable_status: "live_idle",
+        cwd: "/tmp/project",
+        last_assistant_text: "child done",
+      },
+    ],
+  });
+  assert.equal(JSON.stringify(spawnResult).includes("agent_id"), false);
+
+  const sendResult = await (sendMessage!.execute as (...args: unknown[]) => Promise<any>)("call-2", {
+    target: "researcher_one",
+    message: "Keep digging",
+    interrupt: true,
+  });
+  assert.deepEqual(calls.resumeByName, [
+    { mode: "codex", name: "researcher_one", input: "Keep digging", interrupt: true },
+  ]);
+  assert.deepEqual(JSON.parse(sendResult.content[0].text), { submission_id: "submission-1" });
+  assert.equal(JSON.stringify(sendResult.details).includes("agent_id"), false);
+
+  const waitResult = await (waitAgent!.execute as (...args: unknown[]) => Promise<any>)("call-3", {
+    timeout_ms: 45_000,
+  });
+  assert.deepEqual(calls.waitAny, [{ timeoutMs: 45_000 }]);
+  assert.deepEqual(JSON.parse(waitResult.content[0].text), {
+    status: { researcher_one: "idle" },
+    timed_out: false,
+    agents: [
+      {
+        name: "researcher_one",
+        status: "idle",
+        durable_status: "live_idle",
+        cwd: "/tmp/project",
+        last_assistant_text: "researcher_one done",
+      },
+    ],
+  });
+
+  const closeResult = await (closeAgent!.execute as (...args: unknown[]) => Promise<any>)("call-4", { target: "researcher_one" });
+  assert.deepEqual(calls.stopByName, [{ name: "researcher_one" }]);
+  assert.deepEqual(JSON.parse(closeResult.content[0].text), {
+    name: "researcher_one",
+    status: "closed",
+  });
 });
 
-test("normalizeThinkingLevelToReasoningEffort keeps supported inherited values", () => {
-  assert.equal(normalizeThinkingLevelToReasoningEffort(undefined), undefined);
-  assert.equal(normalizeThinkingLevelToReasoningEffort("off"), "off");
-  assert.equal(normalizeThinkingLevelToReasoningEffort("minimal"), "minimal");
-  assert.equal(normalizeThinkingLevelToReasoningEffort("low"), "low");
-  assert.equal(normalizeThinkingLevelToReasoningEffort("medium"), "medium");
-  assert.equal(normalizeThinkingLevelToReasoningEffort("high"), "high");
-  assert.equal(normalizeThinkingLevelToReasoningEffort("xhigh"), "xhigh");
-  assert.equal(normalizeThinkingLevelToReasoningEffort("weird"), undefined);
+test("task tool adapters require names for spawn and do not leak task ids", async () => {
+  const { lifecycle } = createCodexLifecycleMock();
+  const tools = captureTools((pi) =>
+    registerTaskToolAdapters(pi as never, {
+      lifecycle: lifecycle as never,
+      normalizeWaitAgentTimeoutMs,
+    }),
+  );
+
+  const taskTool = tools.get("Task");
+  const taskOutput = tools.get("TaskOutput");
+  const taskStop = tools.get("TaskStop");
+
+  assert.ok(taskTool);
+  assert.ok(taskOutput);
+  assert.ok(taskStop);
+
+  await assert.rejects(
+    (taskTool!.execute as (...args: unknown[]) => Promise<any>)(
+      "call-1",
+      { prompt: "Do work" },
+      undefined,
+      undefined,
+      createMockCtx(),
+    ),
+    /name is required/,
+  );
+
+  const taskSpawn = await (taskTool!.execute as (...args: unknown[]) => Promise<any>)(
+    "call-2",
+    { name: "task_alpha", prompt: "Do work", run_in_background: true },
+    undefined,
+    undefined,
+    createMockCtx(),
+  );
+  assert.deepEqual(JSON.parse(taskSpawn.content[0].text), {
+    name: "task_alpha",
+    status: "running",
+  });
+  assert.equal(JSON.stringify(taskSpawn.details).includes("task_id"), false);
+
+  const taskResume = await (taskTool!.execute as (...args: unknown[]) => Promise<any>)(
+    "call-3",
+    { resume: "task_alpha", prompt: "Continue" },
+    undefined,
+    undefined,
+    createMockCtx(),
+  );
+  assert.deepEqual(JSON.parse(taskResume.content[0].text), {
+    name: "task_alpha",
+    submission_id: "submission-1",
+  });
+
+  const output = await (taskOutput!.execute as (...args: unknown[]) => Promise<any>)("call-4", { name: "task_alpha", block: false });
+  assert.deepEqual(JSON.parse(output.content[0].text), {
+    name: "task_alpha",
+    status: "idle",
+    output: "task_alpha done",
+  });
+
+  const stop = await (taskStop!.execute as (...args: unknown[]) => Promise<any>)("call-5", { name: "task_alpha" });
+  assert.deepEqual(JSON.parse(stop.content[0].text), {
+    name: "task_alpha",
+    status: "closed",
+  });
 });
 
-test("normalizeWaitAgentTimeoutMs applies wait_agent default, clamp, and validation", () => {
-  assert.equal(normalizeWaitAgentTimeoutMs(undefined), 45_000);
-  assert.equal(normalizeWaitAgentTimeoutMs(30_000), 30_000);
-  assert.equal(normalizeWaitAgentTimeoutMs(5_000), 30_000);
-  assert.equal(normalizeWaitAgentTimeoutMs(95_000), 90_000);
-  assert.throws(() => normalizeWaitAgentTimeoutMs(0), /timeout_ms must be greater than zero/);
+test("buildWaitAgentContent uses public names in status payloads", () => {
+  const content = buildWaitAgentContent(
+    [
+      {
+        name: "alpha",
+        status: "idle",
+        durable_status: "live_idle",
+        cwd: "/tmp/project",
+        last_assistant_text: "done",
+      },
+      {
+        name: "beta",
+        status: "failed",
+        durable_status: "failed",
+        cwd: "/tmp/project",
+        last_error: "boom",
+      },
+    ],
+    false,
+  );
+
+  assert.deepEqual(JSON.parse(content), {
+    status: { alpha: "idle", beta: "failed" },
+    timed_out: false,
+    agents: [
+      {
+        name: "alpha",
+        status: "idle",
+        durable_status: "live_idle",
+        cwd: "/tmp/project",
+        last_assistant_text: "done",
+      },
+      {
+        name: "beta",
+        status: "failed",
+        durable_status: "failed",
+        cwd: "/tmp/project",
+        last_error: "boom",
+      },
+    ],
+  });
+});
+
+test("buildSpawnAgentContent and buildSendMessageContent use public contract fields", () => {
+  assert.deepEqual(JSON.parse(buildSpawnAgentContent("alpha")), {
+    name: "alpha",
+  });
+
+  assert.deepEqual(
+    JSON.parse(
+      buildSpawnAgentContent("beta", {
+        name: "beta",
+        status: "idle",
+        durable_status: "live_idle",
+        cwd: "/tmp/project",
+        last_assistant_text: "done",
+      }),
+    ),
+    {
+      name: "beta",
+      status: { beta: "idle" },
+      timed_out: false,
+      agent: {
+        name: "beta",
+        status: "idle",
+        durable_status: "live_idle",
+        cwd: "/tmp/project",
+        last_assistant_text: "done",
+      },
+      agents: [
+        {
+          name: "beta",
+          status: "idle",
+          durable_status: "live_idle",
+          cwd: "/tmp/project",
+          last_assistant_text: "done",
+        },
+      ],
+    },
+  );
+
+  assert.deepEqual(JSON.parse(buildSendMessageContent("submission-1")), {
+    submission_id: "submission-1",
+  });
+});
+
+test("formatSubagentNotificationMessage wraps public name payloads", () => {
+  const message = formatSubagentNotificationMessage({
+    agent_id: "internal-1",
+    name: "alpha",
+    status: "idle",
+    durable_status: "live_idle",
+    last_assistant_text: "child done",
+  });
+
+  const payload = JSON.parse(message.split("\n")[1] ?? "{}");
+  assert.deepEqual(payload, {
+    name: "alpha",
+    status: "idle",
+    durable_status: "live_idle",
+    last_assistant_text: "child done",
+  });
+  assert.equal(parseSubagentNotificationMessage(message)?.name, "alpha");
+});
+
+test("getSubagentNotificationDeliveryOptions steers notifications while parent is streaming", () => {
+  assert.deepEqual(getSubagentNotificationDeliveryOptions(true), { deliverAs: "steer" });
+  assert.deepEqual(getSubagentNotificationDeliveryOptions(false), { triggerTurn: true });
 });
 
 test("resolveParentSpawnDefaults inherits parent provider-qualified model and thinking level from session context", () => {
@@ -294,7 +641,6 @@ test("resolveParentSpawnDefaults inherits parent provider-qualified model and th
   });
 
   assert.deepEqual(resolved, { model: "openai/gpt-5", reasoningEffort: "high" });
-
   fixture.cleanup();
 });
 
@@ -314,298 +660,7 @@ test("resolveParentSpawnDefaults prefers the live parent provider-qualified mode
     model: "custom-provider/gpt-5-mini",
     reasoningEffort: "medium",
   });
-
   fixture.cleanup();
-});
-
-test("buildWaitAgentContent exposes child assistant text in tool content", () => {
-  const content = buildWaitAgentContent(
-    [
-      {
-        agent_id: "agent-1",
-        status: "idle",
-        durable_status: "live_idle",
-        cwd: "/tmp/project",
-        last_assistant_text: "child done",
-      },
-      {
-        agent_id: "agent-2",
-        status: "failed",
-        durable_status: "failed",
-        cwd: "/tmp/project",
-        last_error: "boom",
-      },
-    ],
-    false,
-  );
-
-  assert.deepEqual(JSON.parse(content), {
-    status: {
-      "agent-1": "idle",
-      "agent-2": "failed",
-    },
-    timed_out: false,
-    agents: [
-      {
-        agent_id: "agent-1",
-        status: "idle",
-        durable_status: "live_idle",
-        cwd: "/tmp/project",
-        last_assistant_text: "child done",
-      },
-      {
-        agent_id: "agent-2",
-        status: "failed",
-        durable_status: "failed",
-        cwd: "/tmp/project",
-        last_error: "boom",
-      },
-    ],
-  });
-});
-
-test("buildWaitAgentContent returns empty status when wait_agent times out", () => {
-  const content = buildWaitAgentContent([], true);
-
-  assert.deepEqual(JSON.parse(content), {
-    status: {},
-    timed_out: true,
-    agents: [],
-  });
-});
-
-test("getWaitAgentResultTitle reports timeout when no agent completed", () => {
-  assert.equal(getWaitAgentResultTitle(true, 0), "Waiting timed out");
-  assert.equal(getWaitAgentResultTitle(false, 0), "Agents finished");
-  assert.equal(getWaitAgentResultTitle(true, 1), "Agent finished");
-  assert.equal(getWaitAgentResultTitle(false, 2), "Agents finished");
-});
-
-test("buildSpawnAgentContent matches Codex JSON shape and preserves null nickname", () => {
-  assert.deepEqual(JSON.parse(buildSpawnAgentContent("agent-1")), {
-    agent_id: "agent-1",
-    nickname: null,
-  });
-
-  assert.deepEqual(JSON.parse(buildSpawnAgentContent("agent-2", "explorer")), {
-    agent_id: "agent-2",
-    nickname: "explorer",
-  });
-});
-
-test("buildSpawnAgentContent includes a completed agent snapshot for foreground spawn_agent calls", () => {
-  assert.deepEqual(
-    JSON.parse(
-      buildSpawnAgentContent("agent-3", "reviewer", {
-        agent_id: "agent-3",
-        status: "idle",
-        durable_status: "live_idle",
-        cwd: "/tmp/project",
-        name: "reviewer",
-        last_assistant_text: "child done",
-      }),
-    ),
-    {
-      agent_id: "agent-3",
-      nickname: "reviewer",
-      status: {
-        "agent-3": "idle",
-      },
-      timed_out: false,
-      agent: {
-        agent_id: "agent-3",
-        status: "idle",
-        durable_status: "live_idle",
-        cwd: "/tmp/project",
-        name: "reviewer",
-        last_assistant_text: "child done",
-      },
-      agents: [
-        {
-          agent_id: "agent-3",
-          status: "idle",
-          durable_status: "live_idle",
-          cwd: "/tmp/project",
-          name: "reviewer",
-          last_assistant_text: "child done",
-        },
-      ],
-    },
-  );
-});
-
-test("buildSendInputContent matches Codex JSON shape", () => {
-  assert.deepEqual(JSON.parse(buildSendInputContent("submission-1")), {
-    submission_id: "submission-1",
-  });
-});
-
-test("formatSubagentNotificationMessage wraps model-visible subagent status payloads", () => {
-  const message = formatSubagentNotificationMessage({
-    agent_id: "agent-1",
-    status: "idle",
-    durable_status: "live_idle",
-    last_assistant_text: "child done",
-  });
-
-  assert.equal(SUBAGENT_NOTIFICATION_CUSTOM_TYPE, "subagent-notification");
-  assert.match(message, /^<subagent_notification>\n/);
-  assert.match(message, /\n<\/subagent_notification>$/);
-
-  const payload = JSON.parse(message.split("\n")[1] ?? "{}");
-  assert.deepEqual(payload, {
-    agent_id: "agent-1",
-    status: "idle",
-    durable_status: "live_idle",
-    last_assistant_text: "child done",
-  });
-});
-
-test("formatSubagentNotificationMessage includes task summary when provided", () => {
-  const payload = JSON.parse(
-    formatSubagentNotificationMessage(
-      {
-        agent_id: "agent-1",
-        status: "idle",
-        durable_status: "live_idle",
-        last_assistant_text: "child done",
-      },
-      { taskSummary: "Run a simple echo command" },
-    ).split("\n")[1] ?? "{}",
-  );
-
-  assert.deepEqual(payload, {
-    agent_id: "agent-1",
-    status: "idle",
-    durable_status: "live_idle",
-    last_assistant_text: "child done",
-    task_summary: "Run a simple echo command",
-  });
-});
-
-test("rebuildDurableRegistry still accepts legacy codex entry types", () => {
-  const records = rebuildDurableRegistry([
-    {
-      type: "custom",
-      customType: "codex-subagent:create",
-      data: {
-        record: {
-          agentId: "agent-legacy",
-          cwd: "/tmp/project",
-          status: "live_idle",
-          createdAt: "2026-03-17T00:00:00.000Z",
-          updatedAt: "2026-03-17T00:00:00.000Z",
-        },
-      },
-    },
-  ] as never);
-
-  assert.equal(records.get("agent-legacy")?.agentId, "agent-legacy");
-});
-
-test("rebuildDurableRegistry preserves interactive transport on detached children", () => {
-  const records = rebuildDurableRegistry([
-    {
-      type: "custom",
-      customType: "subagent:detach",
-      data: {
-        record: {
-          agentId: "agent-interactive",
-          transport: "interactive",
-          cwd: "/tmp/project",
-          status: "detached",
-          createdAt: "2026-03-17T00:00:00.000Z",
-          updatedAt: "2026-03-17T00:01:00.000Z",
-          sessionFile: "/tmp/project/.pi/interactive.jsonl",
-        },
-      },
-    },
-  ] as never);
-
-  assert.deepEqual(records.get("agent-interactive"), {
-    agentId: "agent-interactive",
-    transport: "interactive",
-    cwd: "/tmp/project",
-    status: "detached",
-    createdAt: "2026-03-17T00:00:00.000Z",
-    updatedAt: "2026-03-17T00:01:00.000Z",
-    sessionFile: "/tmp/project/.pi/interactive.jsonl",
-  });
-});
-
-test("isResumable rejects interactive child records", () => {
-  assert.equal(
-    isResumable({
-      agentId: "agent-interactive",
-      transport: "interactive",
-      cwd: "/tmp/project",
-      status: "detached",
-      createdAt: "2026-03-17T00:00:00.000Z",
-      updatedAt: "2026-03-17T00:00:00.000Z",
-      sessionFile: "/tmp/project/.pi/interactive.jsonl",
-    }),
-    false,
-  );
-});
-
-test("parseSubagentNotificationMessage extracts wrapped notification payloads", () => {
-  assert.deepEqual(
-    parseSubagentNotificationMessage(
-      formatSubagentNotificationMessage({
-        agent_id: "agent-1",
-        status: "idle",
-        durable_status: "live_idle",
-        name: "amber-badger",
-        last_assistant_text: "child done",
-      }),
-    ),
-    {
-      agent_id: "agent-1",
-      status: "idle",
-      durable_status: "live_idle",
-      name: "amber-badger",
-      last_assistant_text: "child done",
-    },
-  );
-
-  assert.deepEqual(
-    parseSubagentNotificationMessage(
-      formatSubagentNotificationMessage(
-        {
-          agent_id: "agent-2",
-          status: "idle",
-          durable_status: "live_idle",
-          last_assistant_text: "done",
-        },
-        { taskSummary: "Echo hello" },
-      ),
-    ),
-    {
-      agent_id: "agent-2",
-      status: "idle",
-      durable_status: "live_idle",
-      last_assistant_text: "done",
-      task_summary: "Echo hello",
-    },
-  );
-
-  assert.equal(parseSubagentNotificationMessage("not a wrapped payload"), undefined);
-});
-
-test("summarizeTaskRequest prefers description and normalizes prompt fallback", () => {
-  assert.equal(
-    summarizeTaskRequest("  Run a simple echo command via child task  ", "ignored"),
-    "Run a simple echo command via child task",
-  );
-  assert.equal(
-    summarizeTaskRequest(undefined, "\n  first line\n\n second   line  "),
-    "first line second line",
-  );
-});
-
-test("getSubagentNotificationDeliveryOptions steers notifications while parent is streaming", () => {
-  assert.deepEqual(getSubagentNotificationDeliveryOptions(true), { deliverAs: "steer" });
-  assert.deepEqual(getSubagentNotificationDeliveryOptions(false), { triggerTurn: true });
 });
 
 test("resolveForkContextSessionFile creates a durable branched session for the requested leaf", () => {

@@ -6,13 +6,13 @@ import { fileURLToPath } from "node:url";
 
 export const SUBAGENT_TOOL_NAMES = [
   "spawn_agent",
-  "send_input",
+  "send_message",
   "wait_agent",
   "close_agent",
 ] as const;
 export const SUBAGENT_RESERVED_TOOL_NAMES = [
   "spawn_agent",
-  "send_input",
+  "send_message",
   "wait_agent",
   "close_agent",
 ] as const;
@@ -22,6 +22,7 @@ export const AGENT_PROFILE_NAME_ENV = "PI_AGENT_PROFILE_NAME";
 export const LEGACY_AGENT_PROFILE_NAME_ENV = "PI_CODEX_AGENT_PROFILE_NAME";
 export const AGENT_PROFILE_JSON_ENV = "PI_AGENT_PROFILE_JSON";
 export const LEGACY_AGENT_PROFILE_JSON_ENV = "PI_CODEX_AGENT_PROFILE_JSON";
+export const TOOL_SET_OVERRIDE_ENV = "PI_SESSION_TOOL_SET";
 
 export const CODEX_SUBAGENT_TOOL_NAMES = SUBAGENT_TOOL_NAMES;
 export const CODEX_SUBAGENT_RESERVED_TOOL_NAMES = SUBAGENT_RESERVED_TOOL_NAMES;
@@ -87,6 +88,7 @@ export type DurableChildRecord = {
   sessionFile?: string;
   lastAssistantText?: string;
   lastError?: string;
+  taskSummary?: string;
   closedAt?: string;
   parentSessionFile?: string;
 };
@@ -144,6 +146,10 @@ export type AgentSnapshot = {
   last_assistant_text?: string;
   last_error?: string;
   exit_code?: number | null;
+};
+
+export type PublicAgentSnapshot = Omit<AgentSnapshot, "agent_id" | "name"> & {
+  name: string;
 };
 
 export type RegistryEntryPayload = {

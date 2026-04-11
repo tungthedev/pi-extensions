@@ -9,32 +9,9 @@ import {
   buildSpawnAgentTypeDescription,
   clearResolvedAgentProfilesCache,
   loadCustomAgentProfiles,
-  parseCodexRoleDeclarations,
-  parseCodexRoleFile,
-  parseBundledRoleAsset,
   resolveAgentProfiles,
   resolveBuiltInAgentProfiles,
 } from "./profiles.ts";
-
-test("parseBundledRoleAsset extracts developer instructions and role settings", () => {
-  const parsed = parseBundledRoleAsset(
-    'model = "gpt-5"\nmodel_reasoning_effort = "high"\ndeveloper_instructions = """Be careful\nand focused\n"""\nnickname_candidates = ["Ada", "Lin"]\n',
-  );
-
-  assert.deepEqual(parsed, {
-    developerInstructions: "Be careful\nand focused",
-    nicknameCandidates: ["Ada", "Lin"],
-    model: "gpt-5",
-    reasoningEffort: "high",
-  });
-});
-
-test("built-in explorer role keeps the Sage prompt text", () => {
-  const explorer = resolveBuiltInAgentProfiles({ includeHidden: true }).profiles.get("explorer");
-  assert.ok(explorer);
-  assert.match(explorer?.developerInstructions ?? "", /^You are Sage, an expert codebase research and exploration assistant/m);
-  assert.match(explorer?.developerInstructions ?? "", /Strictly Read-Only/m);
-});
 
 test("applySpawnAgentProfile defaults to default profile and preserves explicit overrides when unlocked", () => {
   const applied = applySpawnAgentProfile({
@@ -47,6 +24,16 @@ test("applySpawnAgentProfile defaults to default profile and preserves explicit 
   assert.equal(applied.effectiveModel, "gpt-5-mini");
   assert.equal(applied.effectiveReasoningEffort, "medium");
   assert.equal(applied.bootstrap.name, "default");
+});
+
+test("built-in profiles are exactly default and researcher with explicit instructions", () => {
+  const builtIns = resolveBuiltInAgentProfiles({ includeHidden: true });
+
+  assert.deepEqual([...builtIns.profiles.keys()], ["default", "researcher"]);
+  assert.equal(builtIns.profiles.get("default")?.visible, true);
+  assert.equal(builtIns.profiles.get("researcher")?.visible, true);
+  assert.match(builtIns.profiles.get("default")?.developerInstructions ?? "", /\S/);
+  assert.match(builtIns.profiles.get("researcher")?.developerInstructions ?? "", /\S/);
 });
 
 test("applySpawnAgentProfile enforces locked role reasoning settings", () => {
@@ -109,71 +96,6 @@ test("applySpawnAgentProfile returns unavailable error for unavailable custom ro
   );
 });
 
-test("parseCodexRoleDeclarations reads [agents.*] table entries", () => {
-  const declarations = parseCodexRoleDeclarations(`
-[agents.researcher]
-description = "Research carefully"
-config_file = "roles/researcher.toml"
-nickname_candidates = ["Ada", "Lin"]
-
-[agents.reviewer]
-description = "Review changes"
-`);
-
-  assert.deepEqual(declarations, [
-    {
-      declaredName: "researcher",
-      description: "Research carefully",
-      configFile: "roles/researcher.toml",
-      nicknameCandidates: ["Ada", "Lin"],
-    },
-    {
-      declaredName: "reviewer",
-      description: "Review changes",
-      configFile: undefined,
-      nicknameCandidates: undefined,
-    },
-  ]);
-});
-
-test("parseCodexRoleDeclarations stops at the next non-agents section", () => {
-  const declarations = parseCodexRoleDeclarations(`
-[agents.researcher]
-description = "Research carefully"
-
-[mcp_servers.demo]
-command = "demo"
-`);
-
-  assert.deepEqual(declarations, [
-    {
-      declaredName: "researcher",
-      description: "Research carefully",
-      configFile: undefined,
-      nicknameCandidates: undefined,
-    },
-  ]);
-});
-
-test("parseCodexRoleFile reads role metadata and settings", () => {
-  const parsed = parseCodexRoleFile(`
-name = "archivist"
-description = "Archive carefully"
-nickname_candidates = ["Hypatia"]
-model = "gpt-5"
-model_reasoning_effort = "high"
-developer_instructions = """Stay organized\nand focused\n"""
-`);
-
-  assert.deepEqual(parsed, {
-    name: "archivist",
-    description: "Archive carefully",
-    nicknameCandidates: ["Hypatia"],
-    developerInstructions: "Stay organized\nand focused",
-    model: "gpt-5",
-    reasoningEffort: "high",
-  });
-});
 
 test("loadCustomAgentProfiles loads config-declared and discovered roles", () => {
   const root = mkdtempSync(path.join(tmpdir(), "codex-agent-profiles-"));
@@ -262,7 +184,7 @@ test("resolveAgentProfiles merges custom roles before built-ins", () => {
 
   assert.deepEqual(
     [...resolved.profiles.keys()],
-    ["researcher", "default", "explorer", "worker", "reviewer"],
+    ["researcher", "default"],
   );
   assert.ok(description.indexOf("researcher: {") < description.indexOf("default: {"));
 
@@ -281,7 +203,7 @@ test("broken custom role shadows built-in role as unavailable", () => {
   mkdirSync(codexHome, { recursive: true });
 
   const configPath = path.join(codexHome, "config.toml");
-  writeFileSync(configPath, ["[agents.explorer]", 'config_file = "missing.toml"', ""].join("\n"));
+  writeFileSync(configPath, ["[agents.researcher]", 'config_file = "missing.toml"', ""].join("\n"));
 
   const previousConfigPath = process.env.PI_CODEX_CONFIG_PATH;
   process.env.PI_CODEX_CONFIG_PATH = configPath;
@@ -290,7 +212,7 @@ test("broken custom role shadows built-in role as unavailable", () => {
   assert.throws(
     () =>
       applySpawnAgentProfile({
-        requestedAgentType: "explorer",
+        requestedAgentType: "researcher",
         profiles: resolveAgentProfiles({ includeHidden: true }).profiles,
       }),
     /agent type is currently not available/,

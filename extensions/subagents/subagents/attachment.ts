@@ -16,6 +16,7 @@ import {
   LEGACY_SUBAGENT_CHILD_ENV,
   PROJECT_ROOT,
   SUBAGENT_CHILD_ENV,
+  TOOL_SET_OVERRIDE_ENV,
 } from "./types.ts";
 
 export function resolveChildSessionDir(
@@ -39,6 +40,7 @@ export function createLiveAttachment(options: {
   model?: string;
   profileBootstrap?: ChildProfileBootstrap;
   sessionFile?: string;
+  toolSet?: "pi" | "codex" | "droid";
 }): RpcLiveChildAttachment {
   const childSessionDir = resolveChildSessionDir();
   const args = ["--mode", "rpc"];
@@ -72,6 +74,7 @@ export function createLiveAttachment(options: {
             [LEGACY_AGENT_PROFILE_JSON_ENV]: JSON.stringify(options.profileBootstrap),
           }
         : {}),
+      ...(options.toolSet ? { [TOOL_SET_OVERRIDE_ENV]: options.toolSet } : {}),
       [SUBAGENT_CHILD_ENV]: "1",
       [LEGACY_SUBAGENT_CHILD_ENV]: "1",
     },

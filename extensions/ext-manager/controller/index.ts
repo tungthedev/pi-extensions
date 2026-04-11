@@ -13,6 +13,9 @@ import {
   discoverInstalledPackages,
   discoverPackageExtensions,
 } from "../packages.ts";
+import type { ManagedEntrySection } from "./entry-model.ts";
+import { buildLocalManagedEntrySection } from "./sources/local-source.ts";
+import { buildPackageManagedEntrySection } from "./sources/package-source.ts";
 
 export class ExtensionManagerController {
   localEntries: LocalExtensionEntry[] = [];
@@ -34,6 +37,10 @@ export class ExtensionManagerController {
 
   localEntriesForScope(scope: "global" | "project"): LocalExtensionEntry[] {
     return this.localEntries.filter((entry) => entry.scope === scope);
+  }
+
+  localManagedEntries(scope: "global" | "project"): ManagedEntrySection {
+    return buildLocalManagedEntrySection(scope, this);
   }
 
   currentLocalState(entry: LocalExtensionEntry): State {
@@ -98,6 +105,10 @@ export class ExtensionManagerController {
 
   pendingPackageCount(packageId: string): number {
     return this.stagedPackageStates.get(packageId)?.size ?? 0;
+  }
+
+  async packageManagedEntries(packageId: string): Promise<ManagedEntrySection> {
+    return buildPackageManagedEntrySection(packageId, this);
   }
 
   async applyLocalChanges(): Promise<{ changed: number; errors: string[] }> {

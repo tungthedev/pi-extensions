@@ -4,14 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import registerSystemMdExtension, {
+import {
   handleSystemMdBeforeAgentStart,
-  readSystemMdPrompt,
-  registerSystemMdPrompt,
   resolveSystemMdPath,
   type SystemMdPromptDeps,
 } from "./index.ts";
-import { isSystemMdPromptEnabled, setSystemMdPromptEnabledForTests } from "./state.ts";
 
 test("resolveSystemMdPath prefers the git root when available", async () => {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "pi-system-md-"));
@@ -24,22 +21,13 @@ test("resolveSystemMdPath prefers the git root when available", async () => {
   );
 });
 
-test("readSystemMdPrompt returns trimmed root SYSTEM.md contents", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "pi-system-md-"));
-  await mkdir(path.join(rootDir, ".git"));
-  await mkdir(path.join(rootDir, "nested"));
-  await writeFile(path.join(rootDir, "SYSTEM.md"), "  Project system prompt\n\n");
-
-  assert.equal(readSystemMdPrompt(path.join(rootDir, "nested")), "Project system prompt");
-});
-
 test("handleSystemMdBeforeAgentStart returns no-op when SYSTEM.md is missing", async () => {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "pi-system-md-"));
   const deps: SystemMdPromptDeps = {
     readSettings: async () => ({
       toolSet: "codex",
-      customShellTool: true,
       systemMdPrompt: true,
+      includePiPromptSection: false,
     }),
   };
 
@@ -58,8 +46,8 @@ test("handleSystemMdBeforeAgentStart replaces the system prompt with root SYSTEM
   const deps: SystemMdPromptDeps = {
     readSettings: async () => ({
       toolSet: "codex",
-      customShellTool: true,
       systemMdPrompt: true,
+      includePiPromptSection: false,
     }),
   };
 
@@ -78,8 +66,8 @@ test("handleSystemMdBeforeAgentStart returns no-op when system-md prompt is disa
   const deps: SystemMdPromptDeps = {
     readSettings: async () => ({
       toolSet: "codex",
-      customShellTool: true,
       systemMdPrompt: false,
+      includePiPromptSection: false,
     }),
   };
 
@@ -90,33 +78,4 @@ test("handleSystemMdBeforeAgentStart returns no-op when system-md prompt is disa
   );
 
   assert.equal(result, undefined);
-});
-
-test("registerSystemMdPrompt marks system-md as enabled and registers before_agent_start", () => {
-  let eventName: string | undefined;
-  setSystemMdPromptEnabledForTests(false);
-
-  registerSystemMdPrompt({
-    on(name: string) {
-      eventName = name;
-    },
-  } as never);
-
-  assert.equal(isSystemMdPromptEnabled(), true);
-  assert.equal(eventName, "before_agent_start");
-  setSystemMdPromptEnabledForTests(false);
-});
-
-test("default system-md extension registers before_agent_start", () => {
-  let eventName: string | undefined;
-  setSystemMdPromptEnabledForTests(false);
-
-  registerSystemMdExtension({
-    on(name: string) {
-      eventName = name;
-    },
-  } as never);
-
-  assert.equal(eventName, "before_agent_start");
-  setSystemMdPromptEnabledForTests(false);
 });

@@ -1,11 +1,11 @@
 import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
 
-import { createWriteTool } from "@mariozechner/pi-coding-agent";
+import { createWriteTool, createWriteToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { renderWriteResult } from "../../codex-content/renderers/write.ts";
 import { Type } from "@sinclair/typebox";
 
-import { shortenPath } from "../../codex-content/shared/text.ts";
+import { renderEmptySlot } from "../../shared/renderers/common.ts";
+import { shortenPath } from "../../shared/text.ts";
 
 const DROID_CREATE_DESCRIPTION =
   "Creates a new file on the file system with the specified content. Prefer editing existing files, unless you need to create a new file.";
@@ -15,9 +15,17 @@ const DROID_CREATE_PARAMETERS = Type.Object({
   content: Type.String({ description: "The content to write to the file" }),
 });
 
-function renderCreateCall(theme: Theme, args: { file_path?: string }): Text {
+function lineCount(content: unknown): number | undefined {
+  return typeof content === "string" ? content.split("\n").length : undefined;
+}
+
+function renderCreateCall(theme: Theme, args: { file_path?: string; content?: string }): Text {
+  const path = shortenPath(args.file_path || ".");
+  const lines = lineCount(args.content);
+  const lineSuffix = typeof lines === "number" ? theme.fg("dim", ` (${lines} lines)`) : "";
+
   return new Text(
-    `${theme.fg("toolTitle", theme.bold("Create "))}${theme.fg("accent", shortenPath(args.file_path || "."))}`,
+    `${theme.fg("toolTitle", theme.bold("Created "))}${theme.fg("accent", path)}${lineSuffix}`,
     0,
     0,
   );
@@ -25,6 +33,7 @@ function renderCreateCall(theme: Theme, args: { file_path?: string }): Text {
 
 export function registerDroidCreateTool(pi: ExtensionAPI): void {
   const nativeWrite = createWriteTool(process.cwd());
+  const nativeWriteDefinition = createWriteToolDefinition(process.cwd());
 
   pi.registerTool({
     name: "Create",
@@ -45,14 +54,27 @@ export function registerDroidCreateTool(pi: ExtensionAPI): void {
     renderCall(args, theme) {
       return renderCreateCall(theme, args);
     },
-    renderResult(result, _options, theme, context) {
-      return renderWriteResult(
-        theme,
+    renderResult(result, options, theme, context) {
+      if (context.isError) {
+        return nativeWriteDefinition.renderResult!(result as never, options, theme, context as never);
+      }
+
+      if (!options.expanded) {
+        return renderEmptySlot();
+      }
+
+      return nativeWriteDefinition.renderCall!(
         {
           path: context.args?.file_path,
           content: context.args?.content,
         },
-        result,
+        theme,
+        {
+          expanded: options.expanded,
+          isPartial: options.isPartial,
+          argsComplete: true,
+          lastComponent: undefined,
+        } as never,
       );
     },
   });

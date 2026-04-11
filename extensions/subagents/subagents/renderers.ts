@@ -2,13 +2,15 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 
 import { Box, Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 
-import type { AgentSnapshot } from "./types.ts";
+import type { AgentSnapshot, PublicAgentSnapshot } from "./types.ts";
+
+type RenderableAgentSnapshot = AgentSnapshot | PublicAgentSnapshot;
 
 import {
   expandHintLine,
   titleLine,
   toolCallLine,
-} from "../../codex-content/renderers/common.ts";
+} from "../../shared/renderers/common.ts";
 import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
 import {
   CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
@@ -27,11 +29,15 @@ import {
 } from "./rendering.ts";
 
 export function extractSnapshotDetails(
-  details: { status?: AgentSnapshot } | AgentSnapshot | undefined,
-): AgentSnapshot | undefined {
+  details: { status?: RenderableAgentSnapshot } | RenderableAgentSnapshot | undefined,
+): RenderableAgentSnapshot | undefined {
   if (!details) return undefined;
   if ("agent_id" in details) return details;
+  if ("name" in details) return details;
   if (details.status && typeof details.status === "object" && "agent_id" in details.status) {
+    return details.status;
+  }
+  if (details.status && typeof details.status === "object" && "name" in details.status) {
     return details.status;
   }
   return undefined;
@@ -141,7 +147,7 @@ export function renderTaskNotificationResult(
 
 export function renderAgentCompletionResult(
   details: {
-    agents?: AgentSnapshot[];
+    agents?: RenderableAgentSnapshot[];
     timed_out?: boolean;
   },
   expanded: boolean,
@@ -185,7 +191,7 @@ export function renderAgentCompletionResult(
       detail += `${theme.fg("muted", " - ")}${theme.fg("toolOutput", summary)}`;
     }
     container.addChild(
-      new Text(`${theme.fg("muted", index === 0 ? "└ " : "  ")}${detail}`, 0, 0),
+      new Text(detail, 0, 0),
     );
 
     const reply = agent.last_assistant_text?.trim();
@@ -223,8 +229,8 @@ export function registerSubagentNotificationRenderers(pi: Pick<ExtensionAPI, "re
     const messageContent = typeof message.content === "string" ? message.content : undefined;
     const parsed = parseSubagentNotificationMessage(messageContent);
     const details = message.details as
-      | (AgentSnapshot & { task_summary?: string })
-      | { status?: AgentSnapshot; task_summary?: string }
+      | (RenderableAgentSnapshot & { task_summary?: string })
+      | { status?: RenderableAgentSnapshot; task_summary?: string }
       | undefined;
     const snapshot = extractSnapshotDetails(details) ?? parsed;
     if (!snapshot) {
@@ -260,15 +266,23 @@ export function registerSubagentNotificationRenderers(pi: Pick<ExtensionAPI, "re
       );
     let detail = `${theme.fg("accent", displayName)}${theme.fg("muted", ": ")}${theme.fg(statusColor, getSubagentCompletionLabel(snapshot.status))}`;
     if (summary) {
-      detail += `${theme.fg("muted", " - ")}${theme.fg("toolOutput", summary)}`;
+      detail += `\n${theme.fg("muted", " - ")}${theme.fg("toolOutput", summary)}`;
     }
 
-    return new Text(
-      `${theme.bold(theme.fg("text", "• Agent finished"))}` +
-        `\n  ${theme.fg("muted", "└ ")}${detail}`,
-      0,
-      0,
+    const container = new Container();
+    container.addChild(new Spacer(1));
+
+    const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
+    box.addChild(
+      new Text(
+        `${theme.bold(theme.fg("toolTitle", "Agent"))} ` +
+          detail,
+        0,
+        0,
+      ),
     );
+    container.addChild(box);
+    return container;
   };
 
   pi.registerMessageRenderer<AgentSnapshot>(
