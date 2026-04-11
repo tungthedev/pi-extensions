@@ -91,13 +91,25 @@ Use **`name`** as the sole public identifier across both the Codex-style and Tas
 
 - `name` is caller-supplied.
 - `name` is required for `spawn_agent`.
+- `name` is also required when `Task` spawns a new child.
 - `name` must use only:
   - lowercase letters
   - digits
   - underscores
-- `name` must be unique among live child agents in the current session/runtime.
-- Duplicate live names should fail fast with a clear error.
-- Public APIs must not expose UUIDs.
+- `name` must be unique among all children that remain publicly addressable in the current session/runtime.
+  - This includes live children and detached/resumable children.
+  - A name may be reused only after the older child is no longer publicly addressable through the subagent tools.
+- Duplicate addressable names should fail fast with a clear error.
+- Public APIs must not expose UUIDs or other opaque internal ids.
+
+### Internal identity policy
+
+This design is a **public identity cleanup**, not a runtime-key rewrite.
+
+- The runtime may keep an internal opaque `agentId` for persistence, attachments, notifications, and session wiring.
+- Public tools must accept and return `name`.
+- Adapter/lifecycle boundaries are responsible for translating between public `name` and internal runtime ids.
+- Internal snapshot and persistence structures may continue carrying opaque ids as implementation details, but those ids must not leak through the public tool contract.
 
 ### Rationale
 
@@ -151,7 +163,9 @@ Optionally include `nickname` only if there is a strong reason to preserve it fo
 
 ### Internal handling
 
-Internally, the lifecycle may still use implementation details not exposed publicly, but all public references and result payloads should use `name`.
+Internally, the lifecycle may still use opaque runtime ids and existing persistence/attachment plumbing, but all public references and result payloads must use `name`.
+
+Foreground spawn results, wait results, close results, Task results, and Task output/stop responses must be reshaped so they do not expose `agent_id` or `task_id`.
 
 ## 4. Follow-up messaging
 
@@ -191,9 +205,13 @@ Keep the current semantics for now:
 
 The public target field(s) should be aligned with the new name-based identifier model.
 
+`wait_agent` may continue to use the existing internal snapshot/state machinery, but its public result must not expose `agent_id`. If status objects or snapshots are returned publicly, they must be reshaped around `name`.
+
 ### `close_agent`
 
 Keep the current lifecycle behavior, but target by `name` instead of `agent_id`.
+
+`close_agent` responses must also avoid public `agent_id` leakage.
 
 Because this is not full v2 path-tree addressing, subtree/path semantics are out of scope.
 
@@ -210,6 +228,9 @@ Keep:
 - `complexity`
 - `run_in_background`
 - `model`
+
+Add:
+- `name` when spawning a new child
 
 Replace:
 - resume by `task_id` -> resume by `name`
@@ -291,6 +312,7 @@ There will be no backward-compatibility shim for the old public Codex-style API.
 - `spawn_agent` no longer accepts `task`, `context`, `items`, or `workdir`.
 - `send_input` is removed and replaced by `send_message`.
 - `send_message` does not accept `items`.
+- `Task` requires `name` when spawning a new child.
 - Public `agent_id` / `task_id` fields are removed in favor of `name`.
 - `TaskOutput` / `TaskStop` stop using `task_id`.
 - Built-in profiles `explorer`, `worker`, and `reviewer` are removed.
@@ -301,7 +323,7 @@ Required user-facing validation errors:
 - invalid `name` format
 - missing `name`
 - missing `message`
-- duplicate live `name`
+- duplicate publicly addressable `name`
 - missing target `name`
 - blank `message`
 
@@ -309,36 +331,47 @@ Errors should remain concise and model-friendly.
 
 ## 11. Testing strategy
 
-High-value tests should cover:
+High-value tests should cover runtime behavior and public contract boundaries, not exhaustive static schema snapshots.
 
-### Spawn API
-- `spawn_agent` requires `name`
-- `spawn_agent` requires `message`
-- invalid `name` format rejects
-- duplicate live `name` rejects
-- removed fields are not accepted by the schema
-- returned payload uses `name` instead of `agent_id`
+### Spawn and lookup contract
+- `spawn_agent` rejects missing `name`
+- `spawn_agent` rejects invalid `name`
+- `spawn_agent` rejects duplicate publicly addressable names
+- `spawn_agent` returns public `name`
+- foreground spawn results do not expose `agent_id`
+- live, detached, and closed lookup behavior is covered according to the chosen reuse rule
 
-### Messaging
+### Messaging and follow-up contract
 - `send_message` is registered instead of `send_input`
-- `send_message` accepts text + interrupt only
-- removed `items` are not accepted
+- `send_message` targets an existing child by public `name`
+- `send_message` does not expose or require `agent_id`
+- removed `items` path is no longer reachable through the public API
+
+### Wait and close contract
+- `wait_agent` targets children by public `name`
+- `wait_agent` public results do not expose `agent_id`
+- `close_agent` targets children by public `name`
+- `close_agent` public results do not expose `agent_id`
 
 ### Task facade
+- `Task` requires `name` when spawning
 - `Task` returns `name`
 - `Task` resume uses `name`
 - `TaskOutput` uses `name`
 - `TaskStop` uses `name`
+- Task-family results do not expose `task_id`
 
 ### Profiles
 - built-ins resolve to only `default` and `researcher`
 - both built-ins have explicit instructions
 - `researcher` replaces `explorer`
+- custom-role merge/shadow behavior still works after built-in cleanup
 
 ### Guidance
-- `spawn_agent` description includes the new delegation guidance
+- prefer a small number of assertions that the `spawn_agent` description includes the important delegation rules
+- avoid brittle full-string snapshots of long help text
 
-Per repo test guidance, avoid low-value schema pinning beyond the meaningful contract changes above.
+Per repo test guidance, avoid low-value schema pinning beyond the meaningful public runtime contract changes above.
 
 ## 12. Implementation outline
 
@@ -346,11 +379,12 @@ Per repo test guidance, avoid low-value schema pinning beyond the meaningful con
 2. Rename `send_input` to `send_message` in the Codex adapter.
 3. Remove `items` handling from Codex spawn/follow-up flows.
 4. Introduce public `name` validation and uniqueness checks.
-5. Replace public `agent_id` / `task_id` payloads with `name`.
-6. Update `Task`, `TaskOutput`, and `TaskStop` schemas/results.
-7. Update profile built-ins and bundled assets.
-8. Replace the current `spawn_agent` description with Codex-style delegation guidance adapted to the Pi API.
-9. Update tests to reflect the new contract.
+5. Add public-name lookup/mapping on top of the existing internal runtime ids instead of rewriting the whole runtime around `name`.
+6. Replace public `agent_id` / `task_id` payloads with `name`, including foreground spawn, wait, close, and Task-family results.
+7. Update `Task`, `TaskOutput`, and `TaskStop` schemas/results, and require `name` for new Task spawns.
+8. Update profile built-ins and bundled assets.
+9. Replace the current `spawn_agent` description with Codex-style delegation guidance adapted to the Pi API.
+10. Update tests to reflect the new contract.
 
 ## Open Questions Resolved
 
@@ -358,6 +392,7 @@ Per repo test guidance, avoid low-value schema pinning beyond the meaningful con
 - Breaking change or compatibility layer? -> Breaking change
 - Keep Task facade? -> Yes
 - Task identifier field? -> Use `name`
+- Should Task require a caller-supplied name on spawn? -> Yes
 - Spawn identifier field name? -> Use `name`, not `task_name`
 - Keep `Task.prompt` or rename to `message`? -> Keep `prompt`
 - Keep `items` in messaging? -> Remove `items`
