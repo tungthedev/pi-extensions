@@ -111,10 +111,10 @@ export function registerTaskToolAdapters(
             "Optional complexity tier. When set, Task model selection follows the configured complexity-to-model routing in settings.",
         }),
       ),
-      run_in_background: Type.Optional(
+      wait_for_task: Type.Optional(
         Type.Boolean({
           description:
-            "Run the task in the background. Returns immediately with the public task name. Use TaskOutput to check results.",
+            "If true, wait for task completion in this call. If false or omitted, return immediately and use TaskOutput to check results.",
         }),
       ),
       resume: Type.Optional(
@@ -140,7 +140,7 @@ export function registerTaskToolAdapters(
           taskSummary,
         });
 
-        if (params.run_in_background === false) {
+        if (params.wait_for_task === true) {
           const waited = await deps.lifecycle.waitByNames({
             names: [name],
             timeoutMs: deps.normalizeWaitAgentTimeoutMs(undefined),
@@ -198,11 +198,11 @@ export function registerTaskToolAdapters(
         requestedAgentType: params.subagent_type,
         requestedModel: params.model,
         requestedReasoningEffort: params.complexity,
-        runInBackground: params.run_in_background,
+        runInBackground: params.wait_for_task !== true,
         taskSummary,
       });
 
-      if (!params.run_in_background && spawned.completedAgent) {
+      if (params.wait_for_task === true && spawned.completedAgent) {
         const completedAgent = toPublicAgentSnapshot(spawned.completedAgent);
         return {
           content: [
@@ -234,7 +234,7 @@ export function registerTaskToolAdapters(
         details: {
           ...toPublicAgentSnapshot(deps.lifecycle.getSnapshotByName(name).snapshot),
           prompt: params.prompt,
-          run_in_background: Boolean(params.run_in_background),
+          wait_for_task: Boolean(params.wait_for_task),
           task_summary: taskSummary,
         },
       };
@@ -246,12 +246,12 @@ export function registerTaskToolAdapters(
       const modelLabel = formatSubagentModelLabel(args.model, args.complexity);
       const taskName = `${theme.fg("accent", `${publicName}${roleLabel}`)}${modelLabel ? theme.fg("muted", ` (${modelLabel})`) : ""}`;
       const callLine = new Text(
-        toolCallLine(theme, args.run_in_background ? "Task running" : "Task", taskName),
+        toolCallLine(theme, args.wait_for_task ? "Task" : "Task running", taskName),
         0,
         0,
       );
 
-      if (args.run_in_background) {
+      if (!args.wait_for_task) {
         return callLine;
       }
 
@@ -373,28 +373,13 @@ export function registerTaskToolAdapters(
       }
 
       const agent = agents[0];
-      const displayName = getSubagentDisplayName(agent);
-      const statusColor =
-        agent.status === "idle"
-          ? "success"
-          : agent.status === "failed"
-            ? "error"
-            : "text";
-      const statusLabel = getSubagentCompletionLabel(agent.status);
       const output = agent.last_assistant_text ?? agent.last_error;
-      const container = new Container();
-      container.addChild(
-        new Text(titleLine(theme, statusColor, statusLabel, theme.fg("accent", displayName)), 0, 0),
-      );
-
       const normalizedOutput = normalizeTaskOutput(output);
       if (!normalizedOutput) {
-        return container;
+        return renderEmptySlot();
       }
 
-      container.addChild(new Spacer(1));
-      container.addChild(renderTaskOutput(normalizedOutput, expanded, theme));
-      return container;
+      return renderTaskOutput(normalizedOutput, expanded, theme);
     },
   });
 

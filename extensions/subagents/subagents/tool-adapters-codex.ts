@@ -159,10 +159,10 @@ export function registerCodexToolAdapters(
           description: "Optional reasoning effort override for the child agent.",
         }),
       ),
-      run_in_background: Type.Optional(
+      wait_for_agent: Type.Optional(
         Type.Boolean({
           description:
-            "If true, return immediately and notify later when the child completes. Defaults to waiting in this call.",
+            "If true, wait for agent completion in this call. If false or omitted, return immediately and notify later when the child completes.",
         }),
       ),
       interactive: Type.Optional(
@@ -186,7 +186,7 @@ export function registerCodexToolAdapters(
         requestedAgentType: params.agent_type,
         requestedModel: params.model,
         requestedReasoningEffort: params.reasoning_effort,
-        runInBackground: params.run_in_background,
+        runInBackground: params.wait_for_agent !== true,
         interactive: params.interactive,
         forkContext: params.fork_context,
       });
@@ -209,12 +209,12 @@ export function registerCodexToolAdapters(
               status: { [result.name]: completedAgent.status },
               timed_out: false,
               prompt,
-              run_in_background: Boolean(params.run_in_background),
+              wait_for_agent: Boolean(params.wait_for_agent),
             }
           : {
               name: result.name,
               prompt,
-              run_in_background: Boolean(params.run_in_background),
+              wait_for_agent: Boolean(params.wait_for_agent),
             },
       };
     },
@@ -227,12 +227,12 @@ export function registerCodexToolAdapters(
       const transportLabel = args.interactive ? theme.fg("muted", " (interactive)") : "";
       const agentName = `${theme.fg("accent", `${publicName}${roleLabel}`)}${modelLabel ? theme.fg("muted", ` (${modelLabel})`) : ""}${transportLabel}`;
       const callLine = new Text(
-        toolCallLine(theme, args.run_in_background ? "Spawn running" : "Spawn", agentName),
+        toolCallLine(theme, args.wait_for_agent ? "Spawn" : "Spawn running", agentName),
         0,
         0,
       );
 
-      if (args.run_in_background) {
+      if (!args.wait_for_agent) {
         return callLine;
       }
 
@@ -254,10 +254,10 @@ export function registerCodexToolAdapters(
               timed_out?: boolean;
               prompt?: string;
               name?: string;
-              run_in_background?: boolean;
+              wait_for_agent?: boolean;
             } & Partial<PublicAgentSnapshot>)
           | undefined) ?? undefined;
-      if (details?.run_in_background) {
+      if (!details?.wait_for_agent) {
         return renderEmptySlot();
       }
       if (details?.agents?.[0]) {
