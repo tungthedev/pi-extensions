@@ -1,7 +1,6 @@
-import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { createFindToolDefinition } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 
 import path from "node:path";
@@ -10,8 +9,11 @@ import {
   findMatchingFiles,
   formatFindFilesOutput,
 } from "../../shared/file-tools/find-files.ts";
-import { renderEmptySlot } from "../../shared/renderers/common.ts";
-import { shortenPath } from "../../shared/text.ts";
+import {
+  buildSummaryRenderer,
+  formatListCallDetail,
+  summarizeFindCount,
+} from "../../shared/renderers/tool-renderers.ts";
 import { resolveAbsolutePath } from "../../shared/runtime-paths.ts";
 
 const DROID_GLOB_DESCRIPTION = `Advanced file path search using glob patterns with multiple pattern support and exclusions.
@@ -70,16 +72,15 @@ function globToRegExp(pattern: string): RegExp {
   return new RegExp(`^${escaped}$`);
 }
 
-function renderGlobCall(theme: Theme, args: { folder?: string }): Text {
-  return new Text(
-    `${theme.fg("toolTitle", theme.bold("Glob "))}${theme.fg("accent", shortenPath(args.folder || "."))}`,
-    0,
-    0,
-  );
-}
-
 export function registerDroidGlobTool(pi: ExtensionAPI): void {
   const nativeFindDefinition = createFindToolDefinition(process.cwd());
+  const renderer = buildSummaryRenderer({
+    title: "Glob",
+    getDetail: (args) => formatListCallDetail({ path: args.folder as string | undefined }),
+    summarize: summarizeFindCount,
+    nativeRenderResult: (result, options, theme, context) =>
+      nativeFindDefinition.renderResult!(result as never, options, theme, context as never),
+  });
 
   pi.registerTool({
     name: "Glob",
@@ -115,28 +116,10 @@ export function registerDroidGlobTool(pi: ExtensionAPI): void {
       };
     },
     renderCall(args, theme) {
-      return renderGlobCall(theme, args);
+      return renderer.renderCall(args as Record<string, unknown>, theme);
     },
     renderResult(result, options, theme, context) {
-      if (context.isError) {
-        return nativeFindDefinition.renderResult!(
-          result as never,
-          options,
-          theme,
-          context as never,
-        );
-      }
-
-      if (!options.expanded) {
-        return renderEmptySlot();
-      }
-
-      return nativeFindDefinition.renderResult!(
-        result as never,
-        options,
-        theme,
-        context as never,
-      );
+      return renderer.renderResult(result, options, theme, context);
     },
   });
 }

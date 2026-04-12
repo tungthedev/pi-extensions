@@ -1,7 +1,6 @@
-import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { createLsToolDefinition } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 
 import {
@@ -9,8 +8,11 @@ import {
   scanDirectoryEntries,
   type ListDirectoryEntry,
 } from "../../shared/file-tools/list-dir.ts";
-import { renderEmptySlot } from "../../shared/renderers/common.ts";
-import { shortenPath } from "../../shared/text.ts";
+import {
+  buildSummaryRenderer,
+  formatListCallDetail,
+  summarizeListCount,
+} from "../../shared/renderers/tool-renderers.ts";
 import { resolveAbsolutePathWithVariants } from "../../shared/runtime-paths.ts";
 
 const DROID_LIST_DIRECTORY_DESCRIPTION = `List the contents of a directory with optional pattern-based filtering.
@@ -35,17 +37,6 @@ const DROID_LIST_DIRECTORY_PARAMETERS = Type.Object({
     ),
   ),
 });
-
-function renderListDirectoryCall(
-  theme: Theme,
-  args: { directory_path?: string },
-): Text {
-  return new Text(
-    `${theme.fg("toolTitle", theme.bold("List "))}${theme.fg("accent", shortenPath(args.directory_path || "."))}`,
-    0,
-    0,
-  );
-}
 
 function globToRegExp(pattern: string): RegExp {
   const escaped = pattern
@@ -75,6 +66,14 @@ function filterIgnoredEntries(
 
 export function registerDroidListDirectoryTool(pi: ExtensionAPI): void {
   const nativeLsDefinition = createLsToolDefinition(process.cwd());
+  const renderer = buildSummaryRenderer({
+    title: "List",
+    getDetail: (args) =>
+      formatListCallDetail({ path: args.directory_path as string | undefined }),
+    summarize: summarizeListCount,
+    nativeRenderResult: (result, options, theme, context) =>
+      nativeLsDefinition.renderResult!(result as never, options, theme, context as never),
+  });
 
   pi.registerTool({
     name: "LS",
@@ -103,28 +102,10 @@ export function registerDroidListDirectoryTool(pi: ExtensionAPI): void {
       };
     },
     renderCall(args, theme) {
-      return renderListDirectoryCall(theme, args);
+      return renderer.renderCall(args as Record<string, unknown>, theme);
     },
     renderResult(result, options, theme, context) {
-      if (context.isError) {
-        return nativeLsDefinition.renderResult!(
-          result as never,
-          options,
-          theme,
-          context as never,
-        );
-      }
-
-      if (!options.expanded) {
-        return renderEmptySlot();
-      }
-
-      return nativeLsDefinition.renderResult!(
-        result as never,
-        options,
-        theme,
-        context as never,
-      );
+      return renderer.renderResult(result, options, theme, context);
     },
   });
 }

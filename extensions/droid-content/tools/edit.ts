@@ -5,7 +5,10 @@ import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 
-import { shortenPath } from "../../shared/text.ts";
+import {
+  formatListCallDetail,
+  renderToolLabel,
+} from "../../shared/renderers/tool-renderers.ts";
 import { resolveAbsolutePath } from "../../shared/runtime-paths.ts";
 
 const DROID_EDIT_DESCRIPTION = `
@@ -31,11 +34,7 @@ const DROID_EDIT_PARAMETERS = Type.Object({
 });
 
 function renderEditCall(theme: Theme, args: { file_path?: string }): Text {
-  return new Text(
-    `${theme.fg("toolTitle", theme.bold("Edit "))}${theme.fg("accent", shortenPath(args.file_path || "."))}`,
-    0,
-    0,
-  );
+  return renderToolLabel(theme, "Edit", formatListCallDetail({ path: args.file_path }));
 }
 
 function buildSuccessResult(filePath: string) {

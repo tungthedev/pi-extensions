@@ -1,13 +1,16 @@
-import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { Dirent } from "node:fs";
 
 import { createLsToolDefinition } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { shortenPath } from "../shared/text.ts";
+import {
+  buildSummaryRenderer,
+  formatListCallDetail,
+  summarizeListCount,
+} from "../../shared/renderers/tool-renderers.ts";
 import { MAX_LIST_DIR_SCAN_ENTRIES, resolveAbsolutePathWithVariants } from "./runtime.ts";
 
 export type ListDirectoryEntry = {
@@ -210,20 +213,15 @@ export function formatListDirectoryOutput(
   return lines.join("\n");
 }
 
-function renderListDirCall(theme: Theme, args: { dir_path?: string; limit?: number }): Text {
-  const targetPath = shortenPath(args.dir_path || ".");
-  const suffix =
-    typeof args.limit === "number" ? theme.fg("dim", ` (limit ${args.limit})`) : "";
-
-  return new Text(
-    `${theme.fg("toolTitle", theme.bold("List "))}${theme.fg("accent", targetPath)}${suffix}`,
-    0,
-    0,
-  );
-}
-
 export function registerListDirTool(pi: ExtensionAPI): void {
   const nativeLsDefinition = createLsToolDefinition(process.cwd());
+  const renderer = buildSummaryRenderer({
+    title: "List",
+    getDetail: (args) => formatListCallDetail({ path: args.dir_path as string | undefined }),
+    summarize: summarizeListCount,
+    nativeRenderResult: (result, options, theme, context) =>
+      nativeLsDefinition.renderResult!(result as never, options, theme, context as never),
+  });
 
   pi.registerTool({
     name: "list_dir",
@@ -258,15 +256,10 @@ export function registerListDirTool(pi: ExtensionAPI): void {
       return buildListDirResult(absolutePath, scan.entries, scan.skippedCount, { offset, limit });
     },
     renderCall(args, theme, _context) {
-      return renderListDirCall(theme, args);
+      return renderer.renderCall(args as Record<string, unknown>, theme);
     },
     renderResult(result, options, theme, context) {
-      return nativeLsDefinition.renderResult!(
-        result as never,
-        options,
-        theme,
-        context as never,
-      );
+      return renderer.renderResult(result, options, theme, context);
     },
   });
 }

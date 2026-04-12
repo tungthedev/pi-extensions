@@ -1,10 +1,15 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
+import { createGrepToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { renderEmptySlot } from "../renderers/common.ts";
+import {
+  buildSummaryRenderer,
+  formatPatternInPathDetail,
+  summarizeMatchingFileCount,
+} from "../../shared/renderers/tool-renderers.ts";
 import {
   normalizeCommandOutputPaths,
   statSortedFileMatches,
@@ -158,6 +163,16 @@ export async function findContentMatches(
 }
 
 export function registerGrepFilesTool(pi: ExtensionAPI): void {
+  const nativeGrepDefinition = createGrepToolDefinition(process.cwd());
+  const renderer = buildSummaryRenderer({
+    title: "Grep",
+    getDetail: (args) =>
+      formatPatternInPathDetail(args as { pattern?: string; path?: string; fallbackPattern?: string }),
+    summarize: summarizeMatchingFileCount,
+    nativeRenderResult: (result, options, theme, context) =>
+      nativeGrepDefinition.renderResult!(result as never, options, theme, context as never),
+  });
+
   pi.registerTool({
     name: "grep_files",
     label: "grep_files",
@@ -204,11 +219,11 @@ export function registerGrepFilesTool(pi: ExtensionAPI): void {
         },
       };
     },
-    renderCall() {
-      return renderEmptySlot();
+    renderCall(args, theme) {
+      return renderer.renderCall(args as Record<string, unknown>, theme);
     },
-    renderResult() {
-      return renderEmptySlot();
+    renderResult(result, options, theme, context) {
+      return renderer.renderResult(result, options, theme, context);
     },
   });
 }

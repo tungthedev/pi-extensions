@@ -4,7 +4,7 @@ import { Type } from "@sinclair/typebox";
 
 import { applyPatch as runNativeApplyPatch } from "../../shared/patch/apply.ts";
 import { renderApplyPatchResult } from "../../shared/patch/render.ts";
-import { renderEmptySlot, renderFallbackResult, renderToolCall } from "../../shared/renderers/common.ts";
+import { renderEmptySlot, renderFallbackResult } from "../../shared/renderers/common.ts";
 import { trimToBudget } from "../../shared/runtime-paths.ts";
 
 const DROID_APPLY_PATCH_DESCRIPTION = `Use this tool to edit files.

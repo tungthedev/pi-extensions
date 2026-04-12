@@ -5,7 +5,9 @@ import path from "node:path";
 import test from "node:test";
 
 import { findMatchingFiles } from "./find-files.ts";
+import { registerFindFilesTool } from "./find-files.ts";
 import { findContentMatches, registerGrepFilesTool } from "./grep-files.ts";
+import { registerListDirTool } from "./list-dir.ts";
 
 async function withTempDir(run: (dir: string) => Promise<void>) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "codex-tools-"));
@@ -14,6 +16,15 @@ async function withTempDir(run: (dir: string) => Promise<void>) {
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+const theme = {
+  fg: (_color: string, text: string) => text,
+  bold: (text: string) => text,
+} as any;
+
+function trimRenderedLines(lines: string[]): string[] {
+  return lines.map((line) => line.trimEnd());
 }
 
 function getRegisteredTool(register: (pi: any) => void, name: string) {
@@ -86,4 +97,45 @@ test("grep_files reports invalid regex errors clearly", async () => {
       /invalid regex:/i,
     );
   });
+});
+
+test("find_files shows a collapsed file-count summary", () => {
+  const tool = getRegisteredTool(registerFindFilesTool, "find_files");
+
+  const collapsed = tool.renderResult(
+    { details: { count: 2 }, content: [{ type: "text", text: "..." }] },
+    { expanded: false, isPartial: false },
+    theme,
+    { isError: false, lastComponent: undefined } as never,
+  );
+
+  assert.deepEqual(trimRenderedLines(collapsed.render(120)), ["Found 2 files (ctrl+o to expand)"]);
+});
+
+test("list_dir shows a collapsed entry-count summary", () => {
+  const tool = getRegisteredTool(registerListDirTool, "list_dir");
+
+  const collapsed = tool.renderResult(
+    { details: { count: 5 }, content: [{ type: "text", text: "..." }] },
+    { expanded: false, isPartial: false },
+    theme,
+    { isError: false, lastComponent: undefined } as never,
+  );
+
+  assert.deepEqual(trimRenderedLines(collapsed.render(120)), ["Found 5 entries (ctrl+o to expand)"]);
+});
+
+test("grep_files uses matching-file wording in collapsed summaries", () => {
+  const tool = getRegisteredTool(registerGrepFilesTool, "grep_files");
+
+  const collapsed = tool.renderResult(
+    { details: { count: 3 }, content: [{ type: "text", text: "..." }] },
+    { expanded: false, isPartial: false },
+    theme,
+    { isError: false, lastComponent: undefined } as never,
+  );
+
+  assert.deepEqual(trimRenderedLines(collapsed.render(120)), [
+    "Found 3 matching files (ctrl+o to expand)",
+  ]);
 });

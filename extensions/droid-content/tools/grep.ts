@@ -1,9 +1,15 @@
-import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { createGrepToolDefinition } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 
+import {
+  buildSummaryRenderer,
+  decorateGrepResultWithStats,
+  formatPatternInPathDetail,
+  summarizeGrepResult,
+  summarizeMatchingFileCount,
+} from "../../shared/renderers/tool-renderers.ts";
 import {
   execCommand,
   normalizeRipgrepGlob,
@@ -11,8 +17,6 @@ import {
   resolvePiToolPath,
   trimToBudget,
 } from "../../shared/runtime-paths.ts";
-import { renderEmptySlot } from "../../shared/renderers/common.ts";
-import { shortenPath } from "../../shared/text.ts";
 
 const DROID_GREP_DESCRIPTION = `High-performance file content search using ripgrep. Wrapper around ripgrep with comprehensive parameter support.
 
@@ -121,16 +125,34 @@ function buildDroidGrepArgs(params: DroidGrepParams, searchPath: string): string
   return args;
 }
 
-function renderGrepCall(theme: Theme, args: { pattern?: string; path?: string }): Text {
-  return new Text(
-    `${theme.fg("toolTitle", theme.bold("Grep "))}${theme.fg("accent", `${args.pattern || ""} in ${shortenPath(args.path || ".")}`)}`,
-    0,
-    0,
-  );
+function countReturnedFiles(text: string): number {
+  if (!text || text.trim() === "" || text.trim() === "No matches found") {
+    return 0;
+  }
+
+  return text.split(/\r?\n/).filter(Boolean).length;
 }
 
 export function registerDroidGrepTool(pi: ExtensionAPI): void {
   const nativeGrepDefinition = createGrepToolDefinition(process.cwd());
+  const renderer = buildSummaryRenderer({
+    title: "Grep",
+    getDetail: (args) =>
+      formatPatternInPathDetail(args as { pattern?: string; path?: string; fallbackPattern?: string }),
+    summarize: (result) => {
+      const outputMode =
+        typeof result.details === "object" && result.details !== null
+          ? (result.details as Record<string, unknown>).outputMode
+          : undefined;
+
+      return outputMode === "content"
+        ? summarizeGrepResult(result)
+        : summarizeMatchingFileCount(result);
+    },
+    nativeRenderResult: (result, options, theme, context) =>
+      nativeGrepDefinition.renderResult!(result as never, options, theme, context as never),
+    expandable: false,
+  });
 
   pi.registerTool({
     name: "Grep",
@@ -171,40 +193,28 @@ export function registerDroidGrepTool(pi: ExtensionAPI): void {
         throw new Error(result.stderr.trim() || `rg exited with code ${result.exitCode}`);
       }
 
+      const outputMode = params.output_mode ?? "file_paths";
       const text = result.exitCode === 1 ? "No matches found" : result.stdout;
       const trimmed = trimToBudget(text);
-      return {
+      const renderedResult = {
         content: [{ type: "text" as const, text: trimmed.text }],
         details: {
           path: searchPath,
           pattern: params.pattern,
-          outputMode: params.output_mode ?? "file_paths",
+          outputMode,
+          ...(outputMode === "file_paths" ? { count: countReturnedFiles(text) } : {}),
         },
       };
+
+      return outputMode === "content"
+        ? decorateGrepResultWithStats(renderedResult)
+        : renderedResult;
     },
     renderCall(args, theme) {
-      return renderGrepCall(theme, args);
+      return renderer.renderCall(args as Record<string, unknown>, theme);
     },
     renderResult(result, options, theme, context) {
-      if (context.isError) {
-        return nativeGrepDefinition.renderResult!(
-          result as never,
-          options,
-          theme,
-          context as never,
-        );
-      }
-
-      if (!options.expanded) {
-        return renderEmptySlot();
-      }
-
-      return nativeGrepDefinition.renderResult!(
-        result as never,
-        options,
-        theme,
-        context as never,
-      );
+      return renderer.renderResult(result, options, theme, context);
     },
   });
 }

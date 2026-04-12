@@ -1,12 +1,15 @@
-import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { createFindToolDefinition } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { shortenPath } from "../shared/text.ts";
+import {
+  buildSummaryRenderer,
+  formatPatternInPathDetail,
+  summarizeFindCount,
+} from "../../shared/renderers/tool-renderers.ts";
 import {
   normalizeCommandOutputPaths,
   statSortedFileMatches,
@@ -113,24 +116,16 @@ function validateFindFilesOffset(matchCount: number, offset: number): void {
   }
 }
 
-function renderFindFilesCall(
-  theme: Theme,
-  args: { pattern?: string; path?: string; limit?: number },
-): Text {
-  const pattern = args.pattern || "*";
-  const targetPath = shortenPath(args.path || ".");
-  const suffix =
-    typeof args.limit === "number" ? theme.fg("dim", ` (limit ${args.limit})`) : "";
-
-  return new Text(
-    `${theme.fg("toolTitle", theme.bold("Search "))}${theme.fg("accent", `${pattern} in ${targetPath}`)}${suffix}`,
-    0,
-    0,
-  );
-}
-
 export function registerFindFilesTool(pi: ExtensionAPI): void {
   const nativeFindDefinition = createFindToolDefinition(process.cwd());
+  const renderer = buildSummaryRenderer({
+    title: "Search",
+    getDetail: (args) =>
+      formatPatternInPathDetail(args as { pattern?: string; path?: string; fallbackPattern?: string }),
+    summarize: summarizeFindCount,
+    nativeRenderResult: (result, options, theme, context) =>
+      nativeFindDefinition.renderResult!(result as never, options, theme, context as never),
+  });
 
   pi.registerTool({
     name: "find_files",
@@ -166,15 +161,13 @@ export function registerFindFilesTool(pi: ExtensionAPI): void {
       };
     },
     renderCall(args, theme, _context) {
-      return renderFindFilesCall(theme, args);
+      return renderer.renderCall(
+        { ...(args as Record<string, unknown>), fallbackPattern: "*" },
+        theme,
+      );
     },
     renderResult(result, options, theme, context) {
-      return nativeFindDefinition.renderResult!(
-        result as never,
-        options,
-        theme,
-        context as never,
-      );
+      return renderer.renderResult(result, options, theme, context);
     },
   });
 }
