@@ -18,3 +18,15 @@ export function deriveDurableStatusFromState(
     typeof data.pendingMessageCount === "number" ? data.pendingMessageCount : 0;
   return isStreaming || pendingMessageCount > 0 ? "live_running" : "live_idle";
 }
+
+export function resolvePostPromptDurableStatus(options: {
+  currentStatus: DurableChildStatus;
+  state: Record<string, unknown> | undefined;
+}): DurableChildStatus {
+  if (options.currentStatus !== "live_running") {
+    return options.currentStatus;
+  }
+
+  const derivedStatus = deriveDurableStatusFromState(options.state);
+  return derivedStatus === "live_idle" ? "live_running" : derivedStatus;
+}

@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { Type } from "@sinclair/typebox";
 import { Container, Spacer, Text } from "@mariozechner/pi-tui";
@@ -16,19 +16,64 @@ import { validateSubagentName } from "./naming.ts";
 import { shorten } from "./render.ts";
 import { toPublicAgentSnapshot } from "./results.ts";
 import { getSubagentCompletionLabel, getSubagentDisplayName, summarizeTaskRequest } from "./rendering.ts";
+import { resolveRequestedAgentType } from "./profiles-apply.ts";
 import {
-  buildTaskTitle,
   extractSnapshotDetails,
   normalizeTaskOutput,
+  previewTaskText,
   renderTaskOutput,
 } from "./renderers.ts";
 import { buildSpawnAgentTypeDescription, resolveAgentProfiles } from "./profiles.ts";
 import type { createSubagentLifecycleService } from "./lifecycle-service.ts";
+import { formatSubagentModelLabel } from "./rendering.ts";
 
 export type TaskToolAdapterDeps = {
   lifecycle: ReturnType<typeof createSubagentLifecycleService>;
   normalizeWaitAgentTimeoutMs: (timeoutMs: number | undefined) => number;
 };
+
+function resolveTaskToolName(args: { name?: unknown; resume?: unknown }): string {
+  if (typeof args.name === "string" && args.name.trim().length > 0) {
+    return args.name.trim();
+  }
+  if (typeof args.resume === "string" && args.resume.trim().length > 0) {
+    return args.resume.trim();
+  }
+  return "task";
+}
+
+function shouldWaitForTaskStatus(status: PublicAgentSnapshot["status"]): boolean {
+  return status === "running";
+}
+
+function renderForegroundTaskResult(
+  agent: PublicAgentSnapshot,
+  expanded: boolean,
+  theme: ExtensionContext["ui"]["theme"],
+): Text | Container {
+  const output = normalizeTaskOutput(agent.last_assistant_text ?? agent.last_error);
+  if (!output) {
+    return renderEmptySlot();
+  }
+
+  if (expanded) {
+    return renderLines(output.split("\n").map((line) => theme.fg("toolOutput", line)));
+  }
+
+  const preview = previewTaskText(output, 3);
+  const lines = preview.visibleLines.map((line) => theme.fg("toolOutput", line));
+
+  if (preview.hiddenLineCount > 0) {
+    lines.push(
+      theme.fg(
+        "muted",
+        `... (+${preview.hiddenLineCount} more ${preview.hiddenLineCount === 1 ? "line" : "lines"}, ctrl+o to expand)`,
+      ),
+    );
+  }
+
+  return renderLines(lines);
+}
 
 export function registerTaskToolAdapters(
   pi: Pick<ExtensionAPI, "registerTool">,
@@ -94,6 +139,39 @@ export function registerTaskToolAdapters(
           input: params.prompt,
           taskSummary,
         });
+
+        if (params.run_in_background === false) {
+          const waited = await deps.lifecycle.waitByNames({
+            names: [name],
+            timeoutMs: deps.normalizeWaitAgentTimeoutMs(undefined),
+          });
+          const waitedAgent = toPublicAgentSnapshot(
+            waited.snapshots[0] ?? deps.lifecycle.getSnapshotByName(name).snapshot,
+          );
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  name,
+                  submission_id: resumed.submissionId,
+                  status: waitedAgent.status,
+                  output: waitedAgent.last_assistant_text ?? waitedAgent.last_error ?? "",
+                  timed_out: waited.timedOut,
+                }),
+              },
+            ],
+            details: {
+              submission_id: resumed.submissionId,
+              task_summary: taskSummary,
+              agents: [waitedAgent],
+              timed_out: waited.timedOut,
+              input: params.prompt,
+              command: resumed.commandType,
+            },
+          };
+        }
+
         return {
           content: [
             {
@@ -154,15 +232,38 @@ export function registerTaskToolAdapters(
           },
         ],
         details: {
-          task_summary: taskSummary,
           ...toPublicAgentSnapshot(deps.lifecycle.getSnapshotByName(name).snapshot),
+          prompt: params.prompt,
+          run_in_background: Boolean(params.run_in_background),
+          task_summary: taskSummary,
         },
       };
     },
-    renderCall(args, theme, context) {
-      const text = context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
-      text.setText(buildTaskTitle(theme, "Task", summarizeTaskRequest(args.description, args.prompt)));
-      return text;
+    renderCall(args, theme) {
+      const publicName = resolveTaskToolName(args);
+      const agentType = resolveRequestedAgentType(args.subagent_type);
+      const roleLabel = agentType !== "default" ? ` [${agentType}]` : "";
+      const modelLabel = formatSubagentModelLabel(args.model, args.complexity);
+      const taskName = `${theme.fg("accent", `${publicName}${roleLabel}`)}${modelLabel ? theme.fg("muted", ` (${modelLabel})`) : ""}`;
+      const callLine = new Text(
+        toolCallLine(theme, args.run_in_background ? "Task running" : "Task", taskName),
+        0,
+        0,
+      );
+
+      if (args.run_in_background) {
+        return callLine;
+      }
+
+      const prompt = typeof args.prompt === "string" ? args.prompt.trim() : "";
+      if (!prompt) {
+        return callLine;
+      }
+
+      const container = new Container();
+      container.addChild(callLine);
+      container.addChild(new Text(theme.fg("dim", shorten(prompt, 140)), 0, 0));
+      return container;
     },
     renderResult(result, options, theme) {
       if ((result as { isError?: boolean }).isError) {
@@ -174,8 +275,8 @@ export function registerTaskToolAdapters(
         | undefined;
       if (details?.agents?.length) {
         const completedAgent = details.agents[0];
-        return renderTaskOutput(
-          completedAgent?.last_assistant_text ?? completedAgent?.last_error,
+        return renderForegroundTaskResult(
+          completedAgent,
           Boolean(options.expanded),
           theme,
         );
@@ -207,9 +308,9 @@ export function registerTaskToolAdapters(
     }),
     async execute(_toolCallId, params) {
       const name = validateSubagentName(params.name);
+      const snapshot = toPublicAgentSnapshot(deps.lifecycle.getSnapshotByName(name).snapshot);
 
-      if (params.block === false) {
-        const snapshot = toPublicAgentSnapshot(deps.lifecycle.getSnapshotByName(name).snapshot);
+      if (params.block === false || !shouldWaitForTaskStatus(snapshot.status)) {
         return {
           content: [
             {
@@ -218,6 +319,7 @@ export function registerTaskToolAdapters(
                 name,
                 status: snapshot.status,
                 output: snapshot.last_assistant_text ?? snapshot.last_error ?? "",
+                timed_out: false,
               }),
             },
           ],
@@ -234,15 +336,15 @@ export function registerTaskToolAdapters(
         timeoutMs: deps.normalizeWaitAgentTimeoutMs(params.timeout),
       });
       const snapshots = waited.snapshots.map(toPublicAgentSnapshot);
-      const snapshot = snapshots[0];
+      const waitedSnapshot = snapshots[0];
       return {
         content: [
           {
             type: "text",
             text: JSON.stringify({
               name,
-              status: snapshot?.status ?? "running",
-              output: snapshot?.last_assistant_text ?? snapshot?.last_error ?? "",
+              status: waitedSnapshot?.status ?? "running",
+              output: waitedSnapshot?.last_assistant_text ?? waitedSnapshot?.last_error ?? "",
               timed_out: waited.timedOut,
             }),
           },

@@ -152,6 +152,7 @@ export function renderAgentCompletionResult(
   },
   expanded: boolean,
   theme: ExtensionContext["ui"]["theme"],
+  options: { showTitle?: boolean } = {},
 ) {
   const agentsList = details.agents ?? [];
   const title =
@@ -177,7 +178,9 @@ export function renderAgentCompletionResult(
             : "accent";
 
   const container = new Container();
-  container.addChild(new Text(titleLine(theme, "text", title), 0, 0));
+  if (options.showTitle !== false) {
+    container.addChild(new Text(titleLine(theme, "text", title), 0, 0));
+  }
 
   for (const [index, agent] of agentsList.entries()) {
     if (index > 0) container.addChild(new Spacer(1));

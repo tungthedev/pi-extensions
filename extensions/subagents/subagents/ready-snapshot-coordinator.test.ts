@@ -87,3 +87,36 @@ test("notifyParentOfChildStatus suppresses notifications during waits and flushe
   assert.equal(notifications[0]?.snapshot.agent_id, "agent-1");
   assert.equal(notifications[0]?.taskSummary, "audit");
 });
+
+test("terminal completion remains claimable for an active wait instead of being consumed by notification delivery", () => {
+  const store = createSubagentRuntimeStore();
+  const notifications: Array<{ snapshot: AgentSnapshot; taskSummary?: string }> = [];
+  store.setDurableChild("agent-1", createRecord({ status: "live_running", taskSummary: "audit" }));
+
+  const coordinator = createReadySnapshotCoordinator({
+    store,
+    childSnapshot: createSnapshot,
+    requireDurableChild: (agentId) => {
+      const record = store.getDurableChild(agentId);
+      if (!record) throw new Error(`Unknown agent_id: ${agentId}`);
+      return record;
+    },
+    waitForAnyStateChange: async () => false,
+    maxWaitTimeoutMs: 90_000,
+    sendNotification(snapshot, taskSummary) {
+      notifications.push({ snapshot, taskSummary });
+    },
+  });
+
+  store.beginWait(["agent-1"]);
+  store.markCompleted("agent-1", { lastAssistantText: "done" });
+  coordinator.notifyParentOfChildStatus(store.getDurableChild("agent-1")!);
+
+  assert.equal(notifications.length, 0);
+  assert.equal(store.getActiveWaitCount("agent-1"), 1);
+  assert.equal(coordinator.claimReadySnapshot("agent-1")?.last_assistant_text, "done");
+
+  store.endWait(["agent-1"]);
+  coordinator.flushSuppressedNotifications(["agent-1"]);
+  assert.equal(notifications.length, 0);
+});

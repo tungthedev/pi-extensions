@@ -76,7 +76,7 @@ import { createSubagentRuntimeStore, isWaitableChild } from "./runtime-store.ts"
 import { createReadySnapshotCoordinator } from "./ready-snapshot-coordinator.ts";
 import { registerSubagentNotificationRenderers } from "./renderers.ts";
 import { registerSubagentSessionEvents } from "./session-events.ts";
-import { deriveDurableStatusFromState } from "./state.ts";
+import { deriveDurableStatusFromState, resolvePostPromptDurableStatus } from "./state.ts";
 import {
   isInteractiveAttachment,
   notifyStateChange,
@@ -91,6 +91,7 @@ import {
   AGENT_PROFILE_NAME_ENV,
   CHILD_EXIT_GRACE_MS,
   CODEX_SUBAGENT_CHILD_ENV,
+  SUBAGENT_CWD_ENV,
   CODEX_SUBAGENT_RESERVED_TOOL_NAMES,
   CODEX_SUBAGENT_TOOL_NAMES,
   INTERACTIVE_EXTENSION_ENTRY,
@@ -696,6 +697,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         FORCE_COLOR: "0",
         PI_SUBAGENT_PROJECT_ROOT: process.env.PI_SUBAGENT_PROJECT_ROOT ?? process.cwd(),
         PI_CODEX_PROJECT_ROOT: process.env.PI_CODEX_PROJECT_ROOT ?? process.cwd(),
+        [SUBAGENT_CWD_ENV]: options.record.cwd,
         [SUBAGENT_CHILD_ENV]: "1",
         [CODEX_SUBAGENT_CHILD_ENV]: "1",
         [AGENT_PROFILE_NAME_ENV]: options.profileBootstrap.name,
@@ -1085,11 +1087,24 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       throw new Error(response.error ?? "Failed to start child agent");
     }
 
+    // A fresh child often still reports an idle state for a moment after the
+    // prompt RPC succeeds. Mark it running immediately so foreground spawns do
+    // not consume that stale idle snapshot as if the task had already finished.
+    const runningRecord = updateDurableChild(attachment.agentId, {
+      status: "live_running",
+      lastError: undefined,
+    });
+    store.markActivityRunning(childSnapshot(runningRecord, attachment));
+
     const state = await readChildState(attachment);
     const lastAssistantText = await maybeReadLastAssistantText(attachment);
+    const currentRecord = requireDurableChild(attachment.agentId);
     const durableRecord: DurableChildRecord = {
-      ...requireDurableChild(attachment.agentId),
-      status: deriveDurableStatusFromState(state),
+      ...currentRecord,
+      status: resolvePostPromptDurableStatus({
+        currentStatus: currentRecord.status,
+        state,
+      }),
       sessionId: typeof state.sessionId === "string" ? state.sessionId : undefined,
       sessionFile: typeof state.sessionFile === "string" ? state.sessionFile : undefined,
       ...(lastAssistantText ? { lastAssistantText } : {}),
@@ -1142,7 +1157,13 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     closeLiveAttachment,
     listWaitableChildIds: () =>
       Array.from(store.durableChildValues())
-        .filter((record) => isWaitableChild(record))
+        .filter((record) =>
+          isWaitableChild(record, {
+            hasUnconsumedCompletion:
+              store.getCompletionVersion(record.agentId) >
+              store.getConsumedCompletionVersion(record.agentId),
+          }),
+        )
         .map((record) => record.agentId),
     waitForReadySnapshots,
     incrementActiveWaits,
@@ -1163,8 +1184,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
 
   registerCodexToolAdapters(pi, {
     lifecycle,
-    renderSpawnPromptPreview: (prompt, theme) =>
-      new Text(`${theme.fg("muted", "└ ")}${theme.fg("dim", shorten(prompt, 140))}`, 0, 0),
+    renderSpawnPromptPreview: (prompt, theme) => new Text(theme.fg("dim", shorten(prompt, 140)), 0, 0),
     normalizeWaitAgentTimeoutMs,
   });
 

@@ -1,13 +1,13 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { Type } from "@sinclair/typebox";
-import { Text } from "@mariozechner/pi-tui";
+import { Container, Text } from "@mariozechner/pi-tui";
 
 import type { PublicAgentSnapshot } from "./types.ts";
 
 import {
-  detailLine,
   expandHintLine,
+  renderEmptySlot,
   renderFallbackResult,
   renderLines,
   titleLine,
@@ -29,6 +29,7 @@ import {
 import { formatSubagentModelLabel } from "./rendering.ts";
 import {
   extractSnapshotDetails,
+  normalizeTaskOutput,
   previewTaskText,
   renderAgentCompletionResult,
 } from "./renderers.ts";
@@ -38,6 +39,35 @@ export type CodexToolAdapterDeps = {
   renderSpawnPromptPreview: (prompt: string, theme: ExtensionContext["ui"]["theme"]) => Text;
   normalizeWaitAgentTimeoutMs: (timeoutMs: number | undefined) => number;
 };
+
+function renderForegroundSpawnResult(
+  agent: PublicAgentSnapshot,
+  expanded: boolean,
+  theme: ExtensionContext["ui"]["theme"],
+): Text | Container {
+  const output = normalizeTaskOutput(agent.last_assistant_text ?? agent.last_error);
+  if (!output) {
+    return renderEmptySlot();
+  }
+
+  if (expanded) {
+    return renderLines(output.split("\n").map((line) => theme.fg("toolOutput", line)));
+  }
+
+  const preview = previewTaskText(output, 3);
+  const lines = preview.visibleLines.map((line) => theme.fg("toolOutput", line));
+
+  if (preview.hiddenLineCount > 0) {
+    lines.push(
+      theme.fg(
+        "muted",
+        `... (+${preview.hiddenLineCount} more ${preview.hiddenLineCount === 1 ? "line" : "lines"}, ctrl+o to expand)`,
+      ),
+    );
+  }
+
+  return renderLines(lines);
+}
 
 function buildSpawnAgentToolDescription(agentRoleGuidance: string): string {
   const toolDescription = [
@@ -72,6 +102,9 @@ function buildSpawnAgentToolDescription(agentRoleGuidance: string): string {
     "- For coding tasks, prefer delegating concrete code-change worker subtasks over read-only explorer analysis when the subagent can make a bounded patch in a clear write scope.",
     "- When delegating coding work, instruct the submodel to edit files directly in its forked workspace and list the file paths it changed in the final answer.",
     "- For code-edit subtasks, decompose work so each delegated task has a disjoint write set.",
+    "- Use `fork_context` only when inheriting the current session history provides a real speed or quality benefit because re-explaining a long thread would be expensive, usually for debugging or continuing complex in-flight work.",
+    "- Do not use `fork_context` for simple or self-contained tasks where a fresh agent can start quickly without the extra history.",
+    "- Do not use `fork_context` for tasks that benefit from fresh context and low bias, especially review, audit, or other evaluative work.",
     "",
     "### After you delegate",
     "- Call wait_agent very sparingly. Only call wait_agent when you need the result immediately for the next critical-path step and you are blocked until it returns.",
@@ -113,7 +146,7 @@ export function registerCodexToolAdapters(
       fork_context: Type.Optional(
         Type.Boolean({
           description:
-            "Clone the current persisted session branch into the child before sending the initial task.",
+            "Only use when copying the current persisted session branch into the child will clearly help by avoiding re-explaining a long history and letting the subagent start faster, usually for debugging or continuing complex ongoing work. Never use it for simple self-contained tasks, or for work that benefits from fresh context and low bias such as review or audit tasks.",
         }),
       ),
       model: Type.Optional(
@@ -176,10 +209,12 @@ export function registerCodexToolAdapters(
               status: { [result.name]: completedAgent.status },
               timed_out: false,
               prompt,
+              run_in_background: Boolean(params.run_in_background),
             }
           : {
               name: result.name,
               prompt,
+              run_in_background: Boolean(params.run_in_background),
             },
       };
     },
@@ -191,21 +226,47 @@ export function registerCodexToolAdapters(
       const modelLabel = formatSubagentModelLabel(args.model, args.reasoning_effort);
       const transportLabel = args.interactive ? theme.fg("muted", " (interactive)") : "";
       const agentName = `${theme.fg("accent", `${publicName}${roleLabel}`)}${modelLabel ? theme.fg("muted", ` (${modelLabel})`) : ""}${transportLabel}`;
-      return new Text(toolCallLine(theme, "Spawn", agentName), 0, 0);
+      const callLine = new Text(
+        toolCallLine(theme, args.run_in_background ? "Spawn running" : "Spawn", agentName),
+        0,
+        0,
+      );
+
+      if (args.run_in_background) {
+        return callLine;
+      }
+
+      const prompt = typeof args.message === "string" ? args.message.trim() : "";
+      if (!prompt) {
+        return callLine;
+      }
+
+      const container = new Container();
+      container.addChild(callLine);
+      container.addChild(deps.renderSpawnPromptPreview(prompt, theme));
+      return container;
     },
     renderResult(result, options, theme) {
       const details =
         (result.details as
-          | ({ agents?: PublicAgentSnapshot[]; timed_out?: boolean; prompt?: string; name?: string } &
-              Partial<PublicAgentSnapshot>)
+          | ({
+              agents?: PublicAgentSnapshot[];
+              timed_out?: boolean;
+              prompt?: string;
+              name?: string;
+              run_in_background?: boolean;
+            } & Partial<PublicAgentSnapshot>)
           | undefined) ?? undefined;
-      if (details?.agents) {
-        return renderAgentCompletionResult(details, Boolean(options.expanded), theme);
+      if (details?.run_in_background) {
+        return renderEmptySlot();
       }
-      if (!details?.prompt) {
-        return renderFallbackResult(result, theme.fg("muted", "spawned"));
+      if (details?.agents?.[0]) {
+        return renderForegroundSpawnResult(details.agents[0], Boolean(options.expanded), theme);
       }
-      return deps.renderSpawnPromptPreview(details.prompt, theme);
+      if (details?.prompt) {
+        return renderEmptySlot();
+      }
+      return renderFallbackResult(result, theme.fg("muted", "spawned"));
     },
   });
 
@@ -262,17 +323,11 @@ export function registerCodexToolAdapters(
         return renderFallbackResult(result, theme.fg("muted", "messaged subagent"));
       }
 
-      const snapshot = extractSnapshotDetails(details);
-      const displayName = snapshot?.name ?? "agent";
       const preview = previewTaskText(
         details.input,
         options.expanded ? Number.MAX_SAFE_INTEGER : 5,
       );
-      const lines = [titleLine(theme, "text", "Sent message", theme.fg("accent", displayName))];
-
-      for (const [index, line] of preview.visibleLines.entries()) {
-        lines.push(detailLine(theme, line, index === 0));
-      }
+      const lines = preview.visibleLines.map((line) => theme.fg("toolOutput", line));
 
       if (!options.expanded && preview.hiddenLineCount > 0) {
         lines.push(expandHintLine(theme, preview.hiddenLineCount, "line"));
@@ -310,7 +365,7 @@ export function registerCodexToolAdapters(
       };
     },
     renderCall(_args, theme) {
-      return new Text(toolCallLine(theme, "Wait", theme.fg("accent", "any agent")), 0, 0);
+      return new Text(toolCallLine(theme, "Wait", theme.fg("accent", "for agents")), 0, 0);
     },
     renderResult(result, options, theme) {
       const details =

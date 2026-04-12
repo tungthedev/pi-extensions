@@ -230,7 +230,12 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
 
       const agentId = randomUUID();
       const appliedProfile = resolveAppliedProfile(request);
-      const toolSet = await resolveSessionToolSet(request.ctx.sessionManager as { getBranch(): Array<unknown> }, process.env);
+      const toolSet = await resolveSessionToolSet(
+        request.ctx.sessionManager as {
+          getBranch(): Array<{ type?: unknown; customType?: unknown; data?: unknown }>;
+        },
+        process.env,
+      );
       const thinkingLevel = deps.normalizeReasoningEffortToThinkingLevel(
         appliedProfile.effectiveReasoningEffort,
       );

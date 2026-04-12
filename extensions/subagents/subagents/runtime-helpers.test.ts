@@ -38,7 +38,7 @@ test("createCompletionTracker increments completion version once per unique term
   assert.equal(tracker.get("agent-1").version, 1);
 });
 
-test("createCompletionTracker clears active waits when a terminal state is recorded", () => {
+test("createCompletionTracker preserves active waits until the waiter clears them", () => {
   const tracker = createCompletionTracker();
   tracker.beginWait(["agent-1"]);
   tracker.recordTerminal("agent-1", {
@@ -46,5 +46,8 @@ test("createCompletionTracker clears active waits when a terminal state is recor
     status: "closed",
   } as never);
 
+  assert.equal(tracker.get("agent-1").activeWaitCount, 1);
+
+  tracker.endWait(["agent-1"]);
   assert.equal(tracker.get("agent-1").activeWaitCount, 0);
 });

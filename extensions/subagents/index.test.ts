@@ -22,8 +22,9 @@ import {
   validateSubagentName,
 } from "./internal-test-helpers.ts";
 import { registerCodexToolAdapters } from "./subagents/tool-adapters-codex.ts";
-import { registerTaskToolAdapters } from "./subagents/tool-adapters-task.ts";
 import { getSubagentNotificationDeliveryOptions } from "./subagents/notifications.ts";
+import { isWaitableChild } from "./subagents/runtime-store.ts";
+import { registerTaskToolAdapters } from "./subagents/tool-adapters-task.ts";
 import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "../shared/toolset-resolver.ts";
 
 const EXISTING_FILE = "/Volumes/Data/Projects/exp/pi-extensions/package.json";
@@ -102,16 +103,72 @@ function createMockCtx(cwd = "/tmp/project") {
   } as never;
 }
 
+function createRenderTheme() {
+  return {
+    fg: (_color: string, text: string) => text,
+    bg: (_color: string, text: string) => text,
+    bold: (text: string) => `**${text}**`,
+  } as never;
+}
+
 function createCodexLifecycleMock() {
   const calls: Record<string, unknown[]> = {
     spawn: [],
     resumeByName: [],
     waitAny: [],
+    waitByNames: [],
     stopByName: [],
   };
 
+  const snapshots = new Map<string, {
+    agent_id: string;
+    name: string;
+    status: "running" | "idle" | "failed" | "closed" | "timeout" | "detached";
+    durable_status: "live_running" | "live_idle" | "failed" | "closed" | "detached";
+    cwd: string;
+    last_assistant_text?: string;
+    last_error?: string;
+  }>();
+  const waitedSnapshots = new Map<string, {
+    agent_id: string;
+    name: string;
+    status: "running" | "idle" | "failed" | "closed" | "timeout" | "detached";
+    durable_status: "live_running" | "live_idle" | "failed" | "closed" | "detached";
+    cwd: string;
+    last_assistant_text?: string;
+    last_error?: string;
+  }>();
+
+  const buildSnapshot = (
+    name: string,
+    status: "running" | "idle" | "failed" | "closed" | "timeout" | "detached" = "idle",
+    output = `${name} done`,
+  ) => ({
+    agent_id: `internal-${name}`,
+    name,
+    status,
+    durable_status:
+      status === "running"
+        ? "live_running"
+        : status === "detached"
+          ? "detached"
+          : status === "closed"
+            ? "closed"
+            : status === "failed"
+              ? "failed"
+              : "live_idle",
+    cwd: "/tmp/project",
+    ...(status === "failed" ? { last_error: output } : { last_assistant_text: output }),
+  } as const);
+
   return {
     calls,
+    setSnapshot(name: string, status: "running" | "idle" | "failed" | "closed" | "timeout" | "detached", output?: string) {
+      snapshots.set(name, buildSnapshot(name, status, output));
+    },
+    setWaitedSnapshot(name: string, status: "running" | "idle" | "failed" | "closed" | "timeout" | "detached", output?: string) {
+      waitedSnapshots.set(name, buildSnapshot(name, status, output));
+    },
     lifecycle: {
       async spawn(request: { name: string; prompt: string; runInBackground?: boolean }) {
         calls.spawn.push(request);
@@ -147,39 +204,26 @@ function createCodexLifecycleMock() {
           submissionId: "submission-1",
           commandType: request.interrupt ? "steer" : "follow_up",
           input: request.input,
-          snapshot: {
-            agent_id: "internal-1",
-            name: request.name,
-            status: "running",
-            durable_status: "live_running",
-            cwd: "/tmp/project",
-          },
+          snapshot: buildSnapshot(request.name, "running", request.input),
         };
       },
       async waitAny(request: { timeoutMs: number }) {
         calls.waitAny.push(request);
         return {
-          snapshots: [{
-            agent_id: "internal-researcher_one",
-            name: "researcher_one",
-            status: "idle" as const,
-            durable_status: "live_idle" as const,
-            cwd: "/tmp/project",
-            last_assistant_text: "researcher_one done",
-          }],
+          snapshots: [buildSnapshot("researcher_one", "idle", "researcher_one done")],
+          timedOut: false,
+        };
+      },
+      async waitByNames(request: { names: string[]; timeoutMs: number }) {
+        calls.waitByNames.push(request);
+        return {
+          snapshots: request.names.map((name) => waitedSnapshots.get(name) ?? buildSnapshot(name, "idle")),
           timedOut: false,
         };
       },
       getSnapshotByName(name: string) {
         return {
-          snapshot: {
-            agent_id: `internal-${name}`,
-            name,
-            status: "idle" as const,
-            durable_status: "live_idle" as const,
-            cwd: "/tmp/project",
-            last_assistant_text: `${name} done`,
-          },
+          snapshot: snapshots.get(name) ?? buildSnapshot(name, "idle"),
         };
       },
       async stopByName(name: string) {
@@ -339,6 +383,33 @@ test("runtime store resolves only publicly addressable names and releases closed
   assert.equal(store.hasAddressableChildName("worker_five"), false);
 });
 
+test("isWaitableChild excludes completed agents unless they have an unconsumed completion", () => {
+  const running = {
+    agentId: "running-1",
+    transport: "rpc",
+    cwd: "/tmp/project",
+    status: "live_running",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  } as const;
+  const completed = {
+    ...running,
+    agentId: "done-1",
+    status: "live_idle",
+  } as const;
+  const failed = {
+    ...running,
+    agentId: "failed-1",
+    status: "failed",
+  } as const;
+
+  assert.equal(isWaitableChild(running), true);
+  assert.equal(isWaitableChild(completed), false);
+  assert.equal(isWaitableChild(failed), false);
+  assert.equal(isWaitableChild(completed, { hasUnconsumedCompletion: true }), true);
+  assert.equal(isWaitableChild(failed, { hasUnconsumedCompletion: true }), true);
+});
+
 test("shared resolver switches Codex subagent tool family to send_message", () => {
   const toolInfos = resolveRegisteredToolInfos([
     { name: "spawn_agent", description: "subagent" },
@@ -415,6 +486,39 @@ test("codex tool adapters use public names and do not leak agent ids", async () 
   });
   assert.equal(JSON.stringify(spawnResult).includes("agent_id"), false);
 
+  const spawnForegroundExplicit = await (spawnAgent!.execute as (...args: unknown[]) => Promise<any>)("call-1b", {
+    name: "researcher_two",
+    message: "Investigate billing flow",
+    run_in_background: false,
+  }, undefined, undefined, createMockCtx());
+  assert.equal(calls.spawn.length, 2);
+  const explicitForegroundSpawnCall = calls.spawn[1] as Record<string, unknown>;
+  assert.equal(explicitForegroundSpawnCall.mode, "codex");
+  assert.equal(explicitForegroundSpawnCall.name, "researcher_two");
+  assert.equal(explicitForegroundSpawnCall.prompt, "Investigate billing flow");
+  assert.equal(explicitForegroundSpawnCall.runInBackground, false);
+  assert.deepEqual(JSON.parse(spawnForegroundExplicit.content[0].text), {
+    name: "researcher_two",
+    status: { researcher_two: "idle" },
+    timed_out: false,
+    agent: {
+      name: "researcher_two",
+      status: "idle",
+      durable_status: "live_idle",
+      cwd: "/tmp/project",
+      last_assistant_text: "child done",
+    },
+    agents: [
+      {
+        name: "researcher_two",
+        status: "idle",
+        durable_status: "live_idle",
+        cwd: "/tmp/project",
+        last_assistant_text: "child done",
+      },
+    ],
+  });
+
   const sendResult = await (sendMessage!.execute as (...args: unknown[]) => Promise<any>)("call-2", {
     target: "researcher_one",
     message: "Keep digging",
@@ -452,8 +556,88 @@ test("codex tool adapters use public names and do not leak agent ids", async () 
   });
 });
 
-test("task tool adapters require names for spawn and do not leak task ids", async () => {
+test("spawn_agent renders foreground prompt in call output and content-only result previews", async () => {
   const { lifecycle } = createCodexLifecycleMock();
+  const tools = captureTools((pi) =>
+    registerCodexToolAdapters(pi as never, {
+      lifecycle: lifecycle as never,
+      renderSpawnPromptPreview: (prompt) => new Text(prompt, 0, 0),
+      normalizeWaitAgentTimeoutMs,
+    }),
+  );
+
+  const spawnAgent = tools.get("spawn_agent");
+  assert.ok(spawnAgent);
+
+  const theme = createRenderTheme();
+  const foregroundCall = (spawnAgent!.renderCall as (...args: unknown[]) => unknown)(
+    { name: "worker", agent_type: "researcher", message: "Investigate auth flow" },
+    theme,
+  ) as { children?: Array<{ text?: string }> };
+  assert.equal(foregroundCall.children?.[0]?.text, "**Spawn **worker [researcher]");
+  assert.equal(foregroundCall.children?.[1]?.text, "Investigate auth flow");
+
+  const backgroundCall = (spawnAgent!.renderCall as (...args: unknown[]) => unknown)(
+    { name: "worker", message: "Investigate auth flow", run_in_background: true },
+    theme,
+  ) as { text?: string };
+  assert.equal(backgroundCall.text, "**Spawn running **worker");
+
+  const collapsedResult = (spawnAgent!.renderResult as (...args: unknown[]) => unknown)(
+    {
+      details: {
+        run_in_background: false,
+        agents: [
+          {
+            name: "worker",
+            status: "idle",
+            durable_status: "live_idle",
+            cwd: "/tmp/project",
+            last_assistant_text: "line 1\nline 2\nline 3\nline 4",
+          },
+        ],
+      },
+    },
+    { expanded: false },
+    theme,
+  ) as { text?: string };
+  assert.equal(collapsedResult.text, "line 1\nline 2\nline 3\n... (+1 more line, ctrl+o to expand)");
+
+  const expandedResult = (spawnAgent!.renderResult as (...args: unknown[]) => unknown)(
+    {
+      details: {
+        run_in_background: false,
+        agents: [
+          {
+            name: "worker",
+            status: "idle",
+            durable_status: "live_idle",
+            cwd: "/tmp/project",
+            last_assistant_text: "line 1\nline 2\nline 3\nline 4",
+          },
+        ],
+      },
+    },
+    { expanded: true },
+    theme,
+  ) as { text?: string };
+  assert.equal(expandedResult.text, "line 1\nline 2\nline 3\nline 4");
+
+  const backgroundResult = (spawnAgent!.renderResult as (...args: unknown[]) => unknown)(
+    {
+      details: {
+        run_in_background: true,
+        prompt: "Investigate auth flow",
+      },
+    },
+    { expanded: false },
+    theme,
+  ) as { children?: unknown[] };
+  assert.deepEqual(backgroundResult.children, []);
+});
+
+test("task tool adapters require names for spawn and do not leak task ids", async () => {
+  const { lifecycle, calls, setSnapshot, setWaitedSnapshot } = createCodexLifecycleMock();
   const tools = captureTools((pi) =>
     registerTaskToolAdapters(pi as never, {
       lifecycle: lifecycle as never,
@@ -468,6 +652,72 @@ test("task tool adapters require names for spawn and do not leak task ids", asyn
   assert.ok(taskTool);
   assert.ok(taskOutput);
   assert.ok(taskStop);
+
+  const theme = createRenderTheme();
+  const foregroundTaskCall = (taskTool!.renderCall as (...args: unknown[]) => unknown)(
+    { name: "task_alpha", subagent_type: "researcher", prompt: "Do work", complexity: "high" },
+    theme,
+  ) as { children?: Array<{ text?: string }> };
+  assert.equal(foregroundTaskCall.children?.[0]?.text, "**Task **task_alpha [researcher]");
+  assert.equal(foregroundTaskCall.children?.[1]?.text, "Do work");
+
+  const backgroundTaskCall = (taskTool!.renderCall as (...args: unknown[]) => unknown)(
+    { name: "task_alpha", prompt: "Do work", run_in_background: true },
+    theme,
+  ) as { text?: string };
+  assert.equal(backgroundTaskCall.text, "**Task running **task_alpha");
+
+  const backgroundTaskResult = (taskTool!.renderResult as (...args: unknown[]) => unknown)(
+    {
+      details: {
+        name: "task_alpha",
+        status: "running",
+        durable_status: "live_running",
+        cwd: "/tmp/project",
+      },
+    },
+    { expanded: false },
+    theme,
+  ) as { children?: unknown[] };
+  assert.deepEqual(backgroundTaskResult.children, []);
+
+  const collapsedForegroundTaskResult = (taskTool!.renderResult as (...args: unknown[]) => unknown)(
+    {
+      details: {
+        agents: [
+          {
+            name: "task_alpha",
+            status: "idle",
+            durable_status: "live_idle",
+            cwd: "/tmp/project",
+            last_assistant_text: "line 1\nline 2\nline 3\nline 4",
+          },
+        ],
+      },
+    },
+    { expanded: false },
+    theme,
+  ) as { text?: string };
+  assert.equal(collapsedForegroundTaskResult.text, "line 1\nline 2\nline 3\n... (+1 more line, ctrl+o to expand)");
+
+  const expandedForegroundTaskResult = (taskTool!.renderResult as (...args: unknown[]) => unknown)(
+    {
+      details: {
+        agents: [
+          {
+            name: "task_alpha",
+            status: "idle",
+            durable_status: "live_idle",
+            cwd: "/tmp/project",
+            last_assistant_text: "line 1\nline 2\nline 3\nline 4",
+          },
+        ],
+      },
+    },
+    { expanded: true },
+    theme,
+  ) as { text?: string };
+  assert.equal(expandedForegroundTaskResult.text, "line 1\nline 2\nline 3\nline 4");
 
   await assert.rejects(
     (taskTool!.execute as (...args: unknown[]) => Promise<any>)(
@@ -493,6 +743,19 @@ test("task tool adapters require names for spawn and do not leak task ids", asyn
   });
   assert.equal(JSON.stringify(taskSpawn.details).includes("task_id"), false);
 
+  const taskSpawnForeground = await (taskTool!.execute as (...args: unknown[]) => Promise<any>)(
+    "call-2b",
+    { name: "task_sync", prompt: "Do work in foreground", run_in_background: false },
+    undefined,
+    undefined,
+    createMockCtx(),
+  );
+  assert.deepEqual(JSON.parse(taskSpawnForeground.content[0].text), {
+    name: "task_sync",
+    status: "idle",
+    output: "child done",
+  });
+
   const taskResume = await (taskTool!.execute as (...args: unknown[]) => Promise<any>)(
     "call-3",
     { resume: "task_alpha", prompt: "Continue" },
@@ -505,11 +768,30 @@ test("task tool adapters require names for spawn and do not leak task ids", asyn
     submission_id: "submission-1",
   });
 
+  setSnapshot("task_wait", "running", "still working");
+  setWaitedSnapshot("task_wait", "idle", "finished after resume");
+  const taskResumeForeground = await (taskTool!.execute as (...args: unknown[]) => Promise<any>)(
+    "call-3b",
+    { resume: "task_wait", prompt: "Continue in foreground", run_in_background: false },
+    undefined,
+    undefined,
+    createMockCtx(),
+  );
+  assert.deepEqual(JSON.parse(taskResumeForeground.content[0].text), {
+    name: "task_wait",
+    submission_id: "submission-1",
+    status: "idle",
+    output: "finished after resume",
+    timed_out: false,
+  });
+  assert.deepEqual(calls.waitByNames, [{ names: ["task_wait"], timeoutMs: 45_000 }]);
+
   const output = await (taskOutput!.execute as (...args: unknown[]) => Promise<any>)("call-4", { name: "task_alpha", block: false });
   assert.deepEqual(JSON.parse(output.content[0].text), {
     name: "task_alpha",
     status: "idle",
     output: "task_alpha done",
+    timed_out: false,
   });
 
   const stop = await (taskStop!.execute as (...args: unknown[]) => Promise<any>)("call-5", { name: "task_alpha" });
@@ -517,6 +799,60 @@ test("task tool adapters require names for spawn and do not leak task ids", asyn
     name: "task_alpha",
     status: "closed",
   });
+});
+
+test("TaskOutput returns immediately for non-running tasks and waits for running tasks", async () => {
+  const { lifecycle, calls, setSnapshot, setWaitedSnapshot } = createCodexLifecycleMock();
+  const tools = captureTools((pi) =>
+    registerTaskToolAdapters(pi as never, {
+      lifecycle: lifecycle as never,
+      normalizeWaitAgentTimeoutMs,
+    }),
+  );
+  const taskOutput = tools.get("TaskOutput");
+  assert.ok(taskOutput);
+
+  setSnapshot("task_done", "idle", "finished already");
+  const completed = await (taskOutput!.execute as (...args: unknown[]) => Promise<any>)("call-complete", {
+    name: "task_done",
+  });
+
+  assert.deepEqual(JSON.parse(completed.content[0].text), {
+    name: "task_done",
+    status: "idle",
+    output: "finished already",
+    timed_out: false,
+  });
+  assert.deepEqual(calls.waitByNames, []);
+
+  setSnapshot("task_detached", "detached", "detached state");
+  const detached = await (taskOutput!.execute as (...args: unknown[]) => Promise<any>)("call-detached", {
+    name: "task_detached",
+  });
+
+  assert.deepEqual(JSON.parse(detached.content[0].text), {
+    name: "task_detached",
+    status: "detached",
+    output: "detached state",
+    timed_out: false,
+  });
+  assert.deepEqual(calls.waitByNames, []);
+
+  setSnapshot("task_running", "running", "still working");
+  setWaitedSnapshot("task_running", "idle", "finished after wait");
+  const waited = await (taskOutput!.execute as (...args: unknown[]) => Promise<any>)("call-wait", {
+    name: "task_running",
+    timeout: 45_000,
+  });
+
+  assert.deepEqual(JSON.parse(waited.content[0].text), {
+    name: "task_running",
+    status: "idle",
+    output: "finished after wait",
+    timed_out: false,
+  });
+  assert.deepEqual(calls.waitByNames, [{ names: ["task_running"], timeoutMs: 45_000 }]);
+
 });
 
 test("buildWaitAgentContent uses public names in status payloads", () => {

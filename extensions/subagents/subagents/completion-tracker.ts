@@ -49,7 +49,6 @@ export function createCompletionTracker() {
       }
     },
     recordTerminal(agentId: string, record: DurableChildRecord) {
-      activeWaitsByAgentId.delete(agentId);
       const signature = completionSignature(record);
       if (completionSignatureByAgentId.get(agentId) !== signature) {
         completionSignatureByAgentId.set(agentId, signature);

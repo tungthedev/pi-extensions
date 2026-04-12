@@ -10,7 +10,7 @@ export type SessionToolSetPayload = {
 };
 
 type SessionEntryLike = {
-  type: string;
+  type?: unknown;
   customType?: unknown;
   data?: unknown;
 };
@@ -61,7 +61,9 @@ export async function ensureSessionToolSetSnapshot(
   pi: Pick<ExtensionAPI, "appendEntry">,
   sessionManager: SessionManagerLike,
 ): Promise<ToolSetPack> {
-  const existingToolSet = readSessionToolSet(sessionManager.getBranch());
+  const existingToolSet = typeof sessionManager.getBranch === "function"
+    ? readSessionToolSet(sessionManager.getBranch())
+    : undefined;
   if (existingToolSet) return existingToolSet;
 
   const settings = await readPiModeSettings();

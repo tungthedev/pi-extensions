@@ -35,12 +35,16 @@ export function isPubliclyAddressableChild(record: DurableChildRecord): boolean 
   }
 }
 
-export function isWaitableChild(record: DurableChildRecord): boolean {
+export function isWaitableChild(
+  record: DurableChildRecord,
+  options: { hasUnconsumedCompletion?: boolean } = {},
+): boolean {
   switch (record.status) {
     case "live_running":
+      return true;
     case "live_idle":
     case "failed":
-      return true;
+      return options.hasUnconsumedCompletion === true;
     case "detached":
     case "closed":
       return false;
