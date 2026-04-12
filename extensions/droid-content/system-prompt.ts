@@ -114,6 +114,14 @@ export function buildSelectedDroidPrompt(modelId: string | undefined): string {
   return sections.filter(Boolean).join("\n\n").trim();
 }
 
+function buildRuntimeMetadata(ctx: Pick<ExtensionContext, "sessionManager">): string {
+  const today = new Date().toISOString().slice(0, 10);
+  return [
+    `Current date: ${today}`,
+    `Current working directory: ${ctx.sessionManager.getCwd()}`,
+  ].join("\n");
+}
+
 export async function handleDroidSystemPromptBeforeAgentStart(
   _event: BeforeAgentStartEvent,
   ctx: ExtensionContext,
@@ -130,7 +138,9 @@ export async function handleDroidSystemPromptBeforeAgentStart(
       resolveSystemMdPromptContribution(ctx.cwd, settings.systemMdPrompt),
       settings.includePiPromptSection
         ? appendPromptContribution(deps.buildPromptForModel(ctx.model?.id))
-        : replacePromptContribution(deps.buildPromptForModel(ctx.model?.id)),
+        : replacePromptContribution(
+            `${deps.buildPromptForModel(ctx.model?.id)}\n\n${buildRuntimeMetadata(ctx)}`,
+          ),
     ]),
   );
 }
