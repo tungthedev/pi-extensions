@@ -463,33 +463,16 @@ test("codex tool adapters use public names and do not leak agent ids", async () 
   }, undefined, undefined, createMockCtx());
   assert.equal(calls.spawn.length, 1);
   assert.equal((calls.spawn[0] as { name: string }).name, "researcher_one");
+  assert.equal((calls.spawn[0] as { runInBackground: boolean }).runInBackground, true);
   assert.deepEqual(JSON.parse(spawnResult.content[0].text), {
     name: "researcher_one",
-    status: { researcher_one: "idle" },
-    timed_out: false,
-    agent: {
-      name: "researcher_one",
-      status: "idle",
-      durable_status: "live_idle",
-      cwd: "/tmp/project",
-      last_assistant_text: "child done",
-    },
-    agents: [
-      {
-        name: "researcher_one",
-        status: "idle",
-        durable_status: "live_idle",
-        cwd: "/tmp/project",
-        last_assistant_text: "child done",
-      },
-    ],
   });
   assert.equal(JSON.stringify(spawnResult).includes("agent_id"), false);
 
   const spawnForegroundExplicit = await (spawnAgent!.execute as (...args: unknown[]) => Promise<any>)("call-1b", {
     name: "researcher_two",
     message: "Investigate billing flow",
-    run_in_background: false,
+    wait_for_agent: true,
   }, undefined, undefined, createMockCtx());
   assert.equal(calls.spawn.length, 2);
   const explicitForegroundSpawnCall = calls.spawn[1] as Record<string, unknown>;
@@ -571,14 +554,14 @@ test("spawn_agent renders foreground prompt in call output and content-only resu
 
   const theme = createRenderTheme();
   const foregroundCall = (spawnAgent!.renderCall as (...args: unknown[]) => unknown)(
-    { name: "worker", agent_type: "researcher", message: "Investigate auth flow" },
+    { name: "worker", agent_type: "researcher", message: "Investigate auth flow", wait_for_agent: true },
     theme,
   ) as { children?: Array<{ text?: string }> };
   assert.equal(foregroundCall.children?.[0]?.text, "**Spawn **worker [researcher]");
   assert.equal(foregroundCall.children?.[1]?.text, "Investigate auth flow");
 
   const backgroundCall = (spawnAgent!.renderCall as (...args: unknown[]) => unknown)(
-    { name: "worker", message: "Investigate auth flow", run_in_background: true },
+    { name: "worker", message: "Investigate auth flow" },
     theme,
   ) as { text?: string };
   assert.equal(backgroundCall.text, "**Spawn running **worker");
@@ -586,7 +569,7 @@ test("spawn_agent renders foreground prompt in call output and content-only resu
   const collapsedResult = (spawnAgent!.renderResult as (...args: unknown[]) => unknown)(
     {
       details: {
-        run_in_background: false,
+        wait_for_agent: true,
         agents: [
           {
             name: "worker",
@@ -606,7 +589,7 @@ test("spawn_agent renders foreground prompt in call output and content-only resu
   const expandedResult = (spawnAgent!.renderResult as (...args: unknown[]) => unknown)(
     {
       details: {
-        run_in_background: false,
+        wait_for_agent: true,
         agents: [
           {
             name: "worker",
@@ -626,7 +609,7 @@ test("spawn_agent renders foreground prompt in call output and content-only resu
   const backgroundResult = (spawnAgent!.renderResult as (...args: unknown[]) => unknown)(
     {
       details: {
-        run_in_background: true,
+        wait_for_agent: false,
         prompt: "Investigate auth flow",
       },
     },
@@ -655,14 +638,14 @@ test("task tool adapters require names for spawn and do not leak task ids", asyn
 
   const theme = createRenderTheme();
   const foregroundTaskCall = (taskTool!.renderCall as (...args: unknown[]) => unknown)(
-    { name: "task_alpha", subagent_type: "researcher", prompt: "Do work", complexity: "high" },
+    { name: "task_alpha", subagent_type: "researcher", prompt: "Do work", complexity: "high", wait_for_task: true },
     theme,
   ) as { children?: Array<{ text?: string }> };
   assert.equal(foregroundTaskCall.children?.[0]?.text, "**Task **task_alpha [researcher]");
   assert.equal(foregroundTaskCall.children?.[1]?.text, "Do work");
 
   const backgroundTaskCall = (taskTool!.renderCall as (...args: unknown[]) => unknown)(
-    { name: "task_alpha", prompt: "Do work", run_in_background: true },
+    { name: "task_alpha", prompt: "Do work" },
     theme,
   ) as { text?: string };
   assert.equal(backgroundTaskCall.text, "**Task running **task_alpha");
@@ -732,7 +715,7 @@ test("task tool adapters require names for spawn and do not leak task ids", asyn
 
   const taskSpawn = await (taskTool!.execute as (...args: unknown[]) => Promise<any>)(
     "call-2",
-    { name: "task_alpha", prompt: "Do work", run_in_background: true },
+    { name: "task_alpha", prompt: "Do work" },
     undefined,
     undefined,
     createMockCtx(),
@@ -745,7 +728,7 @@ test("task tool adapters require names for spawn and do not leak task ids", asyn
 
   const taskSpawnForeground = await (taskTool!.execute as (...args: unknown[]) => Promise<any>)(
     "call-2b",
-    { name: "task_sync", prompt: "Do work in foreground", run_in_background: false },
+    { name: "task_sync", prompt: "Do work in foreground", wait_for_task: true },
     undefined,
     undefined,
     createMockCtx(),
@@ -772,7 +755,7 @@ test("task tool adapters require names for spawn and do not leak task ids", asyn
   setWaitedSnapshot("task_wait", "idle", "finished after resume");
   const taskResumeForeground = await (taskTool!.execute as (...args: unknown[]) => Promise<any>)(
     "call-3b",
-    { resume: "task_wait", prompt: "Continue in foreground", run_in_background: false },
+    { resume: "task_wait", prompt: "Continue in foreground", wait_for_task: true },
     undefined,
     undefined,
     createMockCtx(),
