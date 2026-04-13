@@ -203,6 +203,9 @@ test("installCodexEditorUi applies and removes external status segments through 
     ui: {
       theme: {
         fg: (_color: string, text: string) => text,
+        bg: (_color: string, text: string) => text,
+        getFgAnsi: () => "",
+        getColorMode: () => "truecolor",
         bold: (text: string) => text,
       },
       setEditorComponent() {},

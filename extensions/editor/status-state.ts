@@ -1,13 +1,16 @@
-import type { ContextUsage, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type {
+  ContextUsage,
+  ExtensionAPI,
+  ExtensionContext,
+  Theme,
+} from "@mariozechner/pi-coding-agent";
+
+import type { InlineSegment, WidgetRowRegistry } from "./widget-row.ts";
 
 import { formatToolSetLabel } from "../settings/config.ts";
 import { resolveSessionToolSet } from "../settings/session.ts";
-import {
-  EDITOR_BASE_LEFT_SEGMENT_KEY,
-  EDITOR_BASE_RIGHT_SEGMENT_KEY,
-} from "./types.ts";
-import type { InlineSegment, WidgetRowRegistry } from "./widget-row.ts";
 import { formatLeftStatus, formatRightStatus } from "./status-format.ts";
+import { EDITOR_BASE_LEFT_SEGMENT_KEY, EDITOR_BASE_RIGHT_SEGMENT_KEY } from "./types.ts";
 
 export type EditorStatusState = {
   cwd: string;
@@ -20,6 +23,7 @@ export type EditorStatusState = {
 
 export function baseSegments(
   state: EditorStatusState,
+  getTheme?: () => Theme,
 ): Array<{ key: string; segment: InlineSegment }> {
   return [
     {
@@ -27,7 +31,7 @@ export function baseSegments(
       segment: {
         align: "left",
         priority: 0,
-        renderInline: () => formatLeftStatus(state),
+        renderInline: () => formatLeftStatus(state, getTheme?.()),
       },
     },
     {
@@ -45,10 +49,11 @@ export function syncStatusRow(
   state: EditorStatusState,
   statusRow: WidgetRowRegistry | null,
   externalSegments: Map<string, InlineSegment>,
+  getTheme?: () => Theme,
 ): void {
   if (!statusRow) return;
 
-  for (const { key, segment } of baseSegments(state)) {
+  for (const { key, segment } of baseSegments(state, getTheme)) {
     statusRow.set(key, segment);
   }
 

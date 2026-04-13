@@ -89,7 +89,11 @@ class CodexBoxedEditor extends CustomEditor {
     const currentLine = this.getLines()[this.getCursor().line] ?? "";
     const textBeforeCursor = currentLine.slice(0, this.getCursor().col);
     if (
-      !shouldTriggerDollarSkillAutocomplete(normalized, textBeforeCursor, this.autocompleteKeybindings) &&
+      !shouldTriggerDollarSkillAutocomplete(
+        normalized,
+        textBeforeCursor,
+        this.autocompleteKeybindings,
+      ) &&
       !shouldTriggerAtPathAutocomplete(normalized, textBeforeCursor, this.autocompleteKeybindings)
     ) {
       return;
@@ -229,10 +233,12 @@ class CodexBoxedEditor extends CustomEditor {
 
 export function installCodexEditorUi(pi: ExtensionAPI): void {
   let statusRow: WidgetRowRegistry | null = null;
+  let getStatusTheme: (() => Theme) | undefined;
   const state: EditorStatusState = { cwd: process.cwd() };
   const externalSegments = new Map<string, InlineSegment>();
 
   const applyUi = (ctx: ExtensionContext) => {
+    getStatusTheme = () => ctx.ui.theme;
     const fffRuntime = ensureSessionFffRuntime(resolveSessionFffRuntimeKey(ctx), ctx.cwd);
     ctx.ui.setEditorComponent(
       (tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager) => {
@@ -253,7 +259,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
 
       const unsubscribe = footerData.onBranchChange(() => {
         state.gitBranch = footerData.getGitBranch() ?? undefined;
-        syncStatusRow(state, statusRow, externalSegments);
+        syncStatusRow(state, statusRow, externalSegments, getStatusTheme);
       });
 
       return {
@@ -271,7 +277,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
       EDITOR_STATUS_WIDGET_KEY,
       (tui) => {
         statusRow = new WidgetRowRegistry(tui);
-        syncStatusRow(state, statusRow, externalSegments);
+        syncStatusRow(state, statusRow, externalSegments, getStatusTheme);
         return new HorizontalLineWidget(
           () => statusRow?.snapshot() ?? [],
           () => statusRow?.version ?? 0,
@@ -284,7 +290,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
   const syncContext = async (ctx: ExtensionContext) => {
     syncStateFromContext(state, ctx, pi);
     await syncStateFromSettings(state, ctx);
-    syncStatusRow(state, statusRow, externalSegments);
+    syncStatusRow(state, statusRow, externalSegments, getStatusTheme);
   };
 
   pi.on("session_start", async (_event, ctx) => {
@@ -309,7 +315,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
     if (!payload?.toolSet) return;
 
     state.toolSetLabel = formatToolSetLabel(payload.toolSet);
-    syncStatusRow(state, statusRow, externalSegments);
+    syncStatusRow(state, statusRow, externalSegments, getStatusTheme);
   });
 
   pi.events.on(EDITOR_SET_STATUS_SEGMENT_EVENT, (data: unknown) => {

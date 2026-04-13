@@ -41,13 +41,146 @@ function formatCompactNumber(value: number): string {
   return `${rendered.replace(/\.0$/, "")}${units[unitIndex] ?? ""}`;
 }
 
-function formatPercent(value: number): string {
-  const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? `${rounded.toFixed(0)}%` : `${rounded.toFixed(1)}%`;
-}
+const CONTEXT_BAR_WIDTH = 10;
+const CONTEXT_BAR_FIXED_BACKGROUNDS = {
+  success: "#3f8f62",
+  warning: "#a9752f",
+  error: "#a64c5b",
+} as const;
+const CONTEXT_BAR_FIXED_BRIGHT_TEXT = "#fff4df";
+const CONTEXT_BAR_FIXED_BRIGHT_TEXT_256 = 230;
+type UsageColor = "success" | "warning" | "error" | "muted";
+type UsageBackground = Parameters<Theme["bg"]>[0];
+type UsageBackgroundRole = "tray" | "success" | "warning" | "error";
 
 function colorBorder(theme: Theme, text: string): string {
   return theme.fg("muted", text);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function usageFillColor(percent: number): Exclude<UsageColor, "muted"> {
+  const clampedPercent = clamp(percent, 0, 100);
+  if (clampedPercent > 70) return "error";
+  if (clampedPercent > 50) return "warning";
+  return "success";
+}
+
+function colorUsageTray(theme: Theme | undefined, text: string): string {
+  return theme ? theme.bg("selectedBg", text) : text;
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const cleaned = hex.replace(/^#/, "");
+  if (cleaned.length !== 6) throw new Error(`Invalid hex color: ${hex}`);
+
+  return {
+    r: Number.parseInt(cleaned.slice(0, 2), 16),
+    g: Number.parseInt(cleaned.slice(2, 4), 16),
+    b: Number.parseInt(cleaned.slice(4, 6), 16),
+  };
+}
+
+function backgroundAnsi(theme: Theme, role: UsageBackgroundRole): string {
+  if (role === "tray") return theme.getBgAnsi("selectedBg");
+
+  if (theme.getColorMode() !== "truecolor") {
+    const fallback: Record<Exclude<UsageBackgroundRole, "tray">, UsageBackground> = {
+      success: "toolSuccessBg",
+      warning: "toolPendingBg",
+      error: "toolErrorBg",
+    };
+    return theme.getBgAnsi(fallback[role]);
+  }
+
+  const { r, g, b } = hexToRgb(CONTEXT_BAR_FIXED_BACKGROUNDS[role]);
+  return `\u001b[48;2;${r};${g};${b}m`;
+}
+
+function foregroundAnsi(theme: Theme, role: Exclude<UsageBackgroundRole, "tray">): string {
+  if (role === "success") return theme.getFgAnsi("text");
+  if (theme.getColorMode() !== "truecolor")
+    return `\u001b[38;5;${CONTEXT_BAR_FIXED_BRIGHT_TEXT_256}m`;
+
+  const { r, g, b } = hexToRgb(CONTEXT_BAR_FIXED_BRIGHT_TEXT);
+  return `\u001b[38;2;${r};${g};${b}m`;
+}
+
+function colorUsageCell(theme: Theme | undefined, role: UsageBackgroundRole, text = " "): string {
+  if (!theme) return text;
+  return `${backgroundAnsi(theme, role)}${text}\u001b[0m`;
+}
+
+function colorUsageOverlay(
+  theme: Theme | undefined,
+  text: string,
+  role: UsageBackgroundRole,
+): string {
+  if (!theme) return text;
+  if (role === "tray") {
+    return `${backgroundAnsi(theme, role)}${theme.getFgAnsi("text")}${text}\u001b[0m`;
+  }
+  return `${backgroundAnsi(theme, role)}${foregroundAnsi(theme, role)}${text}\u001b[0m`;
+}
+
+function formatUsagePercent(percent: number): string {
+  return `${Math.round(clamp(percent, 0, 100))}%`;
+}
+
+function buildUsageBarCells(
+  percent: number,
+  theme?: Theme,
+): {
+  cells: string[];
+  fillLength: number;
+} {
+  const clampedPercent = clamp(percent, 0, 100);
+  const fillLength = Math.round((clampedPercent / 100) * CONTEXT_BAR_WIDTH);
+  const fillColor = usageFillColor(clampedPercent);
+  const rendered: string[] = [];
+
+  for (let index = 0; index < CONTEXT_BAR_WIDTH; index += 1) {
+    if (index < fillLength) {
+      rendered.push(colorUsageCell(theme, fillColor));
+      continue;
+    }
+
+    rendered.push(colorUsageCell(theme, "tray"));
+  }
+
+  return { cells: rendered, fillLength };
+}
+
+function overlayUsageLabel(
+  cells: string[],
+  percent: number,
+  fillLength: number,
+  theme?: Theme,
+): string[] {
+  const clampedPercent = clamp(percent, 0, 100);
+  const label = formatUsagePercent(clampedPercent);
+  const alignRight = clampedPercent <= 50;
+  const startIndex = alignRight ? CONTEXT_BAR_WIDTH - label.length : 0;
+
+  if (alignRight) {
+    for (let index = fillLength; index < startIndex; index += 1) {
+      cells[index] = colorUsageTray(theme, " ");
+    }
+  }
+
+  const overlayRole: UsageBackgroundRole = alignRight ? "tray" : usageFillColor(clampedPercent);
+  for (let index = 0; index < label.length; index += 1) {
+    cells[startIndex + index] = colorUsageOverlay(theme, label[index] ?? "", overlayRole);
+  }
+
+  return cells;
+}
+
+function buildUsageBar(percent: number, theme?: Theme): string {
+  const { cells, fillLength } = buildUsageBarCells(percent, theme);
+  return overlayUsageLabel(cells, percent, fillLength, theme).join("");
 }
 
 function truncateSuffix(prefix: string, suffix: string, maxWidth: number): string {
@@ -83,12 +216,15 @@ function truncatePathFromLeft(value: string, maxWidth: number): string {
   return truncateSuffix(prefix, kept, maxWidth);
 }
 
-export function formatUsageSummary(usage?: EditorStatusState["usage"]): string | undefined {
+export function formatUsageSummary(
+  usage?: EditorStatusState["usage"],
+  theme?: Theme,
+): string | undefined {
   if (!usage || usage.percent == null || !usage.contextWindow) return undefined;
-  return `${formatPercent(usage.percent)}/${formatCompactNumber(usage.contextWindow)}`;
+  return `${buildUsageBar(usage.percent, theme)} ${formatCompactNumber(usage.contextWindow)}`;
 }
 
-export function formatLeftStatus(state: EditorStatusState): string {
+export function formatLeftStatus(state: EditorStatusState, theme?: Theme): string {
   const modelPart = state.modelId
     ? [
         state.modelId,
@@ -97,7 +233,7 @@ export function formatLeftStatus(state: EditorStatusState): string {
         .filter((part): part is string => Boolean(part))
         .join(" ")
     : undefined;
-  const usagePart = formatUsageSummary(state.usage);
+  const usagePart = formatUsageSummary(state.usage, theme);
   return [modelPart, usagePart].filter((part): part is string => Boolean(part)).join(" · ");
 }
 
