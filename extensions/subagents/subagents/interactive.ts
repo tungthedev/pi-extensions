@@ -129,7 +129,14 @@ export function shellExternalCommand(
   return escaped.join(" ");
 }
 
-const INTERACTIVE_ENV_PREFIXES = ["_AI_GATEWAY_", "GEMINI_", "CLOUDFLARE_"] as const;
+const INTERACTIVE_ENV_PREFIXES = [
+  "_AI_GATEWAY_",
+  "AI_GATEWAY_",
+  "OPENAI_",
+  "ANTHROPIC_",
+  "GEMINI_",
+  "CLOUDFLARE_",
+] as const;
 
 export function shellCdPrefix(cwd: string, shell = process.env.SHELL ?? ""): string {
   return isNuShell(shell) ? `cd ${shellEscape(cwd)}; ` : `cd ${shellEscape(cwd)} && `;
