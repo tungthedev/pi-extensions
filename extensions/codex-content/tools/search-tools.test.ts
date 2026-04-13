@@ -1,9 +1,16 @@
+import type { FileFinder, Result, SearchResult } from "@ff-labs/fff-node";
+
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import {
+  resetSessionFffRuntimesForTests,
+  setSessionFffRuntimeForTests,
+} from "../../fff/session-runtime.ts";
+import { FffRuntime } from "../../shared/fff/runtime.ts";
 import { findMatchingFiles } from "./find-files.ts";
 import { registerFindFilesTool } from "./find-files.ts";
 import { findContentMatches, registerGrepFilesTool } from "./grep-files.ts";
@@ -40,6 +47,64 @@ function getRegisteredTool(register: (pi: any) => void, name: string) {
   return registeredTool;
 }
 
+function ok<T>(value: T): Result<T> {
+  return { ok: true, value };
+}
+
+function createMockFinder(overrides: Partial<FileFinder>): FileFinder {
+  return {
+    destroy() {},
+    fileSearch() {
+      throw new Error("fileSearch not implemented");
+    },
+    grep() {
+      throw new Error("grep not implemented");
+    },
+    multiGrep() {
+      throw new Error("multiGrep not implemented");
+    },
+    scanFiles() {
+      return ok(undefined);
+    },
+    isScanning() {
+      return false;
+    },
+    getScanProgress() {
+      return ok({ scannedFilesCount: 0, isScanning: false });
+    },
+    waitForScan: async () => ok(true),
+    reindex() {
+      return ok(undefined);
+    },
+    refreshGitStatus() {
+      return ok(0);
+    },
+    trackQuery() {
+      return ok(true);
+    },
+    getHistoricalQuery() {
+      return ok(null);
+    },
+    healthCheck() {
+      return ok({
+        version: "test",
+        git: { available: true, repositoryFound: false, libgit2Version: "test" },
+        filePicker: { initialized: true, indexedFiles: 0 },
+        frecency: { initialized: false },
+        queryTracker: { initialized: false },
+      });
+    },
+    get isDestroyed() {
+      return false;
+    },
+    ...overrides,
+  } as unknown as FileFinder;
+}
+
+test.afterEach(() => {
+  resetSessionFffRuntimesForTests();
+});
+
 test("findMatchingFiles returns absolute paths sorted by most recent modification time", async () => {
   await withTempDir(async (dir) => {
     const alpha = path.join(dir, "alpha.ts");
@@ -59,6 +124,75 @@ test("findMatchingFiles returns absolute paths sorted by most recent modificatio
       matches.map((entry) => entry.absolutePath),
       [beta, alpha],
     );
+  });
+});
+
+test("find_files preserves absolute-path output while using FFF-first fuzzy discovery", async () => {
+  await withTempDir(async (dir) => {
+    const tool = getRegisteredTool(registerFindFilesTool, "find_files");
+    const target = path.join(dir, "docs", "notes.md");
+    const sessionFile = path.join(dir, "find-files.session.json");
+
+    setSessionFffRuntimeForTests(
+      `session:${sessionFile}`,
+      new FffRuntime(dir, {
+        projectRoot: dir,
+        finder: createMockFinder({
+          fileSearch(query): Result<SearchResult> {
+            assert.equal(query, "readme notes");
+            return ok({
+              items: [
+                {
+                  path: target,
+                  relativePath: "docs/notes.md",
+                  fileName: "notes.md",
+                  size: 1,
+                  modified: 0,
+                  accessFrecencyScore: 0,
+                  modificationFrecencyScore: 0,
+                  totalFrecencyScore: 0,
+                  gitStatus: "clean",
+                },
+              ],
+              scores: [
+                {
+                  total: 100,
+                  baseScore: 100,
+                  filenameBonus: 0,
+                  specialFilenameBonus: 0,
+                  frecencyBoost: 0,
+                  distancePenalty: 0,
+                  currentFilePenalty: 0,
+                  comboMatchBoost: 0,
+                  exactMatch: true,
+                  matchType: "exact",
+                },
+              ],
+              totalMatched: 1,
+              totalFiles: 1,
+            });
+          },
+        }),
+      }),
+    );
+
+    const result = await tool.execute(
+      "call-fff-find-files",
+      { pattern: "readme notes", path: ".", limit: 10, offset: 0 },
+      undefined,
+      undefined,
+      {
+        cwd: dir,
+        sessionManager: {
+          getSessionFile() {
+            return sessionFile;
+          },
+        },
+      },
+    );
+
+    assert.match(JSON.stringify(result), new RegExp(target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.equal(result.details.count, 1);
   });
 });
 
@@ -99,6 +233,92 @@ test("grep_files reports invalid regex errors clearly", async () => {
   });
 });
 
+test("find_files keeps explicit glob searches on the legacy backend", async () => {
+  await withTempDir(async (dir) => {
+    const tool = getRegisteredTool(registerFindFilesTool, "find_files");
+    const target = path.join(dir, "alpha.ts");
+    await writeFile(target, "export const alpha = true;\n");
+
+    const result = await tool.execute(
+      "call-legacy-find-files",
+      { pattern: "*.ts", path: dir, limit: 10, offset: 0 },
+      undefined,
+      undefined,
+      { cwd: dir },
+    );
+
+    assert.match(JSON.stringify(result), /alpha\.ts/);
+    assert.equal(result.details.count, 1);
+  });
+});
+
+test("grep_files keeps file-list output semantics while using FFF-backed matching", async () => {
+  await withTempDir(async (dir) => {
+    const tool = getRegisteredTool(registerGrepFilesTool, "grep_files");
+    const target = path.join(dir, "src", "needle.ts");
+    const sessionFile = path.join(dir, "grep-files.session.json");
+
+    setSessionFffRuntimeForTests(
+      `session:${sessionFile}`,
+      new FffRuntime(dir, {
+        projectRoot: dir,
+        finder: createMockFinder({
+          grep(query): any {
+            assert.equal(query, "needle");
+            return ok({
+              items: [
+                {
+                  path: target,
+                  relativePath: "src/needle.ts",
+                  fileName: "needle.ts",
+                  gitStatus: "clean",
+                  size: 1,
+                  modified: 0,
+                  isBinary: false,
+                  totalFrecencyScore: 0,
+                  accessFrecencyScore: 0,
+                  modificationFrecencyScore: 0,
+                  lineNumber: 1,
+                  col: 6,
+                  byteOffset: 0,
+                  lineContent: "const needle = true;",
+                  matchRanges: [[6, 12]],
+                  contextBefore: [],
+                  contextAfter: [],
+                },
+              ],
+              totalMatched: 1,
+              totalFilesSearched: 1,
+              totalFiles: 1,
+              filteredFileCount: 1,
+              nextCursor: null,
+            });
+          },
+        }),
+      }),
+    );
+
+    const result = await tool.execute(
+      "call-fff-grep-files",
+      { pattern: "needle", path: dir, limit: 10 },
+      undefined,
+      undefined,
+      {
+        cwd: dir,
+        sessionManager: {
+          getSessionFile() {
+            return sessionFile;
+          },
+        },
+      },
+    );
+
+    assert.match(JSON.stringify(result), /matching file/);
+    assert.match(JSON.stringify(result), /needle\.ts/);
+    assert.equal(result.details.count, 1);
+  });
+});
+
 test("find_files shows a collapsed file-count summary", () => {
   const tool = getRegisteredTool(registerFindFilesTool, "find_files");
 
@@ -122,7 +342,9 @@ test("list_dir shows a collapsed entry-count summary", () => {
     { isError: false, lastComponent: undefined } as never,
   );
 
-  assert.deepEqual(trimRenderedLines(collapsed.render(120)), ["Found 5 entries (ctrl+o to expand)"]);
+  assert.deepEqual(trimRenderedLines(collapsed.render(120)), [
+    "Found 5 entries (ctrl+o to expand)",
+  ]);
 });
 
 test("grep_files uses matching-file wording in collapsed summaries", () => {

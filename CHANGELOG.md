@@ -14,6 +14,8 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 
 ### Changed
 
+- Integrated a shared FFF backend behind the existing Pi, Codex, and Droid file-search surfaces, keeping public tool names unchanged while improving fuzzy path resolution, discovery, and `@path` editor autocomplete.
+- Added `/fff-status` and `/fff-reindex` operational commands for viewing FFF index progress and triggering reindexing.
 - Updated `codex-system-prompt` to resolve prompts from the bundled catalog first, `PI_CODEX_MODEL_CATALOG_PATH` second, and `~/.codex/models_cache.json` third, before falling back to the `gpt-5.4` prompt for any unknown model.
 - Renamed the `codex-subagents` extension surface to `subagents` in the package manifest and README while keeping the existing subagent tool contracts.
 - Updated the built-in `explorer` role to use the Sage research prompt as its developer instructions.

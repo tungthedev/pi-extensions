@@ -1,8 +1,11 @@
+import type { AutocompleteProvider } from "@mariozechner/pi-tui";
+
+import { Result } from "better-result";
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { AutocompleteProvider } from "@mariozechner/pi-tui";
-
+import { wrapAutocompleteProviderWithAtPathSupport } from "../shared/fff/editor/autocomplete-at-path.ts";
+import { composeAutocompleteProvider } from "../shared/fff/editor/autocomplete-compose.ts";
 import {
   EDITOR_REMOVE_STATUS_SEGMENT_EVENT,
   EDITOR_SET_STATUS_SEGMENT_EVENT,
@@ -62,12 +65,9 @@ test("wrapped autocomplete provider maps $ skill tokens to /skill queries", asyn
   };
 
   const provider = wrapAutocompleteProviderWithDollarSkillSupport(baseProvider);
-  const suggestions = await provider.getSuggestions(
-    ["use $sys"],
-    0,
-    "use $sys".length,
-    { signal: new AbortController().signal },
-  );
+  const suggestions = await provider.getSuggestions(["use $sys"], 0, "use $sys".length, {
+    signal: new AbortController().signal,
+  });
 
   assert.equal(capturedPrefix, "/skill:sys");
   assert.deepEqual(suggestions, {
@@ -104,6 +104,68 @@ test("wrapped autocomplete provider inserts /skill command for $ selections", ()
     cursorLine: 0,
     cursorCol: "use /skill:systematic-debugging ".length,
   });
+});
+
+test("composed autocomplete keeps both $skill and @path support active", async () => {
+  const baseProvider: AutocompleteProvider = {
+    async getSuggestions(lines, cursorLine, cursorCol) {
+      const prefix = (lines[cursorLine] ?? "").slice(0, cursorCol);
+      return {
+        prefix,
+        items: [{ value: prefix, label: prefix }],
+      };
+    },
+    applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
+      return {
+        lines: [
+          `${(lines[cursorLine] ?? "").slice(0, cursorCol - prefix.length)}${item.value}${(lines[cursorLine] ?? "").slice(cursorCol)}`,
+        ],
+        cursorLine,
+        cursorCol: cursorCol - prefix.length + item.value.length,
+      };
+    },
+  };
+
+  const provider = composeAutocompleteProvider(baseProvider, [
+    wrapAutocompleteProviderWithDollarSkillSupport,
+    (candidate) =>
+      wrapAutocompleteProviderWithAtPathSupport(candidate, {
+        async searchFileCandidates(query) {
+          return Result.ok([
+            {
+              item: {
+                path: `/repo/${query}.ts`,
+                relativePath: `${query}.ts`,
+                fileName: `${query}.ts`,
+                size: 1,
+                modified: 0,
+                accessFrecencyScore: 0,
+                modificationFrecencyScore: 0,
+                totalFrecencyScore: 0,
+                gitStatus: "clean",
+              },
+            },
+          ]);
+        },
+        async trackQuery() {
+          return Result.ok();
+        },
+      }),
+  ]);
+
+  const skillSuggestions = await provider.getSuggestions(["use $sys"], 0, "use $sys".length, {
+    signal: new AbortController().signal,
+  });
+  assert.equal(skillSuggestions?.prefix, "$sys");
+
+  const pathSuggestions = await provider.getSuggestions(
+    ["open @readme"],
+    0,
+    "open @readme".length,
+    { signal: new AbortController().signal },
+  );
+  assert.equal(pathSuggestions?.prefix, "@readme");
+  assert.equal(pathSuggestions?.items[0]?.value, "@readme.ts");
 });
 
 test("installCodexEditorUi applies and removes external status segments through editor events", async () => {

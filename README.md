@@ -4,6 +4,7 @@ A collection of Pi packages:
 
 - `ext-manager` — An in-app extension manager. Trigger with `/extmgr`
 - `editor` — Replaces Pi's default editor with a boxed composer and an extensible status row.
+- `fff` — Internal shared FFF lifecycle support that upgrades existing file search, grep, read, and editor autocomplete flows without adding a new public tool family.
 - `mermaid` — Renders Mermaid code blocks inline in chat and opens a full diagram viewer on demand.
 - `read` — Adds a standalone `read_file` tool with Pi-native read behavior and compact Codex-style call rendering.
 - `web` — Adds unified `WebSearch`, `WebSummary`, and `FetchUrl` tools for grounded web research and page fetching.
@@ -71,6 +72,21 @@ From another project, add the package to `.pi/settings.json`:
 ```
 
 ## Development
+
+## Shared FFF Backend
+
+This package now uses `pi-fff` as an internal backend for the existing file-discovery and content-search surfaces.
+
+- Pi keeps `read`, `find`, and `grep`.
+- Codex keeps `read`, `find_files`, and `grep_files`.
+- Droid keeps `read`, `Glob`, and `Grep`.
+
+The public tool names and owners stay the same. FFF is used behind those tools when the request shape fits fuzzy path resolution or repo discovery well, with legacy fallbacks retained for strict glob or compatibility-heavy edge cases. The boxed editor also stays in place and gains `@path` autocomplete alongside the existing `$skill` autocomplete.
+
+Operational commands:
+
+- `/fff-status` shows the current session index state, indexed-file count, and storage paths.
+- `/fff-reindex` triggers a rebuild of the current session index and reports the updated state.
 
 Install dependencies and run checks:
 

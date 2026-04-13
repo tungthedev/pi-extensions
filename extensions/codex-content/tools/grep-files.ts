@@ -5,6 +5,7 @@ import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { executeCodexGrepFilesWithFff } from "../../shared/fff/adapters/codex-grep-files.ts";
 import {
   buildSummaryRenderer,
   formatPatternInPathDetail,
@@ -167,7 +168,9 @@ export function registerGrepFilesTool(pi: ExtensionAPI): void {
   const renderer = buildSummaryRenderer({
     title: "Grep",
     getDetail: (args) =>
-      formatPatternInPathDetail(args as { pattern?: string; path?: string; fallbackPattern?: string }),
+      formatPatternInPathDetail(
+        args as { pattern?: string; path?: string; fallbackPattern?: string },
+      ),
     summarize: summarizeMatchingFileCount,
     nativeRenderResult: (result, options, theme, context) =>
       nativeGrepDefinition.renderResult!(result as never, options, theme, context as never),
@@ -187,37 +190,39 @@ export function registerGrepFilesTool(pi: ExtensionAPI): void {
       limit: Type.Optional(Type.Number({ description: "Maximum number of file paths to return." })),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      const searchPath = resolveAbsolutePathWithVariants(ctx.cwd, params.path ?? ".");
-      const limit = Math.max(1, params.limit ?? 100);
-
       if (signal?.aborted) {
         return buildSearchAbortedResult(params.pattern);
       }
 
-      let matches;
-      try {
-        matches = await findContentMatches(searchPath, params.pattern, params.include, signal);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (/search aborted/i.test(message)) {
-          return buildSearchAbortedResult(params.pattern, searchPath);
+      return await executeCodexGrepFilesWithFff(params, ctx, async () => {
+        const searchPath = resolveAbsolutePathWithVariants(ctx.cwd, params.path ?? ".");
+        const limit = Math.max(1, params.limit ?? 100);
+
+        let matches;
+        try {
+          matches = await findContentMatches(searchPath, params.pattern, params.include, signal);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (/search aborted/i.test(message)) {
+            return buildSearchAbortedResult(params.pattern, searchPath);
+          }
+
+          throw error;
         }
 
-        throw error;
-      }
+        const output = formatGrepFilesOutput(matches, { limit });
+        const trimmed = trimToBudget(output);
 
-      const output = formatGrepFilesOutput(matches, { limit });
-      const trimmed = trimToBudget(output);
-
-      return {
-        content: [{ type: "text", text: trimmed.text || "0 matching files" }],
-        details: {
-          pattern: params.pattern,
-          path: searchPath,
-          count: matches.matches.length,
-          skippedCount: matches.skippedCount,
-        },
-      };
+        return {
+          content: [{ type: "text" as const, text: trimmed.text || "0 matching files" }],
+          details: {
+            pattern: params.pattern,
+            path: searchPath,
+            count: matches.matches.length,
+            skippedCount: matches.skippedCount,
+          },
+        };
+      });
     },
     renderCall(args, theme) {
       return renderer.renderCall(args as Record<string, unknown>, theme);

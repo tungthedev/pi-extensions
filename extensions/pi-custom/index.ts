@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ReadToolInput } from "@mariozechner/pi-coding-agent";
 
 import {
   createEditToolDefinition,
@@ -11,6 +12,9 @@ import {
   createWriteToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 
+import { executePiFindWithFff } from "../shared/fff/adapters/pi-find.ts";
+import { executePiGrepWithFff } from "../shared/fff/adapters/pi-grep.ts";
+import { resolveReadToolInput } from "../shared/fff/adapters/read.ts";
 import {
   buildHiddenCollapsedRenderer,
   buildSummaryRenderer,
@@ -66,7 +70,9 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
   const findRenderer = buildSummaryRenderer({
     title: "Find",
     getDetail: (args) =>
-      formatPatternInPathDetail(args as { pattern?: string; path?: string; fallbackPattern?: string }),
+      formatPatternInPathDetail(
+        args as { pattern?: string; path?: string; fallbackPattern?: string },
+      ),
     summarize: summarizeFindCount,
     nativeRenderResult: (result, options, theme, context) =>
       nativeFindDefinition.renderResult!(result as never, options, theme, context as never),
@@ -74,7 +80,9 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
   const grepRenderer = buildSummaryRenderer({
     title: "Grep",
     getDetail: (args) =>
-      formatPatternInPathDetail(args as { pattern?: string; path?: string; fallbackPattern?: string }),
+      formatPatternInPathDetail(
+        args as { pattern?: string; path?: string; fallbackPattern?: string },
+      ),
     summarize: summarizeGrepResult,
     nativeRenderResult: (result, options, theme, context) =>
       nativeGrepDefinition.renderResult!(result as never, options, theme, context as never),
@@ -102,8 +110,11 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
     label: "read",
     description: READ_DESCRIPTION,
     async execute(toolCallId, params, signal, onUpdate, ctx) {
+      // `pi-custom` owns the single shared `read` tool, so this FFF-aware path resolution
+      // automatically applies in Pi, Codex, and Droid modes through toolset resolution.
+      const resolvedParams = await resolveReadToolInput(params as ReadToolInput, ctx);
       const nativeRead = createReadTool(ctx.cwd);
-      return await nativeRead.execute(toolCallId, params, signal, onUpdate);
+      return await nativeRead.execute(toolCallId, resolvedParams, signal, onUpdate);
     },
     renderCall(args, theme) {
       return readRenderer.renderCall(args as Record<string, unknown>, theme);
@@ -144,6 +155,14 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
     ...nativeFindDefinition,
     name: "find",
     label: "find",
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      return await executePiFindWithFff(
+        params as never,
+        ctx,
+        async () =>
+          await nativeFindDefinition.execute!(toolCallId, params, signal, onUpdate, ctx as never),
+      );
+    },
     renderCall(args, theme) {
       return findRenderer.renderCall(
         { ...(args as Record<string, unknown>), fallbackPattern: "*" },
@@ -160,12 +179,11 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
     name: "grep",
     label: "grep",
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      const result = await nativeGrepDefinition.execute!(
-        toolCallId,
-        params,
-        signal,
-        onUpdate,
-        ctx as never,
+      const result = await executePiGrepWithFff(
+        params as never,
+        ctx,
+        async () =>
+          await nativeGrepDefinition.execute!(toolCallId, params, signal, onUpdate, ctx as never),
       );
       return decorateGrepResultWithStats(result as never);
     },

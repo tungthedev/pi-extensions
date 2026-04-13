@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "./toolset-resolver.ts";
+import registerFffLifecycleExtension from "../fff/index.ts";
 import { TOOLSET_MODE_ORDER } from "./toolset-registry.ts";
+import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "./toolset-resolver.ts";
 
 const ALL_TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "read", description: "custom read" },
@@ -134,6 +135,66 @@ test("resolveToolsetToolNames filters unavailable optional tools without leaving
 test("resolveToolsetToolNames is stable regardless of tool registration order", () => {
   const reversed = [...ALL_TOOL_INFOS].reverse();
 
-  assert.deepEqual(resolveToolsetToolNames("droid", reversed), resolveToolsetToolNames("droid", ALL_TOOL_INFOS));
-  assert.deepEqual(resolveToolsetToolNames("codex", reversed), resolveToolsetToolNames("codex", ALL_TOOL_INFOS));
+  assert.deepEqual(
+    resolveToolsetToolNames("droid", reversed),
+    resolveToolsetToolNames("droid", ALL_TOOL_INFOS),
+  );
+  assert.deepEqual(
+    resolveToolsetToolNames("codex", reversed),
+    resolveToolsetToolNames("codex", ALL_TOOL_INFOS),
+  );
+});
+
+test("fff lifecycle extension does not register any public tools", () => {
+  const registeredTools: string[] = [];
+  const registeredCommands: string[] = [];
+  const registeredRenderers: string[] = [];
+  const handlers = new Map<string, Function[]>();
+
+  registerFffLifecycleExtension({
+    on(event: string, handler: Function) {
+      handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+    },
+    registerCommand(name: string) {
+      registeredCommands.push(name);
+    },
+    registerMessageRenderer(customType: string) {
+      registeredRenderers.push(customType);
+    },
+    sendMessage() {},
+    registerTool(tool: { name: string }) {
+      registeredTools.push(tool.name);
+    },
+  } as never);
+
+  assert.equal(registeredTools.length, 0);
+  assert.deepEqual(registeredCommands.sort(), ["fff-reindex", "fff-status"]);
+  assert.deepEqual(registeredRenderers, ["fff-command-result"]);
+  assert.deepEqual([...handlers.keys()].sort(), [
+    "before_agent_start",
+    "session_shutdown",
+    "session_start",
+  ]);
+});
+
+test("toolset resolution keeps read active across modes without surfacing a public FFF tool family", () => {
+  const withHypotheticalFffTools = resolveRegisteredToolInfos([
+    ...ALL_TOOL_INFOS,
+    { name: "fff_status", description: "internal fff status" },
+    { name: "reindex_fff", description: "internal fff reindex" },
+    { name: "resolve_file", description: "standalone fff resolve" },
+    { name: "related_files", description: "standalone fff related files" },
+    { name: "fff_grep", description: "standalone fff grep" },
+  ]);
+
+  for (const mode of ["pi", "codex", "droid"] as const) {
+    const toolNames = resolveToolsetToolNames(mode, withHypotheticalFffTools);
+    assert.ok(toolNames.includes("read"));
+    assert.equal(
+      toolNames.some(
+        (name) => name.startsWith("fff") || name === "resolve_file" || name === "related_files",
+      ),
+      false,
+    );
+  }
 });

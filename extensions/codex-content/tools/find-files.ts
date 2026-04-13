@@ -5,6 +5,7 @@ import { Type } from "@sinclair/typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { executeCodexFindFilesWithFff } from "../../shared/fff/adapters/codex-find-files.ts";
 import {
   buildSummaryRenderer,
   formatPatternInPathDetail,
@@ -121,7 +122,9 @@ export function registerFindFilesTool(pi: ExtensionAPI): void {
   const renderer = buildSummaryRenderer({
     title: "Search",
     getDetail: (args) =>
-      formatPatternInPathDetail(args as { pattern?: string; path?: string; fallbackPattern?: string }),
+      formatPatternInPathDetail(
+        args as { pattern?: string; path?: string; fallbackPattern?: string },
+      ),
     summarize: summarizeFindCount,
     nativeRenderResult: (result, options, theme, context) =>
       nativeFindDefinition.renderResult!(result as never, options, theme, context as never),
@@ -139,26 +142,28 @@ export function registerFindFilesTool(pi: ExtensionAPI): void {
       offset: Type.Optional(Type.Number({ description: "Result offset for pagination." })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const searchPath = resolveAbsolutePath(ctx.cwd, params.path ?? ".");
-      const offset = Math.max(0, params.offset ?? 0);
-      const limit = Math.max(1, params.limit ?? 100);
+      return await executeCodexFindFilesWithFff(params, ctx, async () => {
+        const searchPath = resolveAbsolutePath(ctx.cwd, params.path ?? ".");
+        const offset = Math.max(0, params.offset ?? 0);
+        const limit = Math.max(1, params.limit ?? 100);
 
-      const matches = await findMatchingFiles(searchPath, params.pattern);
-      validateFindFilesOffset(matches.length, offset);
+        const matches = await findMatchingFiles(searchPath, params.pattern);
+        validateFindFilesOffset(matches.length, offset);
 
-      const output = formatFindFilesOutput(matches, { offset, limit });
-      const trimmed = trimToBudget(output);
+        const output = formatFindFilesOutput(matches, { offset, limit });
+        const trimmed = trimToBudget(output);
 
-      return {
-        content: [{ type: "text", text: trimmed.text }],
-        details: {
-          pattern: params.pattern,
-          path: searchPath,
-          count: matches.length,
-          offset,
-          limit,
-        },
-      };
+        return {
+          content: [{ type: "text" as const, text: trimmed.text }],
+          details: {
+            pattern: params.pattern,
+            path: searchPath,
+            count: matches.length,
+            offset,
+            limit,
+          },
+        };
+      });
     },
     renderCall(args, theme, _context) {
       return renderer.renderCall(

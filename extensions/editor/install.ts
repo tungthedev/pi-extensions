@@ -8,16 +8,23 @@ import type { AutocompleteProvider, EditorTheme, TUI } from "@mariozechner/pi-tu
 
 import { CustomEditor } from "@mariozechner/pi-coding-agent";
 
-import { TOOL_SET_CHANGED_EVENT, formatToolSetLabel, type ToolSetChangedPayload } from "../settings/config.ts";
+import { ensureSessionFffRuntime, resolveSessionFffRuntimeKey } from "../fff/session-runtime.ts";
+import {
+  TOOL_SET_CHANGED_EVENT,
+  formatToolSetLabel,
+  type ToolSetChangedPayload,
+} from "../settings/config.ts";
+import {
+  shouldTriggerAtPathAutocomplete,
+  wrapAutocompleteProviderWithAtPathSupport,
+} from "../shared/fff/editor/autocomplete-at-path.ts";
+import { composeAutocompleteProvider } from "../shared/fff/editor/autocomplete-compose.ts";
 import {
   normalizeCodexEditorInput,
   shouldTriggerDollarSkillAutocomplete,
   wrapAutocompleteProviderWithDollarSkillSupport,
 } from "./autocomplete-dollar-skill.ts";
-import {
-  EDITOR_REMOVE_STATUS_SEGMENT_EVENT,
-  EDITOR_SET_STATUS_SEGMENT_EVENT,
-} from "./events.ts";
+import { EDITOR_REMOVE_STATUS_SEGMENT_EVENT, EDITOR_SET_STATUS_SEGMENT_EVENT } from "./events.ts";
 import {
   formatEditorBorderLegend,
   buildBottomBorderLine,
@@ -56,13 +63,21 @@ class CodexBoxedEditor extends CustomEditor {
     private readonly getAppTheme: () => Theme,
     private readonly getTopBorderLegend: () => string | undefined,
     private readonly getToolSetLabel: () => string | undefined,
+    private readonly pathAutocompleteRuntime?: ReturnType<typeof ensureSessionFffRuntime>,
   ) {
     super(tui, editorTheme, keybindings);
     this.autocompleteKeybindings = keybindings;
   }
 
   override setAutocompleteProvider(provider: AutocompleteProvider): void {
-    super.setAutocompleteProvider(wrapAutocompleteProviderWithDollarSkillSupport(provider));
+    const wrappers = [wrapAutocompleteProviderWithDollarSkillSupport];
+    if (this.pathAutocompleteRuntime) {
+      wrappers.push((baseProvider) =>
+        wrapAutocompleteProviderWithAtPathSupport(baseProvider, this.pathAutocompleteRuntime!),
+      );
+    }
+
+    super.setAutocompleteProvider(composeAutocompleteProvider(provider, wrappers));
   }
 
   override handleInput(data: string): void {
@@ -73,7 +88,10 @@ class CodexBoxedEditor extends CustomEditor {
 
     const currentLine = this.getLines()[this.getCursor().line] ?? "";
     const textBeforeCursor = currentLine.slice(0, this.getCursor().col);
-    if (!shouldTriggerDollarSkillAutocomplete(normalized, textBeforeCursor, this.autocompleteKeybindings)) {
+    if (
+      !shouldTriggerDollarSkillAutocomplete(normalized, textBeforeCursor, this.autocompleteKeybindings) &&
+      !shouldTriggerAtPathAutocomplete(normalized, textBeforeCursor, this.autocompleteKeybindings)
+    ) {
       return;
     }
 
@@ -190,10 +208,15 @@ class CodexBoxedEditor extends CustomEditor {
     }
 
     rendered.push(
-      buildBottomBorderLine(this.getAppTheme(), width, this.extractScrollIndicator(lines[bottomIndex] ?? ""), {
-        left: "╰",
-        right: "╯",
-      }),
+      buildBottomBorderLine(
+        this.getAppTheme(),
+        width,
+        this.extractScrollIndicator(lines[bottomIndex] ?? ""),
+        {
+          left: "╰",
+          right: "╯",
+        },
+      ),
     );
 
     for (let index = bottomIndex + 1; index < lines.length; index += 1) {
@@ -210,6 +233,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
   const externalSegments = new Map<string, InlineSegment>();
 
   const applyUi = (ctx: ExtensionContext) => {
+    const fffRuntime = ensureSessionFffRuntime(resolveSessionFffRuntimeKey(ctx), ctx.cwd);
     ctx.ui.setEditorComponent(
       (tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager) => {
         return new CodexBoxedEditor(
@@ -219,6 +243,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
           () => ctx.ui.theme,
           () => formatEditorBorderLegend(state.toolSetLabel),
           () => state.toolSetLabel,
+          fffRuntime,
         );
       },
     );

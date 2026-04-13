@@ -3,6 +3,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createGrepToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 
+import { executeDroidGrepWithFff } from "../../shared/fff/adapters/droid-grep.ts";
 import {
   buildSummaryRenderer,
   decorateGrepResultWithStats,
@@ -45,7 +46,8 @@ const DROID_GREP_PARAMETERS = Type.Object({
   }),
   path: Type.Optional(
     Type.String({
-      description: "Absolute path to a file or directory to search in. If not specified, searches in the current working directory.",
+      description:
+        "Absolute path to a file or directory to search in. If not specified, searches in the current working directory.",
     }),
   ),
   glob_pattern: Type.Optional(
@@ -69,13 +71,47 @@ const DROID_GREP_PARAMETERS = Type.Object({
         'Ripgrep file type filter for common file types (ripgrep --type flag). Examples: "js" for JavaScript, "py" for Python, "rust" for Rust, "cpp" for C++.',
     }),
   ),
-  context_before: Type.Optional(Type.Number({ description: "Number of lines to show before each match (ripgrep -B flag). Only works with output_mode=\"content\"." })),
-  context_after: Type.Optional(Type.Number({ description: "Number of lines to show after each match (ripgrep -A flag). Only works with output_mode=\"content\"." })),
-  context: Type.Optional(Type.Number({ description: "Number of lines to show before and after each match (ripgrep -C flag). Only works with output_mode=\"content\"." })),
-  line_numbers: Type.Optional(Type.Boolean({ description: 'Show line numbers in output (ripgrep -n flag). Only works with output_mode="content".' })),
-  head_limit: Type.Optional(Type.Number({ description: "Limit output to first N lines/entries. Works with both output modes." })),
-  multiline: Type.Optional(Type.Boolean({ description: "Enable multiline mode where . matches newlines and patterns can span lines (ripgrep -U --multiline-dotall)." })),
-  fixed_string: Type.Optional(Type.Boolean({ description: "Treat the pattern as a literal string instead of a regular expression (ripgrep -F flag). Useful for searching special characters like ?, *, etc." })),
+  context_before: Type.Optional(
+    Type.Number({
+      description:
+        'Number of lines to show before each match (ripgrep -B flag). Only works with output_mode="content".',
+    }),
+  ),
+  context_after: Type.Optional(
+    Type.Number({
+      description:
+        'Number of lines to show after each match (ripgrep -A flag). Only works with output_mode="content".',
+    }),
+  ),
+  context: Type.Optional(
+    Type.Number({
+      description:
+        'Number of lines to show before and after each match (ripgrep -C flag). Only works with output_mode="content".',
+    }),
+  ),
+  line_numbers: Type.Optional(
+    Type.Boolean({
+      description:
+        'Show line numbers in output (ripgrep -n flag). Only works with output_mode="content".',
+    }),
+  ),
+  head_limit: Type.Optional(
+    Type.Number({
+      description: "Limit output to first N lines/entries. Works with both output modes.",
+    }),
+  ),
+  multiline: Type.Optional(
+    Type.Boolean({
+      description:
+        "Enable multiline mode where . matches newlines and patterns can span lines (ripgrep -U --multiline-dotall).",
+    }),
+  ),
+  fixed_string: Type.Optional(
+    Type.Boolean({
+      description:
+        "Treat the pattern as a literal string instead of a regular expression (ripgrep -F flag). Useful for searching special characters like ?, *, etc.",
+    }),
+  ),
 });
 
 type DroidGrepParams = {
@@ -138,7 +174,9 @@ export function registerDroidGrepTool(pi: ExtensionAPI): void {
   const renderer = buildSummaryRenderer({
     title: "Grep",
     getDetail: (args) =>
-      formatPatternInPathDetail(args as { pattern?: string; path?: string; fallbackPattern?: string }),
+      formatPatternInPathDetail(
+        args as { pattern?: string; path?: string; fallbackPattern?: string },
+      ),
     summarize: (result) => {
       const outputMode =
         typeof result.details === "object" && result.details !== null
@@ -160,55 +198,57 @@ export function registerDroidGrepTool(pi: ExtensionAPI): void {
     description: DROID_GREP_DESCRIPTION,
     parameters: DROID_GREP_PARAMETERS,
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      const searchPath = resolveAbsolutePathWithVariants(ctx.cwd, params.path ?? ".");
-      const rgPath = resolvePiToolPath("rg");
-      if (!rgPath) {
-        throw new Error("ripgrep (rg) is not available in Pi's managed bin directory or on PATH");
-      }
+      return await executeDroidGrepWithFff(params, ctx, async () => {
+        const searchPath = resolveAbsolutePathWithVariants(ctx.cwd, params.path ?? ".");
+        const rgPath = resolvePiToolPath("rg");
+        if (!rgPath) {
+          throw new Error("ripgrep (rg) is not available in Pi's managed bin directory or on PATH");
+        }
 
-      const result = await execCommand(
-        rgPath,
-        buildDroidGrepArgs(
-          {
-            pattern: params.pattern,
-            glob_pattern: params.glob_pattern,
-            output_mode: params.output_mode,
-            context_before: params.context_before,
-            context_after: params.context_after,
-            context: params.context,
-            line_numbers: params.line_numbers,
-            case_insensitive: params.case_insensitive,
-            type: params.type,
-            head_limit: params.head_limit,
-            multiline: params.multiline,
-            fixed_string: params.fixed_string,
-          },
+        const result = await execCommand(
+          rgPath,
+          buildDroidGrepArgs(
+            {
+              pattern: params.pattern,
+              glob_pattern: params.glob_pattern,
+              output_mode: params.output_mode,
+              context_before: params.context_before,
+              context_after: params.context_after,
+              context: params.context,
+              line_numbers: params.line_numbers,
+              case_insensitive: params.case_insensitive,
+              type: params.type,
+              head_limit: params.head_limit,
+              multiline: params.multiline,
+              fixed_string: params.fixed_string,
+            },
+            searchPath,
+          ),
           searchPath,
-        ),
-        searchPath,
-        { signal },
-      );
+          { signal },
+        );
 
-      if (result.exitCode !== 0 && result.exitCode !== 1) {
-        throw new Error(result.stderr.trim() || `rg exited with code ${result.exitCode}`);
-      }
+        if (result.exitCode !== 0 && result.exitCode !== 1) {
+          throw new Error(result.stderr.trim() || `rg exited with code ${result.exitCode}`);
+        }
 
-      const outputMode = params.output_mode ?? "file_paths";
-      const text = result.exitCode === 1 ? "No matches found" : result.stdout;
-      const trimmed = trimToBudget(text);
-      const renderedResult = {
-        content: [{ type: "text" as const, text: trimmed.text }],
-        details: {
-          path: searchPath,
-          pattern: params.pattern,
-          outputMode,
-          ...(outputMode === "file_paths" ? { count: countReturnedFiles(text) } : {}),
-        },
-      };
+        const outputMode = params.output_mode ?? "file_paths";
+        const text = result.exitCode === 1 ? "No matches found" : result.stdout;
+        const trimmed = trimToBudget(text);
+        const renderedResult = {
+          content: [{ type: "text" as const, text: trimmed.text }],
+          details: {
+            path: searchPath,
+            pattern: params.pattern,
+            outputMode,
+            ...(outputMode === "file_paths" ? { count: countReturnedFiles(text) } : {}),
+          },
+        };
 
-      return outputMode === "content"
-        ? decorateGrepResultWithStats(renderedResult)
-        : renderedResult;
+        return outputMode === "content"
+          ? decorateGrepResultWithStats(renderedResult)
+          : renderedResult;
+      });
     },
     renderCall(args, theme) {
       return renderer.renderCall(args as Record<string, unknown>, theme);

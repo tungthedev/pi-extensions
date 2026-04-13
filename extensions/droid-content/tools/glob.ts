@@ -2,13 +2,10 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { createFindToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-
 import path from "node:path";
 
-import {
-  findMatchingFiles,
-  formatFindFilesOutput,
-} from "../../shared/file-tools/find-files.ts";
+import { executeDroidGlobWithFff } from "../../shared/fff/adapters/droid-glob.ts";
+import { findMatchingFiles, formatFindFilesOutput } from "../../shared/file-tools/find-files.ts";
 import {
   buildSummaryRenderer,
   formatListCallDetail,
@@ -53,7 +50,8 @@ const DROID_GLOB_PARAMETERS = Type.Object({
   ),
   folder: Type.Optional(
     Type.String({
-      description: "Absolute path to the directory to search in. If not specified, searches in the current working directory.",
+      description:
+        "Absolute path to the directory to search in. If not specified, searches in the current working directory.",
     }),
   ),
 });
@@ -88,32 +86,34 @@ export function registerDroidGlobTool(pi: ExtensionAPI): void {
     description: DROID_GLOB_DESCRIPTION,
     parameters: DROID_GLOB_PARAMETERS,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const searchPath = resolveAbsolutePath(ctx.cwd, params.folder ?? ".");
-      const includePatterns = asArray(params.patterns);
-      const excludeRegexes = asArray(params.excludePatterns).map(globToRegExp);
-      const matchMap = new Map<string, (Awaited<ReturnType<typeof findMatchingFiles>>)[number]>();
+      return await executeDroidGlobWithFff(params, ctx, async () => {
+        const searchPath = resolveAbsolutePath(ctx.cwd, params.folder ?? ".");
+        const includePatterns = asArray(params.patterns);
+        const excludeRegexes = asArray(params.excludePatterns).map(globToRegExp);
+        const matchMap = new Map<string, Awaited<ReturnType<typeof findMatchingFiles>>[number]>();
 
-      for (const pattern of includePatterns) {
-        const matches = await findMatchingFiles(searchPath, pattern);
-        for (const match of matches) {
-          const relativePath = path.relative(searchPath, match.absolutePath).replace(/\\/g, "/");
-          if (excludeRegexes.some((regex) => regex.test(relativePath))) continue;
-          matchMap.set(match.absolutePath, match);
+        for (const pattern of includePatterns) {
+          const matches = await findMatchingFiles(searchPath, pattern);
+          for (const match of matches) {
+            const relativePath = path.relative(searchPath, match.absolutePath).replace(/\\/g, "/");
+            if (excludeRegexes.some((regex) => regex.test(relativePath))) continue;
+            matchMap.set(match.absolutePath, match);
+          }
         }
-      }
 
-      const matches = Array.from(matchMap.values()).sort((left, right) =>
-        left.absolutePath.localeCompare(right.absolutePath),
-      );
+        const matches = Array.from(matchMap.values()).sort((left, right) =>
+          left.absolutePath.localeCompare(right.absolutePath),
+        );
 
-      return {
-        content: [{ type: "text" as const, text: formatFindFilesOutput(matches) }],
-        details: {
-          patternCount: includePatterns.length,
-          count: matches.length,
-          path: searchPath,
-        },
-      };
+        return {
+          content: [{ type: "text" as const, text: formatFindFilesOutput(matches) }],
+          details: {
+            patternCount: includePatterns.length,
+            count: matches.length,
+            path: searchPath,
+          },
+        };
+      });
     },
     renderCall(args, theme) {
       return renderer.renderCall(args as Record<string, unknown>, theme);
