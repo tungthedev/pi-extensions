@@ -9,7 +9,7 @@ import { resolveSkillContent } from "./resolve.ts";
 
 const SKILL_DESCRIPTION = `Load and apply a skill by name.
 
-Looks up the named skill in the available skill directories and returns its instructions for the agent to follow.`;
+Looks up the named skill in Pi's loaded skill registry and returns its instructions for the agent to follow.`;
 
 async function syncSkillToolSet(
   pi: ExtensionAPI,
@@ -37,11 +37,14 @@ export default function registerSkillExtension(pi: ExtensionAPI): void {
       }),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      const { content, skillDir } = await resolveSkillContent(params.name);
+      const trimmedName = params.name.trim();
+      const { content, skillDir } = await resolveSkillContent(trimmedName, {
+        commands: pi.getCommands(),
+      });
       return {
         content: [{ type: "text" as const, text: content }],
         details: {
-          name: params.name.trim(),
+          name: trimmedName,
           skill_dir: skillDir,
         },
       };

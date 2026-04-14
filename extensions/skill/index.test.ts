@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import test from "node:test";
 
 import registerSkillExtension from "./index.ts";
@@ -35,6 +38,9 @@ test("skill extension registers the global skill tool and shared mode handlers",
     },
     getAllTools() {
       return AVAILABLE_TOOLS;
+    },
+    getCommands() {
+      return [];
     },
     setActiveTools(value: string[]) {
       activeTools = value;
@@ -74,4 +80,50 @@ test("skill extension registers the global skill tool and shared mode handlers",
     "TaskOutput",
     "TaskStop",
   ]);
+});
+
+test("skill tool resolves from Pi's loaded skill commands", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skill-tool-"));
+  const skillDir = join(root, "brainstorming");
+  const skillFile = join(skillDir, "SKILL.md");
+  await mkdir(skillDir, { recursive: true });
+  await writeFile(skillFile, "---\nname: brainstorming\ndescription: test skill\n---\n\n# Brainstorming\n");
+
+  let toolDefinition: { execute: Function } | undefined;
+
+  registerSkillExtension({
+    on() {},
+    registerTool(definition: { execute: Function }) {
+      toolDefinition = definition;
+    },
+    getAllTools() {
+      return AVAILABLE_TOOLS;
+    },
+    getCommands() {
+      return [
+        {
+          name: "skill:brainstorming",
+          source: "skill",
+          description: "test skill",
+          sourceInfo: {
+            path: skillFile,
+            source: "local",
+            scope: "user",
+            origin: "top-level",
+            baseDir: skillDir,
+          },
+        },
+      ];
+    },
+    setActiveTools() {},
+  } as never);
+
+  const result = await toolDefinition?.execute("tool-call-id", { name: "brainstorming" }, undefined, undefined, undefined);
+
+  assert.equal(typeof result, "object");
+  assert.match(result?.content?.[0]?.text ?? "", /name: brainstorming/);
+  assert.deepEqual(result?.details, {
+    name: "brainstorming",
+    skill_dir: skillDir,
+  });
 });
