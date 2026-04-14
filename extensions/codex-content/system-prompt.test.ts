@@ -9,10 +9,19 @@ import {
   type CodexSystemPromptDeps,
 } from "./system-prompt.ts";
 
-function createContext(toolSet: "pi" | "codex") {
+function buildExpectedReplacement(prompt: string, cwd: string): string {
+  const today = new Date().toISOString().slice(0, 10);
+  return `${prompt}\n\nCurrent date: ${today}\nCurrent working directory: ${cwd}`;
+}
+
+function createContext(toolSet: "pi" | "codex", cwd = "/tmp/project") {
   return {
+    cwd,
     model: { id: "gpt-5.4" },
     sessionManager: {
+      getCwd() {
+        return cwd;
+      },
       getBranch() {
         return [{ type: "custom", customType: "pi-mode:tool-set", data: { toolSet } }];
       },
@@ -68,10 +77,7 @@ test("handleCodexSystemPromptBeforeAgentStart defers to SYSTEM.md when enabled a
 
   const result = await handleCodexSystemPromptBeforeAgentStart(
     { systemPrompt: "Base" } as never,
-    {
-      ...createContext("codex"),
-      cwd: tempDir,
-    } as never,
+    createContext("codex", tempDir) as never,
     deps,
   );
 
@@ -92,14 +98,13 @@ test("handleCodexSystemPromptBeforeAgentStart still replaces when SYSTEM.md is e
 
   const result = await handleCodexSystemPromptBeforeAgentStart(
     { systemPrompt: "Base" } as never,
-    {
-      ...createContext("codex"),
-      cwd: tempDir,
-    } as never,
+    createContext("codex", tempDir) as never,
     deps,
   );
 
-  assert.deepEqual(result, { systemPrompt: "Codex block" });
+  assert.deepEqual(result, {
+    systemPrompt: buildExpectedReplacement("Codex block", tempDir),
+  });
 });
 
 test("handleCodexSystemPromptBeforeAgentStart uses the Codex prompt when SYSTEM.md injection is disabled", async () => {
@@ -118,14 +123,13 @@ test("handleCodexSystemPromptBeforeAgentStart uses the Codex prompt when SYSTEM.
 
   const result = await handleCodexSystemPromptBeforeAgentStart(
     { systemPrompt: "Base" } as never,
-    {
-      ...createContext("codex"),
-      cwd: tempDir,
-    } as never,
+    createContext("codex", tempDir) as never,
     deps,
   );
 
-  assert.deepEqual(result, { systemPrompt: "Codex block" });
+  assert.deepEqual(result, {
+    systemPrompt: buildExpectedReplacement("Codex block", tempDir),
+  });
 });
 
 test("handleCodexSystemPromptBeforeAgentStart still replaces when SYSTEM.md is not configured", async () => {
@@ -144,7 +148,9 @@ test("handleCodexSystemPromptBeforeAgentStart still replaces when SYSTEM.md is n
     deps,
   );
 
-  assert.deepEqual(result, { systemPrompt: "Codex block" });
+  assert.deepEqual(result, {
+    systemPrompt: buildExpectedReplacement("Codex block", "/tmp/project"),
+  });
 });
 
 test("handleCodexSystemPromptBeforeAgentStart replaces the selected Codex prompt", async () => {
@@ -163,7 +169,9 @@ test("handleCodexSystemPromptBeforeAgentStart replaces the selected Codex prompt
     deps,
   );
 
-  assert.deepEqual(result, { systemPrompt: "Codex block" });
+  assert.deepEqual(result, {
+    systemPrompt: buildExpectedReplacement("Codex block", "/tmp/project"),
+  });
 });
 
 test("handleCodexSystemPromptBeforeAgentStart appends the Codex prompt after the Pi prompt when enabled", async () => {

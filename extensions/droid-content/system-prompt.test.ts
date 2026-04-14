@@ -6,10 +6,23 @@ import {
   type DroidSystemPromptDeps,
 } from "./system-prompt.ts";
 
-function createContext(toolSet: "pi" | "codex" | "droid", modelId = "gpt-5.4") {
+function buildExpectedReplacement(prompt: string, cwd: string): string {
+  const today = new Date().toISOString().slice(0, 10);
+  return `${prompt}\n\nCurrent date: ${today}\nCurrent working directory: ${cwd}`;
+}
+
+function createContext(
+  toolSet: "pi" | "codex" | "droid",
+  modelId = "gpt-5.4",
+  cwd = "/tmp/project",
+) {
   return {
+    cwd,
     model: { id: modelId },
     sessionManager: {
+      getCwd() {
+        return cwd;
+      },
       getBranch() {
         return [{ type: "custom", customType: "pi-mode:tool-set", data: { toolSet } }];
       },
@@ -54,10 +67,7 @@ test("handleDroidSystemPromptBeforeAgentStart defers to SYSTEM.md when enabled a
 
   const result = await handleDroidSystemPromptBeforeAgentStart(
     { systemPrompt: "Base" } as never,
-    {
-      ...createContext("droid"),
-      cwd: tempDir,
-    } as never,
+    createContext("droid", "gpt-5.4", tempDir) as never,
     deps,
   );
 
@@ -80,14 +90,13 @@ test("handleDroidSystemPromptBeforeAgentStart still replaces when SYSTEM.md is e
 
   const result = await handleDroidSystemPromptBeforeAgentStart(
     { systemPrompt: "Base" } as never,
-    {
-      ...createContext("droid"),
-      cwd: tempDir,
-    } as never,
+    createContext("droid", "gpt-5.4", tempDir) as never,
     deps,
   );
 
-  assert.deepEqual(result, { systemPrompt: "Droid block" });
+  assert.deepEqual(result, {
+    systemPrompt: buildExpectedReplacement("Droid block", tempDir),
+  });
 });
 
 test("handleDroidSystemPromptBeforeAgentStart uses the Droid prompt when SYSTEM.md injection is disabled", async () => {
@@ -108,14 +117,13 @@ test("handleDroidSystemPromptBeforeAgentStart uses the Droid prompt when SYSTEM.
 
   const result = await handleDroidSystemPromptBeforeAgentStart(
     { systemPrompt: "Base" } as never,
-    {
-      ...createContext("droid"),
-      cwd: tempDir,
-    } as never,
+    createContext("droid", "gpt-5.4", tempDir) as never,
     deps,
   );
 
-  assert.deepEqual(result, { systemPrompt: "Droid block" });
+  assert.deepEqual(result, {
+    systemPrompt: buildExpectedReplacement("Droid block", tempDir),
+  });
 });
 
 test("handleDroidSystemPromptBeforeAgentStart still replaces when SYSTEM.md is not configured", async () => {
@@ -134,7 +142,9 @@ test("handleDroidSystemPromptBeforeAgentStart still replaces when SYSTEM.md is n
     deps,
   );
 
-  assert.deepEqual(result, { systemPrompt: "Droid block" });
+  assert.deepEqual(result, {
+    systemPrompt: buildExpectedReplacement("Droid block", "/tmp/project"),
+  });
 });
 
 test("handleDroidSystemPromptBeforeAgentStart replaces the active system prompt", async () => {
@@ -153,7 +163,9 @@ test("handleDroidSystemPromptBeforeAgentStart replaces the active system prompt"
     deps,
   );
 
-  assert.deepEqual(result, { systemPrompt: "Droid block" });
+  assert.deepEqual(result, {
+    systemPrompt: buildExpectedReplacement("Droid block", "/tmp/project"),
+  });
 });
 
 test("handleDroidSystemPromptBeforeAgentStart appends the Droid prompt after the Pi prompt when enabled", async () => {

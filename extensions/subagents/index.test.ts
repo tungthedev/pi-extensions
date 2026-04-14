@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import subagentsExtension from "./index.ts";
 import childEntry from "./child-entry.ts";
@@ -27,7 +28,7 @@ import { isWaitableChild } from "./subagents/runtime-store.ts";
 import { registerTaskToolAdapters } from "./subagents/tool-adapters-task.ts";
 import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "../shared/toolset-resolver.ts";
 
-const EXISTING_FILE = "/Volumes/Data/Projects/exp/pi-extensions/package.json";
+const EXISTING_FILE = fileURLToPath(new URL("../../package.json", import.meta.url));
 
 function createPersistedSessionFixture() {
   const root = mkdtempSync(path.join(tmpdir(), "codex-subagents-"));
