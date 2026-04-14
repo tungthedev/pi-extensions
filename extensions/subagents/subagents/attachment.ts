@@ -8,12 +8,7 @@ import type { ChildProfileBootstrap } from "./profiles-apply.ts";
 import type { RpcLiveChildAttachment } from "./types.ts";
 
 import {
-  AGENT_PROFILE_JSON_ENV,
-  AGENT_PROFILE_NAME_ENV,
   EXTENSION_ENTRY,
-  LEGACY_AGENT_PROFILE_JSON_ENV,
-  LEGACY_AGENT_PROFILE_NAME_ENV,
-  LEGACY_SUBAGENT_CHILD_ENV,
   PROJECT_ROOT,
   SUBAGENT_CWD_ENV,
   SUBAGENT_CHILD_ENV,
@@ -62,23 +57,9 @@ export function createLiveAttachment(options: {
       ...process.env,
       FORCE_COLOR: "0",
       PI_SUBAGENT_PROJECT_ROOT: PROJECT_ROOT,
-      PI_CODEX_PROJECT_ROOT: PROJECT_ROOT,
       [SUBAGENT_CWD_ENV]: options.cwd,
-      ...(options.profileBootstrap?.name
-        ? {
-            [AGENT_PROFILE_NAME_ENV]: options.profileBootstrap.name,
-            [LEGACY_AGENT_PROFILE_NAME_ENV]: options.profileBootstrap.name,
-          }
-        : {}),
-      ...(options.profileBootstrap
-        ? {
-            [AGENT_PROFILE_JSON_ENV]: JSON.stringify(options.profileBootstrap),
-            [LEGACY_AGENT_PROFILE_JSON_ENV]: JSON.stringify(options.profileBootstrap),
-          }
-        : {}),
       ...(options.toolSet ? { [TOOL_SET_OVERRIDE_ENV]: options.toolSet } : {}),
       [SUBAGENT_CHILD_ENV]: "1",
-      [LEGACY_SUBAGENT_CHILD_ENV]: "1",
     },
     stdio: ["pipe", "pipe", "pipe"],
   });

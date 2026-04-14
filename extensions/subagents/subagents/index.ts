@@ -87,10 +87,7 @@ import {
 import { registerCodexToolAdapters } from "./tool-adapters-codex.ts";
 import { registerTaskToolAdapters } from "./tool-adapters-task.ts";
 import {
-  AGENT_PROFILE_JSON_ENV,
-  AGENT_PROFILE_NAME_ENV,
   CHILD_EXIT_GRACE_MS,
-  CODEX_SUBAGENT_CHILD_ENV,
   SUBAGENT_CWD_ENV,
   CODEX_SUBAGENT_RESERVED_TOOL_NAMES,
   CODEX_SUBAGENT_TOOL_NAMES,
@@ -696,14 +693,8 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         ...selectPreservedInteractiveEnv(),
         FORCE_COLOR: "0",
         PI_SUBAGENT_PROJECT_ROOT: process.env.PI_SUBAGENT_PROJECT_ROOT ?? process.cwd(),
-        PI_CODEX_PROJECT_ROOT: process.env.PI_CODEX_PROJECT_ROOT ?? process.cwd(),
         [SUBAGENT_CWD_ENV]: options.record.cwd,
         [SUBAGENT_CHILD_ENV]: "1",
-        [CODEX_SUBAGENT_CHILD_ENV]: "1",
-        [AGENT_PROFILE_NAME_ENV]: options.profileBootstrap.name,
-        PI_CODEX_AGENT_PROFILE_NAME: options.profileBootstrap.name,
-        [AGENT_PROFILE_JSON_ENV]: JSON.stringify(options.profileBootstrap),
-        PI_CODEX_AGENT_PROFILE_JSON: JSON.stringify(options.profileBootstrap),
         [TOOL_SET_OVERRIDE_ENV]: options.toolSet,
       },
       cleanupPaths: [promptFile],
@@ -1218,13 +1209,10 @@ export {
   validateSubagentName,
 };
 export {
-  AGENT_PROFILE_JSON_ENV,
-  AGENT_PROFILE_NAME_ENV,
   SUBAGENT_CHILD_ENV,
   SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
   SUBAGENT_RESERVED_TOOL_NAMES,
   SUBAGENT_TOOL_NAMES,
-  CODEX_SUBAGENT_CHILD_ENV,
   CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
   CODEX_SUBAGENT_RESERVED_TOOL_NAMES,
   CODEX_SUBAGENT_TOOL_NAMES,
