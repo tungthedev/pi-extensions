@@ -1,5 +1,5 @@
 import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import { matchesKey } from "@mariozechner/pi-tui";
+import { matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 
 import { notifyLegacyRoleWarnings } from "../subagents/legacy-role-warnings.ts";
 import { resolveRoleSet } from "../subagents/roles-discovery.ts";
@@ -80,6 +80,13 @@ function trimOrUndefined(value: string): string | undefined {
 function renderHeader(title: string, width: number): string {
   const line = `${title} ${"─".repeat(Math.max(0, width - title.length - 1))}`;
   return line.slice(0, width);
+}
+
+function renderActiveCursorLabel(
+  theme: ExtensionCommandContext["ui"]["theme"],
+  label: string,
+): string {
+  return `${theme.fg("muted", "→ ")}${theme.fg("accent", label)}`;
 }
 
 export function formatScopeOptionLabel(
@@ -274,12 +281,16 @@ class SubagentsManagerComponent {
     const lines = [renderHeader("Choose scope", this.width), "", "Where should this role be saved?", ""];
     const scopes = this.roleSet.projectTargetDir ? (["user", "project"] as const) : (["user"] as const);
     for (const scope of scopes) {
-      const cursor = this.scopePicker?.selectedScope === scope ? "▸" : " ";
       const targetDir = scope === "user" ? this.roleSet.userDir : (this.roleSet.projectTargetDir ?? "project/.agents");
       const alreadyExists = scope === "user" ? true : Boolean(this.roleSet.projectDir);
-      lines.push(`${cursor} ${formatScopeOptionLabel(scope, targetDir, alreadyExists)}`);
+      const detail = alreadyExists ? ` (save to ${targetDir})` : ` (will create ${targetDir})`;
+      lines.push(
+        this.scopePicker?.selectedScope === scope
+          ? `${this.ctx.ui.theme.fg("muted", "→ ")}${this.ctx.ui.theme.fg("accent", scope)}${this.ctx.ui.theme.fg("muted", detail)}`
+          : `  ${scope}${detail}`,
+      );
     }
-    lines.push("", "[enter] continue  [↑↓] choose  [esc] back");
+    lines.push("", this.ctx.ui.theme.fg("muted", "[↑↓] move  [enter] select  [esc] back"));
     return lines;
   }
 
@@ -294,15 +305,16 @@ class SubagentsManagerComponent {
     fields.push(["prompt", "Prompt", draft.promptEditor, MAIN_PROMPT_VIEWPORT]);
 
     for (const [field, label, editor, height] of fields) {
-      const focused = draft.mainFocus === field ? "▸" : " ";
-      lines.push(`${focused} ${label}:`);
+      const header = `${label}:`;
+      lines.push(draft.mainFocus === field ? renderActiveCursorLabel(this.ctx.ui.theme, header) : `  ${header}`);
       const rendered = editorLines(editor, innerWidth, height);
       lines.push(...rendered);
       lines.push("");
     }
 
     if (draft.error) lines.push(draft.error, "");
-    lines.push("[tab] next field  [ctrl+s] save  [m] model/thinking  [esc] back");
+    const footer = "[tab] switch  [ctrl+e] model  [ctrl+s] save  [esc] back"
+    lines.push(this.ctx.ui.theme.fg("muted", footer));
     return lines;
   }
 
@@ -310,10 +322,10 @@ class SubagentsManagerComponent {
     const draft = this.draft!;
     const innerWidth = Math.max(20, this.width - 2);
     const lines = [renderHeader("Model & thinking", this.width), ""];
-    const modelFocused = draft.modelFocus === "model" ? "▸" : " ";
-    const thinkingFocused = draft.modelFocus === "thinking" ? "▸" : " ";
+    const modelHeader = "Model:";
+    const thinkingHeader = `Thinking: ${draft.thinking}`;
 
-    lines.push(`${modelFocused} Model:`);
+    lines.push(draft.modelFocus === "model" ? renderActiveCursorLabel(this.ctx.ui.theme, modelHeader) : `  ${modelHeader}`);
     lines.push(...editorLines(draft.modelEditor, innerWidth, 1));
     lines.push("");
 
@@ -328,19 +340,23 @@ class SubagentsManagerComponent {
       const start = filteredModels.indexOf(visibleModels[0]!);
       visibleModels.forEach((model, index) => {
         const actualIndex = start + index;
-        const cursor = draft.modelFocus === "model" && actualIndex === draft.modelCursor ? "→" : " ";
-        lines.push(`${cursor} ${model.fullId}`);
+        lines.push(
+          draft.modelFocus === "model" && actualIndex === draft.modelCursor
+            ? renderActiveCursorLabel(this.ctx.ui.theme, model.fullId)
+            : `  ${model.fullId}`,
+        );
       });
       lines.push("");
     }
 
     lines.push(this.ctx.ui.theme.fg("dim", DEFAULT_MODEL_HINT));
     lines.push(this.ctx.ui.theme.fg("dim", MANUAL_MODEL_HINT));
-    lines.push(`${thinkingFocused} Thinking: ${draft.thinking}`);
-    lines.push(`    ${THINKING_LEVELS.join("  ")}`);
+    const thinkingOptions = THINKING_LEVELS.map((level) => level === draft.thinking ? this.ctx.ui.theme.fg("accent", level) : level).join("  ");
+    lines.push(`${draft.modelFocus === "thinking" ? renderActiveCursorLabel(this.ctx.ui.theme, "Thinking:") : "  Thinking:"} ${thinkingOptions}`);
     lines.push("");
     if (draft.error) lines.push(draft.error, "");
-    lines.push("[tab] switch  [ctrl+s] save  [enter] pick model  [↑↓] move  [e] description/prompt  [esc] back");
+    const footer = "[tab] switch  [←→] move  [enter] select  [ctrl+e] prompt  [ctrl+s] save  [esc] back"
+    lines.push(this.ctx.ui.theme.fg("muted", footer));
     return lines;
   }
 
@@ -408,7 +424,7 @@ class SubagentsManagerComponent {
         }
       }
       if (action.type === "create-override") {
-        this.openScopePicker("override", action.focus ?? "main", role);
+        this.openScopePicker("override", "main", role);
       }
       return;
     }
@@ -442,7 +458,7 @@ class SubagentsManagerComponent {
       const draft = this.draft!;
       draft.error = undefined;
       if (matchesKey(data, "ctrl+s")) return this.saveDraft();
-      if (data === "m") {
+      if (matchesKey(data, "ctrl+e")) {
         this.screen = "edit-model";
         return;
       }
@@ -481,7 +497,7 @@ class SubagentsManagerComponent {
       const draft = this.draft!;
       draft.error = undefined;
       if (matchesKey(data, "ctrl+s")) return this.saveDraft();
-      if (data === "e") {
+      if (matchesKey(data, "ctrl+e")) {
         this.screen = "edit-main";
         return;
       }
@@ -497,9 +513,9 @@ class SubagentsManagerComponent {
       }
       if (draft.modelFocus === "thinking") {
         const currentIndex = THINKING_LEVELS.indexOf(draft.thinking);
-        if (matchesKey(data, "up")) {
+        if (matchesKey(data, "left")) {
           draft.thinking = THINKING_LEVELS[(currentIndex - 1 + THINKING_LEVELS.length) % THINKING_LEVELS.length]!;
-        } else if (matchesKey(data, "down")) {
+        } else if (matchesKey(data, "right")) {
           draft.thinking = THINKING_LEVELS[(currentIndex + 1) % THINKING_LEVELS.length]!;
         }
         return;
@@ -538,16 +554,25 @@ class SubagentsManagerComponent {
 
   render(width: number): string[] {
     this.width = width;
-    if (this.screen === "list") return renderList(this.listState, this.entries, width, this.ctx.ui.theme, this.roleSet.warnings);
-    if (this.screen === "detail") {
-      const role = this.findRole(this.detailRoleKey);
-      return role ? renderDetail(this.detailState, role, width, this.ctx.ui.theme) : renderList(this.listState, this.entries, width, this.ctx.ui.theme, this.roleSet.warnings);
-    }
-    if (this.screen === "scope-picker") return this.renderScopePicker();
-    if (this.screen === "edit-main") return this.renderMainEditor();
-    if (this.screen === "edit-model") return this.renderModelEditor();
-    if (this.screen === "confirm-delete") return this.renderDeleteConfirm();
-    return [];
+    const rawLines = this.screen === "list"
+      ? renderList(this.listState, this.entries, width, this.ctx.ui.theme, this.roleSet.warnings)
+      : this.screen === "detail"
+        ? (() => {
+            const role = this.findRole(this.detailRoleKey);
+            return role
+              ? renderDetail(this.detailState, role, width, this.ctx.ui.theme)
+              : renderList(this.listState, this.entries, width, this.ctx.ui.theme, this.roleSet.warnings);
+          })()
+        : this.screen === "scope-picker"
+          ? this.renderScopePicker()
+          : this.screen === "edit-main"
+            ? this.renderMainEditor()
+            : this.screen === "edit-model"
+              ? this.renderModelEditor()
+              : this.screen === "confirm-delete"
+                ? this.renderDeleteConfirm()
+                : [];
+    return rawLines.map((line) => truncateToWidth(line, width));
   }
 
   invalidate(): void {}

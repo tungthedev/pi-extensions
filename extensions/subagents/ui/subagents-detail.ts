@@ -12,7 +12,7 @@ export type SubagentsDetailAction =
   | { type: "edit-main" }
   | { type: "edit-model" }
   | { type: "edit-shadowing-override"; focus?: "main" | "model" }
-  | { type: "create-override"; focus?: "main" | "model" }
+  | { type: "create-override" }
   | { type: "confirm-delete" };
 
 const PROMPT_VIEWPORT = 12;
@@ -22,18 +22,13 @@ export function handleDetailInput(
   data: string,
 ): SubagentsDetailAction | undefined {
   if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c")) return { type: "back" };
+  if (data === "c" && role.source === "builtin") return { type: "create-override" };
   if (data === "e") {
-    if (role.source === "builtin") {
-      return role.shadowedBy ? { type: "edit-shadowing-override" } : { type: "create-override" };
-    }
+    if (role.source === "builtin") return;
     return { type: "edit-main" };
   }
   if (data === "m") {
-    if (role.source === "builtin") {
-      return role.shadowedBy
-        ? { type: "edit-shadowing-override", focus: "model" }
-        : { type: "create-override", focus: "model" };
-    }
+    if (role.source === "builtin") return;
     return { type: "edit-model" };
   }
   if (data === "d" && role.source !== "builtin") return { type: "confirm-delete" };
@@ -67,10 +62,8 @@ export function renderDetail(
   while (visible.length + 6 > lines.length && lines.length < PROMPT_VIEWPORT + 6) lines.push("");
 
   const footer = role.source === "builtin"
-    ? role.shadowedBy
-      ? "[e] edit effective custom role  [m] edit effective custom model/thinking  [esc] back"
-      : "[e] create custom override  [m] create custom override (model/thinking)  [esc] back"
-    : "[e] edit description/prompt  [m] edit model/thinking  [d] delete  [esc] back";
-  lines.push(theme.fg("dim", footer));
+    ? "[c] clone  [esc] back"
+    : "[e] edit prompt  [m] edit model  [d] delete  [esc] back";
+  lines.push(theme.fg("muted", footer));
   return lines;
 }

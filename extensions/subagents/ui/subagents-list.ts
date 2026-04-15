@@ -11,6 +11,8 @@ export type SubagentsListState = {
 
 export type SubagentsListEntry =
   | { kind: "create" }
+  | { kind: "section"; label: "Builtin" | "Custom" }
+  | { kind: "spacer" }
   | { kind: "role"; roleKey: string; role: LayeredRoleRecord };
 
 export type SubagentsListAction =
@@ -36,10 +38,20 @@ export function buildListEntries(roles: LayeredRoleRecord[]): SubagentsListEntry
     return roleSortWeight(left) - roleSortWeight(right);
   });
 
-  return [
-    { kind: "create" },
-    ...sortedRoles.map((role) => ({ kind: "role" as const, roleKey: buildRoleKey(role), role })),
-  ];
+  const builtinRoles = sortedRoles.filter((role) => role.source === "builtin");
+  const customRoles = sortedRoles.filter((role) => role.source !== "builtin");
+
+  const entries: SubagentsListEntry[] = [{ kind: "create" }];
+  if (builtinRoles.length > 0) {
+    entries.push({ kind: "section", label: "Builtin" });
+    entries.push(...builtinRoles.map((role) => ({ kind: "role" as const, roleKey: buildRoleKey(role), role })));
+  }
+  if (customRoles.length > 0) {
+    if (builtinRoles.length > 0) entries.push({ kind: "spacer" });
+    entries.push({ kind: "section", label: "Custom" });
+    entries.push(...customRoles.map((role) => ({ kind: "role" as const, roleKey: buildRoleKey(role), role })));
+  }
+  return entries;
 }
 
 function filterEntries(entries: SubagentsListEntry[], query: string): SubagentsListEntry[] {
@@ -47,6 +59,7 @@ function filterEntries(entries: SubagentsListEntry[], query: string): SubagentsL
   const needle = query.trim().toLowerCase();
   return entries.filter((entry) => {
     if (entry.kind === "create") return "create new subagent".includes(needle);
+    if (entry.kind !== "role") return false;
     return [entry.role.name, entry.role.description, entry.role.source]
       .join(" ")
       .toLowerCase()
@@ -109,6 +122,7 @@ export function handleListInput(
     const entry = filtered[state.cursor];
     if (!entry) return;
     if (entry.kind === "create") return { type: "create" };
+    if (entry.kind !== "role") return;
     if (entry.role.source === "builtin" && entry.role.name === "default") return;
     return { type: "open-detail", roleKey: entry.roleKey };
   }
@@ -126,6 +140,10 @@ function padToWidth(text: string, width: number): string {
   const truncated = truncateToWidth(text, width);
   const padding = Math.max(0, width - visibleWidth(truncated));
   return `${truncated}${" ".repeat(padding)}`;
+}
+
+function activeCursor(theme: Theme): string {
+  return theme.fg("muted", "→ ");
 }
 
 export function renderList(
@@ -146,21 +164,31 @@ export function renderList(
   const visible = filtered.slice(state.scrollOffset, state.scrollOffset + VIEWPORT_HEIGHT);
   for (const [index, entry] of visible.entries()) {
     const actualIndex = state.scrollOffset + index;
-    const cursor = actualIndex === state.cursor ? theme.fg("accent", "→") : " ";
+    const selected = actualIndex === state.cursor;
     if (entry.kind === "create") {
-      const label = `${cursor} ${theme.fg("accent", "Create new subagent")}`;
+      const label = selected ? `${activeCursor(theme)}${theme.fg("accent", "Create new subagent")}` : "  Create new subagent";
       lines.push(truncateToWidth(label, innerWidth));
       lines.push("");
       continue;
     }
-    const source = entry.role.source === "project" ? "[proj]" : entry.role.source === "user" ? "[user]" : "[builtin]";
-    const shadowed = entry.role.shadowedBy ? ` shadowed by ${entry.role.shadowedBy}` : "";
+    if (entry.kind === "section") {
+      lines.push(theme.fg("muted", entry.label));
+      continue;
+    }
+    if (entry.kind === "spacer") {
+      lines.push("");
+      continue;
+    }
+    const source = entry.role.source === "project" ? "[proj]" : entry.role.source === "user" ? "[user]" : "";
     const locked = entry.role.source === "builtin" && entry.role.name === "default" ? " 🔒" : "";
-    const rawLabel = `${entry.role.name} ${source}${entry.role.overridesBuiltin ? " override" : ""}${shadowed}${locked}`;
+    const labelWidth = Math.min(25, Math.max(0, innerWidth - 2));
+    const sourcePart = source ? ` ${source}` : "";
     const label = entry.role.source === "builtin" && entry.role.name === "default"
-      ? theme.fg("muted", rawLabel)
-      : rawLabel;
-    const prefix = `${cursor} ${padToWidth(label, Math.min(25, Math.max(0, innerWidth - 2)))}`;
+      ? theme.fg("muted", `${entry.role.name}${sourcePart}${locked}`)
+      : selected
+        ? `${theme.fg("accent", entry.role.name)}${sourcePart}${entry.role.overridesBuiltin ? " override" : ""}${locked}`
+        : `${entry.role.name}${sourcePart}${entry.role.overridesBuiltin ? " override" : ""}${locked}`;
+    const prefix = `${selected ? activeCursor(theme) : "  "}${padToWidth(label, labelWidth)}`;
     const remainingWidth = Math.max(0, innerWidth - visibleWidth(prefix));
     const description = remainingWidth > 1 ? truncateToWidth(entry.role.description, remainingWidth - 1) : "";
     lines.push(description ? `${prefix} ${description}` : prefix);
@@ -170,7 +198,7 @@ export function renderList(
   if (warnings.length > 0) {
     lines.push(theme.fg("warning", warnings[0]!));
   } else {
-    lines.push(theme.fg("dim", "[↑↓] move  [enter] open  [esc] close"));
+    lines.push(theme.fg("muted", "[↑↓] move  [enter] select  [esc] close"));
   }
 
   return lines;

@@ -30,19 +30,20 @@ test("list entries include Create new subagent first and enter opens detail for 
   ]);
 
   assert.equal(entries[0]?.kind, "create");
-  assert.equal(entries[1]?.kind === "role" ? entries[1].role.name : undefined, "default");
+  assert.deepEqual(entries[1], { kind: "section", label: "Builtin" });
+  assert.equal(entries[2]?.kind === "role" ? entries[2].role.name : undefined, "default");
 
-  const defaultAction = handleListInput({ cursor: 1, scrollOffset: 0, query: "" }, entries, "return");
+  const defaultAction = handleListInput({ cursor: 2, scrollOffset: 0, query: "" }, entries, "return");
   assert.equal(defaultAction, undefined);
 
-  const reviewerEntry = entries[2]!;
+  const reviewerEntry = entries[6]!;
   assert.equal(reviewerEntry.kind, "role");
 
-  const action = handleListInput({ cursor: 2, scrollOffset: 0, query: "" }, entries, "return");
+  const action = handleListInput({ cursor: 6, scrollOffset: 0, query: "" }, entries, "return");
   assert.deepEqual(action, { type: "open-detail", roleKey: reviewerEntry.roleKey });
 });
 
-test("list render uses accent for create row, muted for default row, and leaves a spacer after create", () => {
+test("list render uses split active styling for create row and keeps default row muted", () => {
   const calls: Array<{ color: string; text: string }> = [];
   const theme = {
     fg(color: string, text: string) {
@@ -60,14 +61,16 @@ test("list render uses accent for create row, muted for default row, and leaves 
 
   assert.equal(lines[3]?.includes("Create new subagent"), true);
   assert.equal(lines[4], "");
+  assert.equal(calls.some((entry) => entry.color === "muted" && entry.text === "→ "), true);
   assert.equal(calls.some((entry) => entry.color === "accent" && entry.text.includes("Create new subagent")), true);
   assert.equal(calls.some((entry) => entry.color === "muted" && entry.text.includes("default")), true);
 });
 
 test("list render keeps the description column aligned when the theme emits ansi escapes", () => {
   const theme = {
-    fg(_color: string, text: string) {
-      return `\u001b[36m${text}\u001b[0m`;
+    fg(color: string, text: string) {
+      const code = color === "accent" ? 36 : color === "muted" ? 90 : 37;
+      return `\u001b[${code}m${text}\u001b[0m`;
     },
   } as never;
 
@@ -75,22 +78,64 @@ test("list render keeps the description column aligned when the theme emits ansi
     createRole({ name: "default", source: "builtin", description: "Runtime fallback" }),
   ]);
 
-  const lines = renderList({ cursor: 1, scrollOffset: 0, query: "" }, entries, 80, theme);
-  const defaultLine = lines[5] ?? "";
+  const lines = renderList({ cursor: 2, scrollOffset: 0, query: "" }, entries, 80, theme);
+  const defaultLine = lines[6] ?? "";
   const plainLine = defaultLine.replace(/\u001b\[[0-9;]*m/g, "");
 
-  assert.match(plainLine, /^→ default \[builtin\] 🔒\s+Runtime fallback$/);
+  assert.match(plainLine, /^→ default 🔒\s+Runtime fallback$/);
   assert.equal(visibleWidth(defaultLine), visibleWidth(plainLine));
 });
 
-test("builtin edit flow requests override scope instead of mutating builtin", () => {
-  const action = handleDetailInput(createRole({ source: "builtin" }), "e");
+test("list render uses split active styling for selected role rows", () => {
+  const calls: Array<{ color: string; text: string }> = [];
+  const theme = {
+    fg(color: string, text: string) {
+      calls.push({ color, text });
+      return text;
+    },
+  } as never;
+
+  const entries = buildListEntries([
+    createRole({ name: "reviewer", source: "builtin", description: "Review code" }),
+  ]);
+
+  const lines = renderList({ cursor: 2, scrollOffset: 0, query: "" }, entries, 80, theme);
+
+  assert.match(lines.join("\n"), /Builtin/);
+  assert.equal(calls.some((entry) => entry.color === "muted" && entry.text === "→ "), true);
+  assert.equal(calls.some((entry) => entry.color === "accent" && entry.text === "reviewer"), true);
+  assert.equal(calls.some((entry) => entry.color === "accent" && entry.text === "[builtin]"), false);
+  assert.equal(lines.some((line) => /reviewer \[builtin\]/.test(line.replace(/\u001b\[[0-9;]*m/g, ""))), false);
+});
+
+
+test("list render separates builtin and custom roles into sections with a spacer row", () => {
+  const theme = { fg: (_color: string, text: string) => text } as never;
+
+  const entries = buildListEntries([
+    createRole({ name: "reviewer", source: "builtin", description: "Builtin role" }),
+    createRole({ name: "writer", source: "user", effectiveSource: "user", overridesBuiltin: true, description: "Custom role" }),
+  ]);
+
+  const lines = renderList({ cursor: 1, scrollOffset: 0, query: "" }, entries, 100, theme);
+  const builtinIndex = lines.findIndex((line) => line.includes("Builtin"));
+  const customIndex = lines.findIndex((line) => line.includes("Custom"));
+
+  assert.ok(builtinIndex >= 0);
+  assert.ok(customIndex > builtinIndex);
+  assert.equal(lines[customIndex - 1], "");
+  assert.equal(lines.some((line) => /reviewer\b/.test(line)), true);
+  assert.equal(lines.some((line) => /writer \[user\]/.test(line)), true);
+});
+
+test("builtin clone flow uses c to request override scope", () => {
+  const action = handleDetailInput(createRole({ source: "builtin" }), "c");
   assert.deepEqual(action, { type: "create-override" });
 });
 
-test("shadowed builtin edit flow targets the effective override instead of creating another one", () => {
-  const action = handleDetailInput(createRole({ source: "builtin", shadowedBy: "user" }), "e");
-  assert.deepEqual(action, { type: "edit-shadowing-override" });
+test("shadowed builtin base row also uses c to create a fresh override flow", () => {
+  const action = handleDetailInput(createRole({ source: "builtin", shadowedBy: "user" }), "c");
+  assert.deepEqual(action, { type: "create-override" });
 });
 
 test("delete confirm is only available for custom roles", () => {
@@ -123,30 +168,22 @@ test("model picker computes a scrollable visible window around the cursor", () =
   );
 });
 
-test("shadowed effective custom roles sort ahead of the builtin base row", () => {
+test("sectioned list keeps builtin rows under Builtin and custom rows under Custom", () => {
   const entries = buildListEntries([
     createRole({ name: "reviewer", source: "builtin", effectiveSource: "project", shadowedBy: "project" }),
     createRole({ name: "reviewer", source: "user", effectiveSource: "project", shadowedBy: "project", overridesBuiltin: true }),
     createRole({ name: "reviewer", source: "project", effectiveSource: "project", overridesBuiltin: true }),
   ]);
 
-  assert.equal(entries[1]?.kind, "role");
-  assert.equal(entries[2]?.kind, "role");
-  assert.equal(entries[3]?.kind, "role");
-  assert.equal(entries[1]?.kind === "role" ? entries[1].role.source : undefined, "project");
-  assert.equal(entries[3]?.kind === "role" ? entries[3].role.source : undefined, "builtin");
-});
+  const builtinHeaderIndex = entries.findIndex((entry) => entry.kind === "section" && entry.label === "Builtin");
+  const customHeaderIndex = entries.findIndex((entry) => entry.kind === "section" && entry.label === "Custom");
+  const firstBuiltinRoleIndex = entries.findIndex((entry) => entry.kind === "role" && entry.role.source === "builtin");
+  const firstCustomRoleIndex = entries.findIndex((entry) => entry.kind === "role" && entry.role.source !== "builtin");
 
-test("builtin detail copy explains full custom override semantics", () => {
-  const lines = renderDetail(
-    { scrollOffset: 0 },
-    createRole({ source: "builtin" }),
-    80,
-    { fg: (_c: string, text: string) => text } as never,
-  );
-
-  assert.match(lines.join("\n"), /create custom override/i);
-  assert.doesNotMatch(lines.join("\n"), /override description\/prompt/i);
+  assert.ok(builtinHeaderIndex >= 0);
+  assert.ok(customHeaderIndex > builtinHeaderIndex);
+  assert.ok(firstBuiltinRoleIndex > builtinHeaderIndex);
+  assert.ok(firstCustomRoleIndex > customHeaderIndex);
 });
 
 test("shadowed builtin detail makes it clear the row is an inactive base definition", () => {
@@ -159,6 +196,21 @@ test("shadowed builtin detail makes it clear the row is an inactive base definit
 
   assert.match(lines.join("\n"), /base definition/i);
   assert.match(lines.join("\n"), /shadowed by project/i);
+  assert.match(lines.join("\n"), /\[c\] clone/i);
+  assert.doesNotMatch(lines.join("\n"), /\[e\] edit/i);
+  assert.doesNotMatch(lines.join("\n"), /\[m\] edit model/i);
+});
+
+test("builtin detail footer shows clone-only action", () => {
+  const lines = renderDetail(
+    { scrollOffset: 0 },
+    createRole({ source: "builtin" }),
+    80,
+    { fg: (_c: string, text: string) => text } as never,
+  );
+
+  assert.match(lines.join("\n"), /\[c\] clone  \[esc\] back/i);
+  assert.doesNotMatch(lines.join("\n"), /override model\/thinking/i);
 });
 
 test("editing a shadowing override disables rename for the redirected custom role", () => {
@@ -204,6 +256,210 @@ test("create flow cancel returns to list instead of a stale previously viewed de
   assert.match(component!.render(80).join("\n"), /Choose scope/);
   component!.handleInput("\u001b");
   assert.match(component!.render(80).join("\n"), /Subagents/);
+});
+
+test("active scope row uses muted cursor, accent label, and muted parenthetical detail", async () => {
+  let component: { handleInput(data: string): void; render(width: number): string[] } | undefined;
+  const calls: Array<{ color: string; text: string }> = [];
+  const theme = {
+    fg(color: string, text: string) {
+      calls.push({ color, text });
+      return text;
+    },
+  };
+
+  await openSubagentsManager({
+    cwd: process.cwd(),
+    ui: {
+      theme,
+      notify() {},
+      custom(factory: any) {
+        component = factory({ requestRender() {} }, theme, undefined, () => undefined);
+        return Promise.resolve(undefined);
+      },
+    },
+    modelRegistry: { getAvailable: () => [] },
+    sessionManager: { getSessionFile: () => "/tmp/session-scope-style.jsonl" },
+  } as never);
+
+  assert.ok(component);
+  component!.handleInput("return");
+  component!.render(100);
+
+  assert.equal(calls.some((entry) => entry.color === "muted" && entry.text === "→ "), true);
+  assert.equal(calls.some((entry) => entry.color === "accent" && entry.text === "project"), true);
+  assert.equal(calls.some((entry) => entry.color === "muted" && /^ \((will create|save to) /.test(entry.text)), true);
+});
+
+test("active main-editor field header uses muted cursor and accent label", async () => {
+  let component: { handleInput(data: string): void; render(width: number): string[] } | undefined;
+  const calls: Array<{ color: string; text: string }> = [];
+  const theme = {
+    fg(color: string, text: string) {
+      calls.push({ color, text });
+      return text;
+    },
+  };
+
+  await openSubagentsManager({
+    cwd: process.cwd(),
+    ui: {
+      theme,
+      notify() {},
+      custom(factory: any) {
+        component = factory({ requestRender() {} }, theme, undefined, () => undefined);
+        return Promise.resolve(undefined);
+      },
+    },
+    modelRegistry: { getAvailable: () => [] },
+    sessionManager: { getSessionFile: () => "/tmp/session-main-editor.jsonl" },
+  } as never);
+
+  assert.ok(component);
+  component!.handleInput("return");
+  component!.handleInput("\r");
+  component!.render(80);
+
+  assert.equal(calls.some((entry) => entry.color === "muted" && entry.text === "→ "), true);
+  assert.equal(calls.some((entry) => entry.color === "accent" && entry.text === "Name:"), true);
+  assert.equal(calls.some((entry) => entry.color === "accent" && entry.text === "Description:"), false);
+});
+
+test("ctrl+e toggles between main and model editors without stealing text input letters", async () => {
+  let component: { handleInput(data: string): void; render(width: number): string[] } | undefined;
+  const theme = { fg: (_c: string, text: string) => text };
+
+  await openSubagentsManager({
+    cwd: process.cwd(),
+    ui: {
+      theme,
+      notify() {},
+      custom(factory: any) {
+        component = factory({ requestRender() {} }, theme, undefined, () => undefined);
+        return Promise.resolve(undefined);
+      },
+    },
+    modelRegistry: { getAvailable: () => [] },
+    sessionManager: { getSessionFile: () => "/tmp/session-toggle-editor.jsonl" },
+  } as never);
+
+  assert.ok(component);
+  component!.handleInput("return");
+  component!.handleInput("\r");
+  assert.match(component!.render(80).join("\n"), /Edit role/);
+  component!.handleInput("\u0005");
+  assert.match(component!.render(80).join("\n"), /Model & thinking/);
+  component!.handleInput("\u0005");
+  assert.match(component!.render(80).join("\n"), /Edit role/);
+});
+
+test("active model-editor field header and selected suggestion use muted cursor and accent label", async () => {
+  let component: { handleInput(data: string): void; render(width: number): string[] } | undefined;
+  const calls: Array<{ color: string; text: string }> = [];
+  const theme = {
+    fg(color: string, text: string) {
+      calls.push({ color, text });
+      return text;
+    },
+  };
+
+  await openSubagentsManager({
+    cwd: process.cwd(),
+    ui: {
+      theme,
+      notify() {},
+      custom(factory: any) {
+        component = factory({ requestRender() {} }, theme, undefined, () => undefined);
+        return Promise.resolve(undefined);
+      },
+    },
+    modelRegistry: { getAvailable: () => [
+      { provider: "openai", id: "gpt-5" },
+      { provider: "openai", id: "gpt-4.1" },
+    ] },
+    sessionManager: { getSessionFile: () => "/tmp/session-model-editor.jsonl" },
+  } as never);
+
+  assert.ok(component);
+  component!.handleInput("return");
+  component!.handleInput("\r");
+  component!.handleInput("\u0005");
+  component!.render(80);
+
+  assert.equal(calls.some((entry) => entry.color === "muted" && entry.text === "→ "), true);
+  assert.equal(calls.some((entry) => entry.color === "accent" && entry.text === "Model:"), true);
+  assert.equal(calls.some((entry) => entry.color === "accent" && entry.text === "openai/gpt-5"), true);
+  assert.equal(calls.some((entry) => entry.color === "accent" && entry.text === "Thinking: off"), false);
+});
+
+
+test("thinking editor renders a single row and uses left/right to change the selected value", async () => {
+  let component: { handleInput(data: string): void; render(width: number): string[] } | undefined;
+  const calls: Array<{ color: string; text: string }> = [];
+  const theme = {
+    fg(color: string, text: string) {
+      calls.push({ color, text });
+      return text;
+    },
+  };
+
+  await openSubagentsManager({
+    cwd: process.cwd(),
+    ui: {
+      theme,
+      notify() {},
+      custom(factory: any) {
+        component = factory({ requestRender() {} }, theme, undefined, () => undefined);
+        return Promise.resolve(undefined);
+      },
+    },
+    modelRegistry: { getAvailable: () => [] },
+    sessionManager: { getSessionFile: () => "/tmp/session-thinking-row.jsonl" },
+  } as never);
+
+  assert.ok(component);
+  component!.handleInput("return");
+  component!.handleInput("\r");
+  component!.handleInput("\u0005");
+  component!.handleInput("\t");
+  let lines = component!.render(120);
+  assert.equal(lines.some((line) => line.includes("Thinking: off  minimal  low  medium  high  xhigh")), true);
+  assert.equal(calls.some((entry) => entry.color === "accent" && entry.text === "off"), true);
+
+  calls.length = 0;
+  component!.handleInput("\u001b[C");
+  lines = component!.render(120);
+  assert.equal(lines.some((line) => line.includes("Thinking: off  minimal  low  medium  high  xhigh")), true);
+  assert.equal(calls.some((entry) => entry.color === "accent" && entry.text === "minimal"), true);
+  assert.equal(calls.some((entry) => entry.color === "accent" && entry.text === "off"), false);
+});
+
+test("model editor flow keeps every rendered line within the terminal width", async () => {
+  let component: { handleInput(data: string): void; render(width: number): string[] } | undefined;
+  const theme = { fg: (_c: string, text: string) => text };
+
+  await openSubagentsManager({
+    cwd: process.cwd(),
+    ui: {
+      theme,
+      notify() {},
+      custom(factory: any) {
+        component = factory({ requestRender() {} }, theme, undefined, () => undefined);
+        return Promise.resolve(undefined);
+      },
+    },
+    modelRegistry: { getAvailable: () => [] },
+    sessionManager: { getSessionFile: () => "/tmp/session-b.jsonl" },
+  } as never);
+
+  assert.ok(component);
+  component!.handleInput("return");
+  component!.handleInput("\r");
+  component!.handleInput("m");
+
+  for (const line of component!.render(93)) {
+    assert.ok(visibleWidth(line) <= 93, `expected line to fit width 93, got ${visibleWidth(line)}: ${line}`);
+  }
 });
 
 test("cancel helper returns list for create flows even if a stale detail key exists", () => {
