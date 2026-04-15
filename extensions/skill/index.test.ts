@@ -20,8 +20,6 @@ const AVAILABLE_TOOLS = [
   { name: "FetchUrl", description: "fetch" },
   { name: "skill", description: "skill" },
   { name: "Task", description: "task" },
-  { name: "TaskOutput", description: "task" },
-  { name: "TaskStop", description: "task" },
 ];
 
 test("skill extension registers the global skill tool and shared mode handlers", async () => {
@@ -77,8 +75,6 @@ test("skill extension registers the global skill tool and shared mode handlers",
     "FetchUrl",
     "skill",
     "Task",
-    "TaskOutput",
-    "TaskStop",
   ]);
 });
 

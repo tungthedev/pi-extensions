@@ -7,6 +7,8 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 ### Breaking Changes
 
 - Raised the supported Pi baseline to `0.65.0`.
+- `/subagents` is now a TUI-first role manager backed by markdown roles in `~/.agents` and the nearest project `.agents/` directory.
+- Codex/TOML-managed custom subagent roles are no longer loaded at runtime. Legacy Codex and `~/.pi/agent/agents` role paths now emit migration warnings instead.
 
 ### Notes
 
@@ -117,13 +119,3 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 ## [0.1.0] - 2026-03-19
 
 Initial release.
-
-### Added
-
-- `editor` extension with a boxed composer UI and extensible status row.
-- `mermaid` extension for inline Mermaid rendering and an interactive diagram viewer.
-- `web-search` extension with Gemini-backed `web_search` and `web_fetch` tools.
-- `codex-content` extension with Codex-style compatibility tools, workflow helpers, and exploration UI.
-- `codex-system-prompt` extension to inject Codex-oriented system prompt and collaboration mode instructions.
-- `codex-subagents` extension with Codex-style subagent tools to spawn, resume, message, and wait on child agents.
-- `ext-manager` extension with an in-app UI for managing local and package-provided extensions.

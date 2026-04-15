@@ -36,6 +36,7 @@ export function createLiveAttachment(options: {
   model?: string;
   profileBootstrap?: ChildProfileBootstrap;
   sessionFile?: string;
+  launchMode?: "fresh" | "fork" | "resume";
   toolSet?: "pi" | "codex" | "droid";
 }): RpcLiveChildAttachment {
   const childSessionDir = resolveChildSessionDir();
@@ -47,8 +48,15 @@ export function createLiveAttachment(options: {
 
   args.push("--session-dir", childSessionDir, "--no-extensions", "-e", EXTENSION_ENTRY);
 
-  if (options.model && !options.sessionFile) {
+  const launchMode = options.launchMode ?? (options.sessionFile ? "resume" : "fresh");
+
+  if (options.model && launchMode !== "resume") {
     args.push("--model", options.model);
+  }
+
+  const developerInstructions = options.profileBootstrap?.developerInstructions?.trim();
+  if (developerInstructions) {
+    args.push("--append-system-prompt", developerInstructions);
   }
 
   const child = spawn(process.env.PI_BINARY || "pi", args, {

@@ -31,6 +31,7 @@ import {
   shellDoneSentinelCommand,
   shellExternalCommand,
 } from "./interactive.ts";
+import { buildInteractivePiArgs, type InteractiveLaunchMode } from "./launch-args.ts";
 import { validateSubagentName } from "./naming.ts";
 import {
   CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
@@ -678,7 +679,8 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     };
     toolSet: "pi" | "codex" | "droid";
     forkedSessionFile?: string;
-    launchMode?: "spawn" | "resume";
+    thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+    launchMode?: InteractiveLaunchMode;
     sessionFileOverride?: string;
   }): Promise<{
     attachment: InteractiveLiveChildAttachment;
@@ -707,25 +709,17 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     const surface = createSurface(options.record.name ?? options.record.agentId);
     await new Promise<void>((resolve) => setTimeout(resolve, 500));
 
-    const piArgs = [
-      "--session",
+    const resolvedLaunchMode: InteractiveLaunchMode =
+      launchMode === "resume" ? "resume" : options.forkedSessionFile ? "fork" : "spawn";
+    const piArgs = buildInteractivePiArgs({
       sessionFile,
-      "--session-dir",
-      childSessionDir,
-      "--no-extensions",
-      "-e",
-      INTERACTIVE_EXTENSION_ENTRY,
-    ];
-
-    if (launchMode !== "resume" && options.record.model && !options.forkedSessionFile) {
-      piArgs.push("--model", options.record.model);
-    }
-
-    const developerInstructions = options.profileBootstrap?.developerInstructions?.trim();
-    if (launchMode !== "resume" && developerInstructions) {
-      piArgs.push("--append-system-prompt", developerInstructions);
-    }
-
+      sessionDir: childSessionDir,
+      extensionEntry: INTERACTIVE_EXTENSION_ENTRY,
+      launchMode: resolvedLaunchMode,
+      model: options.record.model,
+      thinkingLevel: options.thinkingLevel,
+      developerInstructions: options.profileBootstrap?.developerInstructions,
+    });
     piArgs.push(`@${promptFile}`);
 
     const launcherConfig = {
@@ -915,12 +909,12 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     attachment: RpcLiveChildAttachment;
     record: DurableChildRecord;
   }> => {
-    const resolvedProfiles = resolveAgentProfiles({ includeHidden: true });
+    const resolvedProfiles = resolveAgentProfiles({ cwd: record.cwd, includeHidden: true });
     const profile = record.agentType ? resolvedProfiles.profiles.get(record.agentType) : undefined;
     const attachment = createLiveAttachment({
       agentId: record.agentId,
       cwd: record.cwd,
-      model: mode === "fresh" ? record.model : undefined,
+      model: record.model,
       profileBootstrap: profile
         ? {
             name: profile.name,
@@ -931,6 +925,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           }
         : undefined,
       sessionFile: mode === "fresh" ? undefined : record.sessionFile,
+      launchMode: mode,
       toolSet,
     });
     store.attach(record, attachment);
@@ -1006,7 +1001,10 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           );
         }
 
-        const resolvedProfiles = resolveAgentProfiles({ includeHidden: true });
+        const resolvedProfiles = resolveAgentProfiles({
+          cwd: currentRecord.cwd,
+          includeHidden: true,
+        });
         const profile = currentRecord.agentType
           ? resolvedProfiles.profiles.get(currentRecord.agentType)
           : undefined;
@@ -1022,6 +1020,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
                 source: profile.source,
               }
             : undefined,
+          thinkingLevel: normalizeReasoningEffortToThinkingLevel(profile?.reasoningEffort),
           toolSet: "codex",
           launchMode: "resume",
           sessionFileOverride: currentRecord.sessionFile,
@@ -1279,7 +1278,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     reconstructDurableRegistry,
   });
 
-  registerCodexToolAdapters(pi, {
+  const codexToolAdapters = registerCodexToolAdapters(pi, {
     lifecycle,
     renderSpawnPromptPreview: (prompt, theme) => new Text(theme.fg("dim", shorten(prompt, 140)), 0, 0),
     normalizeWaitAgentTimeoutMs,
@@ -1288,10 +1287,17 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   void SUBAGENT_RESERVED_TOOL_NAMES;
   void CODEX_SUBAGENT_RESERVED_TOOL_NAMES;
 
-  registerTaskToolAdapters(pi, {
+  const taskToolAdapters = registerTaskToolAdapters(pi, {
     lifecycle,
     normalizeWaitAgentTimeoutMs,
   });
+
+  return {
+    refreshRoleDescriptions(cwd?: string) {
+      codexToolAdapters.refreshRoleDescriptions(cwd);
+      taskToolAdapters.refreshRoleDescriptions(cwd);
+    },
+  };
 }
 
 export {
@@ -1333,12 +1339,8 @@ export {
   buildSpawnAgentTypeDescription,
   clearResolvedAgentProfilesCache,
   loadCustomAgentProfiles,
-  parseCodexRoleDeclarations,
-  parseCodexRoleFile,
-  parseBundledRoleAsset,
   resolveAgentProfiles,
   resolveBuiltInAgentProfiles,
-  resolveCodexConfigPath,
 } from "./profiles.ts";
 export { applySpawnAgentProfile, resolveRequestedAgentType } from "./profiles-apply.ts";
 

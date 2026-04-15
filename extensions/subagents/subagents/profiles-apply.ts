@@ -32,16 +32,10 @@ export function applySpawnAgentProfile(options: {
   if (!profile) {
     throw new Error(`unknown agent_type '${agentType}'`);
   }
-  if (!profile.available) {
-    throw new Error(profile.unavailableReason ?? "agent type is currently not available");
-  }
 
-  const effectiveModel = profile.lockedModel
-    ? profile.model
-    : options.requestedModel?.trim() || profile.model;
-  const effectiveReasoningEffort = profile.lockedReasoningEffort
-    ? profile.reasoningEffort
-    : options.requestedReasoningEffort?.trim() || profile.reasoningEffort;
+  const effectiveModel = options.requestedModel?.trim() || profile.model;
+  const effectiveReasoningEffort =
+    options.requestedReasoningEffort?.trim() || profile.reasoningEffort;
 
   return {
     agentType,
@@ -51,8 +45,8 @@ export function applySpawnAgentProfile(options: {
     bootstrap: {
       name: profile.name,
       developerInstructions: profile.developerInstructions,
-      model: profile.model,
-      reasoningEffort: profile.reasoningEffort,
+      model: effectiveModel || undefined,
+      reasoningEffort: effectiveReasoningEffort || undefined,
       source: profile.source,
     },
   };

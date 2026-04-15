@@ -269,6 +269,7 @@ function captureTools(register: (pi: { registerTool(def: unknown): void }) => vo
 test("subagents public entrypoint registers tools and sync hooks for parent sessions", () => {
   const tools: string[] = [];
   const events: string[] = [];
+  const commands: string[] = [];
 
   subagentsExtension({
     registerTool(tool: { name: string }) {
@@ -277,7 +278,9 @@ test("subagents public entrypoint registers tools and sync hooks for parent sess
     on(event: string) {
       events.push(event);
     },
-    registerCommand() {},
+    registerCommand(name: string) {
+      commands.push(name);
+    },
     registerMessageRenderer() {},
     sendMessage() {},
     appendEntry() {},
@@ -286,6 +289,7 @@ test("subagents public entrypoint registers tools and sync hooks for parent sess
   } as never);
 
   assert.ok(tools.length > 0);
+  assert.equal(commands.includes("subagents"), true);
   assert.equal(events.includes("session_start"), true);
   assert.equal(events.includes("before_agent_start"), true);
 });
@@ -326,8 +330,6 @@ test("rpc child entrypoint alone registers caller_update without parent-only too
   assert.equal(tools.includes("wait_agent"), false);
   assert.equal(tools.includes("close_agent"), false);
   assert.equal(tools.includes("Task"), false);
-  assert.equal(tools.includes("TaskOutput"), false);
-  assert.equal(tools.includes("TaskStop"), false);
   assert.equal(tools.includes("subagent_done"), false);
   assert.equal(tools.includes("caller_ping"), false);
   assert.equal(tools.includes("caller_update"), true);
@@ -482,8 +484,6 @@ test("shared resolver switches Codex subagent tool family to send_message", () =
     { name: "wait_agent", description: "subagent" },
     { name: "close_agent", description: "subagent" },
     { name: "Task", description: "task" },
-    { name: "TaskOutput", description: "task" },
-    { name: "TaskStop", description: "task" },
     { name: "WebSearch", description: "web" },
   ]);
 
@@ -497,8 +497,6 @@ test("shared resolver switches Codex subagent tool family to send_message", () =
   assert.deepEqual(resolveToolsetToolNames("droid", toolInfos), [
     "WebSearch",
     "Task",
-    "TaskOutput",
-    "TaskStop",
   ]);
 });
 
@@ -642,8 +640,9 @@ test("spawn_agent renders foreground prompt in call output and content-only resu
   const backgroundCall = (spawnAgent!.renderCall as (...args: unknown[]) => unknown)(
     { name: "worker", message: "Investigate auth flow" },
     theme,
-  ) as { text?: string };
-  assert.equal(backgroundCall.text, "**Spawn running **worker");
+  ) as { children?: Array<{ text?: string }> };
+  assert.equal(backgroundCall.children?.[0]?.text, "**Spawn **worker (background)");
+  assert.equal(backgroundCall.children?.[1]?.text, "Investigate auth flow");
 
   const collapsedResult = (spawnAgent!.renderResult as (...args: unknown[]) => unknown)(
     {
@@ -698,7 +697,7 @@ test("spawn_agent renders foreground prompt in call output and content-only resu
   assert.deepEqual(backgroundResult.children, []);
 });
 
-test("task tool adapters require names for spawn and do not leak task ids", async () => {
+test("task tool adapter always waits for completion and does not leak task ids", async () => {
   const { lifecycle, calls, setSnapshot, setWaitedSnapshot } = createCodexLifecycleMock();
   const tools = captureTools((pi) =>
     registerTaskToolAdapters(pi as never, {
@@ -708,40 +707,18 @@ test("task tool adapters require names for spawn and do not leak task ids", asyn
   );
 
   const taskTool = tools.get("Task");
-  const taskOutput = tools.get("TaskOutput");
-  const taskStop = tools.get("TaskStop");
 
   assert.ok(taskTool);
-  assert.ok(taskOutput);
-  assert.ok(taskStop);
+  assert.equal(tools.has("TaskOutput"), false);
+  assert.equal(tools.has("TaskStop"), false);
 
   const theme = createRenderTheme();
-  const foregroundTaskCall = (taskTool!.renderCall as (...args: unknown[]) => unknown)(
-    { name: "task_alpha", subagent_type: "researcher", prompt: "Do work", complexity: "high", wait_for_task: true },
+  const taskCall = (taskTool!.renderCall as (...args: unknown[]) => unknown)(
+    { name: "task_alpha", subagent_type: "researcher", prompt: "Do work", complexity: "high" },
     theme,
   ) as { children?: Array<{ text?: string }> };
-  assert.equal(foregroundTaskCall.children?.[0]?.text, "**Task **task_alpha [researcher]");
-  assert.equal(foregroundTaskCall.children?.[1]?.text, "Do work");
-
-  const backgroundTaskCall = (taskTool!.renderCall as (...args: unknown[]) => unknown)(
-    { name: "task_alpha", prompt: "Do work" },
-    theme,
-  ) as { text?: string };
-  assert.equal(backgroundTaskCall.text, "**Task running **task_alpha");
-
-  const backgroundTaskResult = (taskTool!.renderResult as (...args: unknown[]) => unknown)(
-    {
-      details: {
-        name: "task_alpha",
-        status: "running",
-        durable_status: "live_running",
-        cwd: "/tmp/project",
-      },
-    },
-    { expanded: false },
-    theme,
-  ) as { children?: unknown[] };
-  assert.deepEqual(backgroundTaskResult.children, []);
+  assert.equal(taskCall.children?.[0]?.text, "**Task **task_alpha [researcher]");
+  assert.equal(taskCall.children?.[1]?.text, "Do work");
 
   const collapsedForegroundTaskResult = (taskTool!.renderResult as (...args: unknown[]) => unknown)(
     {
@@ -801,22 +778,11 @@ test("task tool adapters require names for spawn and do not leak task ids", asyn
   );
   assert.deepEqual(JSON.parse(taskSpawn.content[0].text), {
     name: "task_alpha",
-    status: "running",
-  });
-  assert.equal(JSON.stringify(taskSpawn.details).includes("task_id"), false);
-
-  const taskSpawnForeground = await (taskTool!.execute as (...args: unknown[]) => Promise<any>)(
-    "call-2b",
-    { name: "task_sync", prompt: "Do work in foreground", wait_for_task: true },
-    undefined,
-    undefined,
-    createMockCtx(),
-  );
-  assert.deepEqual(JSON.parse(taskSpawnForeground.content[0].text), {
-    name: "task_sync",
     status: "idle",
     output: "child done",
   });
+  assert.equal(JSON.stringify(taskSpawn.details).includes("task_id"), false);
+  assert.equal((calls.spawn[0] as { runInBackground?: boolean }).runInBackground, false);
 
   const taskResume = await (taskTool!.execute as (...args: unknown[]) => Promise<any>)(
     "call-3",
@@ -828,39 +794,32 @@ test("task tool adapters require names for spawn and do not leak task ids", asyn
   assert.deepEqual(JSON.parse(taskResume.content[0].text), {
     name: "task_alpha",
     submission_id: "submission-1",
+    status: "idle",
+    output: "task_alpha done",
+    timed_out: false,
   });
+  assert.deepEqual(calls.waitByNames, [{ names: ["task_alpha"], timeoutMs: 45_000 }]);
 
   setSnapshot("task_wait", "running", "still working");
   setWaitedSnapshot("task_wait", "idle", "finished after resume");
-  const taskResumeForeground = await (taskTool!.execute as (...args: unknown[]) => Promise<any>)(
+  const taskResumeWaited = await (taskTool!.execute as (...args: unknown[]) => Promise<any>)(
     "call-3b",
-    { resume: "task_wait", prompt: "Continue in foreground", wait_for_task: true },
+    { resume: "task_wait", prompt: "Continue again" },
     undefined,
     undefined,
     createMockCtx(),
   );
-  assert.deepEqual(JSON.parse(taskResumeForeground.content[0].text), {
+  assert.deepEqual(JSON.parse(taskResumeWaited.content[0].text), {
     name: "task_wait",
     submission_id: "submission-1",
     status: "idle",
     output: "finished after resume",
     timed_out: false,
   });
-  assert.deepEqual(calls.waitByNames, [{ names: ["task_wait"], timeoutMs: 45_000 }]);
-
-  const output = await (taskOutput!.execute as (...args: unknown[]) => Promise<any>)("call-4", { name: "task_alpha", block: false });
-  assert.deepEqual(JSON.parse(output.content[0].text), {
-    name: "task_alpha",
-    status: "idle",
-    output: "task_alpha done",
-    timed_out: false,
-  });
-
-  const stop = await (taskStop!.execute as (...args: unknown[]) => Promise<any>)("call-5", { name: "task_alpha" });
-  assert.deepEqual(JSON.parse(stop.content[0].text), {
-    name: "task_alpha",
-    status: "closed",
-  });
+  assert.deepEqual(calls.waitByNames, [
+    { names: ["task_alpha"], timeoutMs: 45_000 },
+    { names: ["task_wait"], timeoutMs: 45_000 },
+  ]);
 });
 
 test("wait_agent returns a running snapshot with update_message", async () => {
@@ -896,88 +855,6 @@ test("wait_agent returns a running snapshot with update_message", async () => {
         update_message: "still auditing",
       },
     ],
-  });
-});
-
-test("TaskOutput returns immediately for non-running tasks and waits for running tasks", async () => {
-  const { lifecycle, calls, setSnapshot, setWaitedSnapshot } = createCodexLifecycleMock();
-  const tools = captureTools((pi) =>
-    registerTaskToolAdapters(pi as never, {
-      lifecycle: lifecycle as never,
-      normalizeWaitAgentTimeoutMs,
-    }),
-  );
-  const taskOutput = tools.get("TaskOutput");
-  assert.ok(taskOutput);
-
-  setSnapshot("task_done", "idle", "finished already");
-  const completed = await (taskOutput!.execute as (...args: unknown[]) => Promise<any>)("call-complete", {
-    name: "task_done",
-  });
-
-  assert.deepEqual(JSON.parse(completed.content[0].text), {
-    name: "task_done",
-    status: "idle",
-    output: "finished already",
-    timed_out: false,
-  });
-  assert.deepEqual(calls.waitByNames, []);
-
-  setSnapshot("task_detached", "detached", "detached state");
-  const detached = await (taskOutput!.execute as (...args: unknown[]) => Promise<any>)("call-detached", {
-    name: "task_detached",
-  });
-
-  assert.deepEqual(JSON.parse(detached.content[0].text), {
-    name: "task_detached",
-    status: "detached",
-    output: "detached state",
-    timed_out: false,
-  });
-  assert.deepEqual(calls.waitByNames, []);
-
-  setSnapshot("task_running", "running", "still working");
-  setWaitedSnapshot("task_running", "idle", "finished after wait");
-  const waited = await (taskOutput!.execute as (...args: unknown[]) => Promise<any>)("call-wait", {
-    name: "task_running",
-    timeout: 45_000,
-  });
-
-  assert.deepEqual(JSON.parse(waited.content[0].text), {
-    name: "task_running",
-    status: "idle",
-    output: "finished after wait",
-    timed_out: false,
-  });
-  assert.deepEqual(calls.waitByNames, [{ names: ["task_running"], timeoutMs: 45_000 }]);
-
-});
-
-test("TaskOutput prefers update_message while task is still running", async () => {
-  const { lifecycle, setSnapshot } = createCodexLifecycleMock();
-  const tools = captureTools((pi) =>
-    registerTaskToolAdapters(pi as never, {
-      lifecycle: lifecycle as never,
-      normalizeWaitAgentTimeoutMs,
-    }),
-  );
-  const taskOutput = tools.get("TaskOutput");
-  assert.ok(taskOutput);
-
-  setSnapshot("task_running", "running", "stale completion text", {
-    update_message: "still working on it",
-  });
-
-  const result = await (taskOutput!.execute as (...args: unknown[]) => Promise<any>)("call-update", {
-    name: "task_running",
-    block: false,
-  });
-
-  assert.deepEqual(JSON.parse(result.content[0].text), {
-    name: "task_running",
-    status: "running",
-    output: "still working on it",
-    timed_out: false,
   });
 });
 

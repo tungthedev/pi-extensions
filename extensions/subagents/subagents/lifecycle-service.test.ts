@@ -1,9 +1,32 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import { createSubagentLifecycleService } from "./lifecycle-service.ts";
 import { SUBAGENT_ENTRY_TYPES } from "./types.ts";
 import type { AgentSnapshot, DurableChildRecord, LiveChildAttachment } from "./types.ts";
+
+function withTempHome(testBody: (root: string) => void | Promise<void>) {
+  const root = mkdtempSync(path.join(tmpdir(), "subagent-lifecycle-"));
+  const previousHome = process.env.HOME;
+  const previousUserProfile = process.env.USERPROFILE;
+  process.env.HOME = root;
+  process.env.USERPROFILE = root;
+
+  const finish = () => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    rmSync(root, { recursive: true, force: true });
+  };
+
+  return Promise.resolve()
+    .then(() => testBody(root))
+    .finally(finish);
+}
 
 function createBaseDeps(overrides: Partial<Parameters<typeof createSubagentLifecycleService>[0]> = {}) {
   const records = new Map<string, DurableChildRecord>();
@@ -245,4 +268,45 @@ test("lifecycle service waitAny rejects when no child agents are available", asy
   const service = createSubagentLifecycleService(deps);
 
   await assert.rejects(service.waitAny({ timeoutMs: 45_000 }), /No child agents are available to wait on/);
+});
+
+test("lifecycle service lets role defaults beat inherited parent defaults when no explicit override is provided", async () => {
+  await withTempHome(async (homeRoot) => {
+    const cwd = path.join(homeRoot, "workspace", "project");
+    mkdirSync(path.join(cwd, ".agents"), { recursive: true });
+    writeFileSync(
+      path.join(cwd, ".agents", "reviewer.md"),
+      `---\nname: reviewer\ndescription: Reviewer\nmodel: openai/gpt-5\nthinking: high\n---\n\nPrompt\n`,
+    );
+
+    let spawnedRecordModel: string | undefined;
+    let latestRecord: DurableChildRecord | undefined;
+    const { deps, records, attachment } = createBaseDeps({
+      resolveParentSpawnDefaults: () => ({ model: "anthropic/claude-haiku-4-5", reasoningEffort: "low" }),
+      attachChild: async (record) => {
+        spawnedRecordModel = record.model;
+        latestRecord = record;
+        records.set(record.agentId, record);
+        return { attachment: attachment as never, record };
+      },
+      sendPromptToAttachment: async () => latestRecord!,
+    });
+    const service = createSubagentLifecycleService(deps);
+
+    const result = await service.spawn({
+      mode: "task",
+      ctx: {
+        cwd,
+        sessionManager: { getEntries: () => [], getLeafId: () => null, getSessionFile: () => "/tmp/session.jsonl" },
+        model: undefined,
+      } as never,
+      name: "reviewer_task",
+      prompt: "Review",
+      requestedAgentType: "reviewer",
+      runInBackground: true,
+    });
+
+    assert.equal(spawnedRecordModel, "openai/gpt-5");
+    assert.equal(result.record.model, "openai/gpt-5");
+  });
 });

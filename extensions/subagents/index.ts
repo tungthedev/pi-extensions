@@ -4,6 +4,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { applyResolvedToolset } from "../shared/toolset-resolver.ts";
+import { registerSubagentsCommand } from "./commands.ts";
 import { SUBAGENT_CHILD_ENV, registerSubagentTools } from "./subagents/index.ts";
 
 export {
@@ -24,13 +25,16 @@ async function syncSubagentToolSet(
 
 export default function subagentsExtension(pi: ExtensionAPI) {
   if (process.env[SUBAGENT_CHILD_ENV] !== "1") {
-    registerSubagentTools(pi);
+    const subagentTools = registerSubagentTools(pi);
+    registerSubagentsCommand(pi);
 
     pi.on("session_start", async (_event, ctx) => {
+      subagentTools.refreshRoleDescriptions(ctx.cwd);
       await syncSubagentToolSet(pi, ctx);
     });
 
     pi.on("before_agent_start", async (_event, ctx) => {
+      subagentTools.refreshRoleDescriptions(ctx.cwd);
       await syncSubagentToolSet(pi, ctx);
     });
   }

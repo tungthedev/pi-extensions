@@ -1,7 +1,9 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { SUBAGENT_ACTIVITY_WIDGET_KEY, SubagentActivityWidget } from "./activity-widget.ts";
+import { notifyLegacyRoleWarnings } from "./legacy-role-warnings.ts";
 import { clearResolvedAgentProfilesCache } from "./profiles.ts";
+import { resolveRoleSet } from "./roles-discovery.ts";
 import type { SessionEntryLike } from "./types.ts";
 import type { SubagentRuntimeStore } from "./runtime-store.ts";
 
@@ -17,6 +19,11 @@ export function registerSubagentSessionEvents(
 ): void {
   pi.on("session_start", async (_event, ctx) => {
     clearResolvedAgentProfilesCache();
+    notifyLegacyRoleWarnings(
+      ctx as Pick<ExtensionContext, "ui">,
+      resolveRoleSet({ cwd: ctx.cwd }).warnings,
+      ctx.sessionManager.getSessionFile() ?? ctx.cwd,
+    );
     await deps.closeAllLiveAttachments("session_change");
     deps.store.setActiveSessionFile(ctx.sessionManager.getSessionFile());
     deps.reconstructDurableRegistry(ctx.sessionManager.getEntries() as SessionEntryLike[]);

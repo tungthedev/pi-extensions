@@ -26,8 +26,6 @@ const TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "view_image", description: "codex" },
   { name: "LS", description: "droid" },
   { name: "Task", description: "task" },
-  { name: "TaskOutput", description: "task" },
-  { name: "TaskStop", description: "task" },
   { name: "spawn_agent", description: "subagent" },
   { name: "send_message", description: "subagent" },
   { name: "wait_agent", description: "subagent" },
@@ -61,8 +59,6 @@ test("pi mode excludes codex-managed tools from the shared resolver", () => {
     "WebSummary",
     "FetchUrl",
     "Task",
-    "TaskOutput",
-    "TaskStop",
   ]);
 });
 

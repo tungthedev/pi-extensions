@@ -125,8 +125,6 @@ const CROSS_MODE_TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "TodoWrite", description: "droid" },
   { name: "Execute", description: "droid" },
   { name: "Task", description: "task" },
-  { name: "TaskOutput", description: "task" },
-  { name: "TaskStop", description: "task" },
   { name: "spawn_agent", description: "subagent codex" },
   { name: "send_message", description: "subagent codex" },
   { name: "wait_agent", description: "subagent codex" },

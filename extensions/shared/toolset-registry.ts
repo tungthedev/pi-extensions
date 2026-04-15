@@ -76,7 +76,7 @@ export const TOOLSET_CONTRIBUTIONS = {
   },
   subagentsTask: {
     extension: "subagents-task",
-    tools: [optional("Task"), optional("TaskOutput"), optional("TaskStop")],
+    tools: [optional("Task")],
   },
 } satisfies Record<string, ToolsetContribution>;
 
@@ -105,7 +105,7 @@ export const TOOLSET_CONFLICT_RULES = [
   {
     owner: "subagents-codex",
     when: ["codex"],
-    hides: ["Task", "TaskOutput", "TaskStop"],
+    hides: ["Task"],
   },
   {
     owner: "subagents-task",

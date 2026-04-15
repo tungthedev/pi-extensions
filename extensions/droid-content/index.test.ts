@@ -27,8 +27,6 @@ const TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "FetchUrl", description: "web" },
   { name: "skill", description: "skill" },
   { name: "Task", description: "task" },
-  { name: "TaskOutput", description: "task" },
-  { name: "TaskStop", description: "task" },
   { name: "update_plan", description: "codex" },
   { name: "read_plan", description: "codex" },
   { name: "request_user_input", description: "codex" },
@@ -71,8 +69,6 @@ test("pi mode keeps builtin tools and excludes droid and codex tool groups", () 
     "FetchUrl",
     "skill",
     "Task",
-    "TaskOutput",
-    "TaskStop",
   ]);
 });
 
@@ -93,7 +89,5 @@ test("droid mode activates droid tools and hides conflicting builtin and codex t
     "FetchUrl",
     "skill",
     "Task",
-    "TaskOutput",
-    "TaskStop",
   ]);
 });

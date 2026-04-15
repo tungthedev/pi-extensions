@@ -40,8 +40,6 @@ const ALL_TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "wait_agent", description: "subagent codex" },
   { name: "close_agent", description: "subagent codex" },
   { name: "Task", description: "task" },
-  { name: "TaskOutput", description: "task" },
-  { name: "TaskStop", description: "task" },
 ]);
 
 test("toolset registry only exposes pi, codex, and droid modes", () => {
@@ -62,8 +60,6 @@ test("resolveToolsetToolNames computes the canonical tool list for each mode", (
     "FetchUrl",
     "skill",
     "Task",
-    "TaskOutput",
-    "TaskStop",
   ]);
 
   assert.deepEqual(resolveToolsetToolNames("codex", ALL_TOOL_INFOS), [
@@ -103,8 +99,6 @@ test("resolveToolsetToolNames computes the canonical tool list for each mode", (
     "FetchUrl",
     "skill",
     "Task",
-    "TaskOutput",
-    "TaskStop",
   ]);
 });
 
@@ -127,8 +121,6 @@ test("resolveToolsetToolNames filters unavailable optional tools without leaving
     "WebSearch",
     "skill",
     "Task",
-    "TaskOutput",
-    "TaskStop",
   ]);
 });
 

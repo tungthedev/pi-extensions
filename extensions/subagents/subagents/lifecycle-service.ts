@@ -106,6 +106,7 @@ export type SubagentLifecycleServiceDeps = {
     record: DurableChildRecord;
     prompt: string;
     profileBootstrap: AppliedSpawnProfile["bootstrap"];
+    thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
     toolSet: "pi" | "codex" | "droid";
     forkedSessionFile?: string;
   }) => Promise<{
@@ -174,14 +175,27 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
       leafId: request.ctx.sessionManager.getLeafId(),
     });
 
-    return applySpawnAgentProfile({
+    const applied = applySpawnAgentProfile({
       requestedAgentType: request.requestedAgentType,
-      profiles: resolveAgentProfiles({ includeHidden: true }).profiles,
-      requestedModel: request.requestedModel?.trim() ? request.requestedModel : inheritedDefaults.model,
-      requestedReasoningEffort: request.requestedReasoningEffort?.trim()
-        ? request.requestedReasoningEffort
-        : inheritedDefaults.reasoningEffort,
+      profiles: resolveAgentProfiles({ cwd: request.ctx.cwd, includeHidden: true }).profiles,
+      requestedModel: request.requestedModel,
+      requestedReasoningEffort: request.requestedReasoningEffort,
     });
+
+    const effectiveModel = applied.effectiveModel || inheritedDefaults.model;
+    const effectiveReasoningEffort =
+      applied.effectiveReasoningEffort || inheritedDefaults.reasoningEffort;
+
+    return {
+      ...applied,
+      effectiveModel: effectiveModel || undefined,
+      effectiveReasoningEffort: effectiveReasoningEffort || undefined,
+      bootstrap: {
+        ...applied.bootstrap,
+        model: effectiveModel || undefined,
+        reasoningEffort: effectiveReasoningEffort || undefined,
+      },
+    };
   };
 
   const buildBaseRecord = (
@@ -268,6 +282,7 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
               record: baseRecord,
               prompt: request.prompt,
               profileBootstrap: appliedProfile.bootstrap,
+              thinkingLevel,
               toolSet,
               forkedSessionFile,
             })

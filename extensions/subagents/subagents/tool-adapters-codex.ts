@@ -40,6 +40,10 @@ export type CodexToolAdapterDeps = {
   normalizeWaitAgentTimeoutMs: (timeoutMs: number | undefined) => number;
 };
 
+export type CodexToolAdapterHandle = {
+  refreshRoleDescriptions: (cwd?: string) => void;
+};
+
 function resolvePreferredAgentOutput(agent: PublicAgentSnapshot): string | undefined {
   if (agent.status === "running") {
     return agent.update_message ?? agent.ping_message ?? agent.last_assistant_text ?? agent.last_error;
@@ -131,55 +135,56 @@ function buildSpawnAgentToolDescription(agentRoleGuidance: string): string {
 export function registerCodexToolAdapters(
   pi: Pick<ExtensionAPI, "registerTool">,
   deps: CodexToolAdapterDeps,
-): void {
-  const agentTypeDescription = buildSpawnAgentTypeDescription(resolveAgentProfiles());
+): CodexToolAdapterHandle {
+  type RegisteredTool = Parameters<typeof pi.registerTool>[0];
+  const spawnAgentParameters = Type.Object({
+    name: Type.String({
+      description: "Required lowercase public name for the child agent. May include hyphens and underscores.",
+    }),
+    message: Type.String({
+      description: "Initial plain-text task for the new agent.",
+    }),
+    agent_type: Type.Optional(
+      Type.String({
+        description: "",
+      }),
+    ),
+    fork_context: Type.Optional(
+      Type.Boolean({
+        description:
+          "Only use when copying the current persisted session branch into the child will clearly help by avoiding re-explaining a long history and letting the subagent start faster, usually for debugging or continuing complex ongoing work. Never use it for simple self-contained tasks, or for work that benefits from fresh context and low bias such as review or audit tasks.",
+      }),
+    ),
+    model: Type.Optional(
+      Type.String({
+        description: "Optional model override for the child agent.",
+      }),
+    ),
+    reasoning_effort: Type.Optional(
+      Type.String({
+        description: "Optional reasoning effort override for the child agent.",
+      }),
+    ),
+    wait_for_agent: Type.Optional(
+      Type.Boolean({
+        description:
+          "If true, wait for agent completion in this call. If false or omitted, return immediately and notify later when the child completes.",
+      }),
+    ),
+    interactive: Type.Optional(
+      Type.Boolean({
+        description:
+          "If true, launch the child in a visible multiplexer pane/tab for direct user interaction. Default false. Only use when the user explicitly asks to work in the child session.",
+      }),
+    ),
+  });
 
-  pi.registerTool({
+  const spawnAgentTool: RegisteredTool = {
     name: "spawn_agent",
     label: "spawn_agent",
-    description: buildSpawnAgentToolDescription(agentTypeDescription),
-    parameters: Type.Object({
-      name: Type.String({
-        description: "Required lowercase public name for the child agent. May include hyphens and underscores.",
-      }),
-      message: Type.String({
-        description: "Initial plain-text task for the new agent.",
-      }),
-      agent_type: Type.Optional(
-        Type.String({
-          description: agentTypeDescription,
-        }),
-      ),
-      fork_context: Type.Optional(
-        Type.Boolean({
-          description:
-            "Only use when copying the current persisted session branch into the child will clearly help by avoiding re-explaining a long history and letting the subagent start faster, usually for debugging or continuing complex ongoing work. Never use it for simple self-contained tasks, or for work that benefits from fresh context and low bias such as review or audit tasks.",
-        }),
-      ),
-      model: Type.Optional(
-        Type.String({
-          description: "Optional model override for the child agent.",
-        }),
-      ),
-      reasoning_effort: Type.Optional(
-        Type.String({
-          description: "Optional reasoning effort override for the child agent.",
-        }),
-      ),
-      wait_for_agent: Type.Optional(
-        Type.Boolean({
-          description:
-            "If true, wait for agent completion in this call. If false or omitted, return immediately and notify later when the child completes.",
-        }),
-      ),
-      interactive: Type.Optional(
-        Type.Boolean({
-          description:
-            "If true, launch the child in a visible multiplexer pane/tab for direct user interaction. Default false. Only use when the user explicitly asks to work in the child session.",
-        }),
-      ),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    description: "",
+    parameters: spawnAgentParameters,
+    async execute(_toolCallId: any, params: any, _signal: any, _onUpdate: any, ctx: any) {
       const prompt = params.message?.trim();
       if (!prompt) {
         throw new Error("message is required");
@@ -225,23 +230,20 @@ export function registerCodexToolAdapters(
             },
       };
     },
-    renderCall(args, theme) {
+    renderCall(args: any, theme: any) {
       const publicName =
         typeof args.name === "string" && args.name.trim().length > 0 ? args.name.trim() : "agent";
       const agentType = resolveRequestedAgentType(args.agent_type);
       const roleLabel = agentType !== "default" ? ` [${agentType}]` : "";
       const modelLabel = formatSubagentModelLabel(args.model, args.reasoning_effort);
       const transportLabel = args.interactive ? theme.fg("muted", " (interactive)") : "";
+      const backgroundLabel = args.wait_for_agent ? "" : theme.fg("muted", " (background)");
       const agentName = `${theme.fg("accent", `${publicName}${roleLabel}`)}${modelLabel ? theme.fg("muted", ` (${modelLabel})`) : ""}${transportLabel}`;
       const callLine = new Text(
-        toolCallLine(theme, args.wait_for_agent ? "Spawn" : "Spawn running", agentName),
+        toolCallLine(theme, "Spawn", `${agentName}${backgroundLabel}`),
         0,
         0,
       );
-
-      if (!args.wait_for_agent) {
-        return callLine;
-      }
 
       const prompt = typeof args.message === "string" ? args.message.trim() : "";
       if (!prompt) {
@@ -253,7 +255,7 @@ export function registerCodexToolAdapters(
       container.addChild(deps.renderSpawnPromptPreview(prompt, theme));
       return container;
     },
-    renderResult(result, options, theme) {
+    renderResult(result: any, options: any, theme: any) {
       const details =
         (result.details as
           | ({
@@ -275,7 +277,16 @@ export function registerCodexToolAdapters(
       }
       return renderFallbackResult(result, theme.fg("muted", "spawned"));
     },
-  });
+  };
+
+  const refreshRoleDescriptions = (cwd = process.cwd()) => {
+    const agentTypeDescription = buildSpawnAgentTypeDescription(resolveAgentProfiles({ cwd }));
+    spawnAgentTool.description = buildSpawnAgentToolDescription(agentTypeDescription);
+    ((spawnAgentParameters).properties.agent_type).description = agentTypeDescription;
+  };
+
+  refreshRoleDescriptions();
+  pi.registerTool(spawnAgentTool);
 
   pi.registerTool({
     name: "send_message",
@@ -293,7 +304,7 @@ export function registerCodexToolAdapters(
         }),
       ),
     }),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId: any, params: any) {
       const target = validateSubagentName(params.target, "target");
       const input = params.message?.trim();
       if (!input) {
@@ -317,14 +328,14 @@ export function registerCodexToolAdapters(
         },
       };
     },
-    renderCall(args, theme) {
+    renderCall(args: any, theme: any) {
       const target =
         typeof args.target === "string" && args.target.trim().length > 0
           ? args.target.trim()
           : "agent";
       return new Text(toolCallLine(theme, "Send message", theme.fg("accent", target)), 0, 0);
     },
-    renderResult(result, options, theme) {
+    renderResult(result: any, options: any, theme: any) {
       const details = (result.details ?? {}) as PublicAgentSnapshot & { input: string };
       if (typeof details.input !== "string") {
         return renderFallbackResult(result, theme.fg("muted", "messaged subagent"));
@@ -357,7 +368,7 @@ export function registerCodexToolAdapters(
         }),
       ),
     }),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId: any, params: any) {
       const result = await deps.lifecycle.waitAny({
         timeoutMs: deps.normalizeWaitAgentTimeoutMs(params.timeout_ms),
       });
@@ -374,7 +385,7 @@ export function registerCodexToolAdapters(
     renderCall(_args, theme) {
       return new Text(toolCallLine(theme, "Wait", theme.fg("accent", "for agents")), 0, 0);
     },
-    renderResult(result, options, theme) {
+    renderResult(result: any, options: any, theme: any) {
       const details =
         result.details as { agents?: PublicAgentSnapshot[]; timed_out?: boolean } | undefined;
       if (!details) {
@@ -391,7 +402,7 @@ export function registerCodexToolAdapters(
     parameters: Type.Object({
       target: Type.String({ description: "Public name of the agent to close." }),
     }),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId: any, params: any) {
       const target = validateSubagentName(params.target, "target");
       const result = await deps.lifecycle.stopByName(target);
       const snapshot = toPublicAgentSnapshot(result.snapshot);
@@ -407,14 +418,14 @@ export function registerCodexToolAdapters(
         },
       };
     },
-    renderCall(args, theme) {
+    renderCall(args: any, theme: any) {
       const target =
         typeof args.target === "string" && args.target.trim().length > 0
           ? args.target.trim()
           : "agent";
       return new Text(toolCallLine(theme, "Close", theme.fg("accent", target)), 0, 0);
     },
-    renderResult(result, _options, theme) {
+    renderResult(result: any, _options: any, theme: any) {
       const details = result.details as { status?: PublicAgentSnapshot } | PublicAgentSnapshot | undefined;
       const snapshot = extractSnapshotDetails(details);
       if (!snapshot) {
@@ -424,4 +435,6 @@ export function registerCodexToolAdapters(
       return new Text(titleLine(theme, "text", "Closed", theme.fg("accent", displayName)), 0, 0);
     },
   });
+
+  return { refreshRoleDescriptions };
 }
