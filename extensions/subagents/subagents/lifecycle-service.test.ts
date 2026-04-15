@@ -43,7 +43,7 @@ function createBaseDeps(overrides: Partial<Parameters<typeof createSubagentLifec
       launchInteractiveChild: async () => ({ attachment, record: records.get("agent-1")! }),
       watchInteractiveAttachment() {},
       sendPromptToAttachment: async () => records.get("agent-1")!,
-      ensureLiveAttachment: async () => attachment,
+      ensureLiveAttachment: async () => ({ attachment }),
       requireDurableChild: (agentId: string) => {
         const record = records.get(agentId);
         if (!record) throw new Error(`missing ${agentId}`);
@@ -137,6 +137,60 @@ test("lifecycle service spawn failure persists cleanup semantics", async () => {
 
   assert.deepEqual(persisted, ["subagent:create", "subagent:close"]);
   assert.equal(closed, 1);
+});
+
+test("lifecycle service resumes detached interactive agents by attaching with the resume input", async () => {
+  let sentInteractiveInputs = 0;
+  let ensureOptions:
+    | {
+        interactiveInput?: string;
+        taskSummary?: string;
+      }
+    | undefined;
+  const { deps, records } = createBaseDeps();
+  const interactiveAttachment: LiveChildAttachment = {
+    agentId: "agent-1",
+    transport: "interactive",
+    stateWaiters: [],
+    operationQueue: Promise.resolve(),
+    lastLiveAt: Date.now(),
+    surface: "pane-1",
+    sessionFile: "/tmp/interactive-child.jsonl",
+    abortController: new AbortController(),
+  };
+  records.set("agent-1", {
+    ...records.get("agent-1")!,
+    transport: "interactive",
+    status: "live_idle",
+    sessionFile: "/tmp/interactive-child.jsonl",
+  });
+  const service = createSubagentLifecycleService({
+    ...deps,
+    ensureLiveAttachment: async (_agentId, options) => {
+      ensureOptions = options;
+      return { attachment: interactiveAttachment, deliveredInputAtAttach: true };
+    },
+    isInteractiveAttachment: () => true,
+    sendInteractiveInput() {
+      sentInteractiveInputs += 1;
+    },
+  });
+
+  const resumed = await service.resume({
+    mode: "codex",
+    agentId: "agent-1",
+    input: "continue with the fix",
+    taskSummary: "continue fix",
+  });
+
+  assert.deepEqual(ensureOptions, {
+    interactiveInput: "continue with the fix",
+    taskSummary: "continue fix",
+  });
+  assert.equal(sentInteractiveInputs, 0);
+  assert.equal(resumed.commandType, "interactive_input");
+  assert.equal(resumed.input, "continue with the fix");
+  assert.equal(resumed.snapshot.status, "running");
 });
 
 test("lifecycle service wait and stop share active wait and close behavior", async () => {

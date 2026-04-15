@@ -6,6 +6,7 @@ function completionSignature(record: DurableChildRecord): string {
     status: record.status,
     lastError: record.lastError ?? null,
     lastAssistantText: record.lastAssistantText ?? null,
+    lastPingMessage: record.lastPingMessage ?? null,
   });
 }
 
@@ -26,13 +27,8 @@ export function createReadySnapshotCoordinator(deps: {
     return deps.store.getCompletionVersion(record.agentId);
   };
 
-  const isReadySnapshot = (
-    record: DurableChildRecord,
-    attachment: LiveChildAttachment | undefined,
-  ): boolean => !attachment || record.status !== "live_running";
-
   const shouldNotifyParent = (record: DurableChildRecord): boolean => {
-    if (record.status !== "live_idle" && record.status !== "failed") {
+    if (record.status !== "live_running" && record.status !== "live_idle" && record.status !== "failed") {
       return false;
     }
 
@@ -40,6 +36,49 @@ export function createReadySnapshotCoordinator(deps: {
     return !activeSessionFile || !record.parentSessionFile
       ? true
       : activeSessionFile === record.parentSessionFile;
+  };
+
+  const snapshotFromRecord = (
+    record: DurableChildRecord,
+    attachment: LiveChildAttachment | undefined,
+    updateMessage?: string,
+  ): AgentSnapshot => deps.childSnapshot({ ...record, lastUpdateMessage: updateMessage }, attachment);
+
+  const getPendingCompletionVersion = (
+    record: DurableChildRecord,
+    attachment: LiveChildAttachment | undefined,
+  ): number | undefined => {
+    if (attachment && record.status === "live_running") {
+      return undefined;
+    }
+
+    const completionVersion = getCompletionVersion(record);
+    if (deps.store.getConsumedCompletionVersion(record.agentId) >= completionVersion) {
+      deps.store.clearSuppressedCompletionVersion(record.agentId);
+      return undefined;
+    }
+
+    return completionVersion;
+  };
+
+  const getPendingUpdateVersion = (record: DurableChildRecord): number | undefined => {
+    if (record.status !== "live_running") {
+      deps.store.clearSuppressedUpdateVersion(record.agentId);
+      return undefined;
+    }
+
+    const message = deps.store.getLatestUpdateMessage(record.agentId);
+    const updateVersion = deps.store.getUpdateVersion(record.agentId);
+    if (message === undefined || updateVersion === 0) {
+      return undefined;
+    }
+
+    if (deps.store.getConsumedUpdateVersion(record.agentId) >= updateVersion) {
+      deps.store.clearSuppressedUpdateVersion(record.agentId);
+      return undefined;
+    }
+
+    return updateVersion;
   };
 
   const claimReadySnapshot = (
@@ -50,23 +89,42 @@ export function createReadySnapshotCoordinator(deps: {
     if (!record) return undefined;
 
     const attachment = deps.store.getLiveAttachment(agentId);
-    if (!isReadySnapshot(record, attachment)) {
-      return undefined;
-    }
-
     if (options.requireNotificationEligibility && !shouldNotifyParent(record)) {
       return undefined;
     }
 
-    const completionVersion = getCompletionVersion(record);
-    if (deps.store.getConsumedCompletionVersion(agentId) >= completionVersion) {
+    const completionVersion = getPendingCompletionVersion(record, attachment);
+    if (completionVersion !== undefined) {
+      deps.store.setConsumedCompletionVersion(agentId, completionVersion);
       deps.store.clearSuppressedCompletionVersion(agentId);
+      deps.store.clearSuppressedUpdateVersion(agentId);
+      return snapshotFromRecord(record, attachment, undefined);
+    }
+
+    const updateVersion = getPendingUpdateVersion(record);
+    if (updateVersion === undefined) {
       return undefined;
     }
 
-    deps.store.setConsumedCompletionVersion(agentId, completionVersion);
-    deps.store.clearSuppressedCompletionVersion(agentId);
-    return deps.childSnapshot(record, attachment);
+    deps.store.setConsumedUpdateVersion(agentId, updateVersion);
+    deps.store.clearSuppressedUpdateVersion(agentId);
+    return snapshotFromRecord(record, attachment, deps.store.getLatestUpdateMessage(agentId));
+  };
+
+  const peekReadySnapshot = (agentId: string): AgentSnapshot | undefined => {
+    const record = deps.store.getDurableChild(agentId);
+    if (!record) return undefined;
+
+    const attachment = deps.store.getLiveAttachment(agentId);
+    if (getPendingCompletionVersion(record, attachment) !== undefined) {
+      return snapshotFromRecord(record, attachment, undefined);
+    }
+
+    if (getPendingUpdateVersion(record) !== undefined) {
+      return snapshotFromRecord(record, attachment, deps.store.getLatestUpdateMessage(agentId));
+    }
+
+    return undefined;
   };
 
   const collectReadySnapshots = (
@@ -78,20 +136,14 @@ export function createReadySnapshotCoordinator(deps: {
 
     for (const id of ids) {
       const record = deps.requireDurableChild(id);
-      const attachment = deps.store.getLiveAttachment(id);
-      if (!isReadySnapshot(record, attachment)) {
+      const snapshot = options.claim ? claimReadySnapshot(id) : peekReadySnapshot(id);
+      if (snapshot) {
+        snapshots.push(snapshot);
+        continue;
+      }
+
+      if (record.status === "live_running" && deps.store.getLiveAttachment(id)) {
         pendingCount += 1;
-        continue;
-      }
-
-      if (!options.claim) {
-        snapshots.push(deps.childSnapshot(record, attachment));
-        continue;
-      }
-
-      const claimedSnapshot = claimReadySnapshot(id);
-      if (claimedSnapshot) {
-        snapshots.push(claimedSnapshot);
       }
     }
 
@@ -135,9 +187,19 @@ export function createReadySnapshotCoordinator(deps: {
   const notifyParentOfChildStatus = (record: DurableChildRecord): void => {
     if (!shouldNotifyParent(record)) return;
 
-    const completionVersion = getCompletionVersion(record);
+    const completionVersion = getPendingCompletionVersion(record, deps.store.getLiveAttachment(record.agentId));
+    const updateVersion = completionVersion === undefined ? getPendingUpdateVersion(record) : undefined;
+    if (completionVersion === undefined && updateVersion === undefined) {
+      return;
+    }
+
     if (deps.store.getActiveWaitCount(record.agentId) > 0) {
-      deps.store.setSuppressedCompletionVersion(record.agentId, completionVersion);
+      if (completionVersion !== undefined) {
+        deps.store.setSuppressedCompletionVersion(record.agentId, completionVersion);
+        deps.store.clearSuppressedUpdateVersion(record.agentId);
+      } else if (updateVersion !== undefined) {
+        deps.store.setSuppressedUpdateVersion(record.agentId, updateVersion);
+      }
       return;
     }
 
@@ -150,13 +212,28 @@ export function createReadySnapshotCoordinator(deps: {
     for (const id of ids) {
       if (deps.store.getActiveWaitCount(id) > 0) continue;
       const record = deps.store.getDurableChild(id);
-      const suppressedVersion = deps.store.getSuppressedCompletionVersion(id);
-      if (!record || suppressedVersion === undefined || !shouldNotifyParent(record)) continue;
-      if (deps.store.getConsumedCompletionVersion(id) >= suppressedVersion) {
-        deps.store.clearSuppressedCompletionVersion(id);
+      if (!record || !shouldNotifyParent(record)) continue;
+
+      const suppressedCompletionVersion = deps.store.getSuppressedCompletionVersion(id);
+      if (suppressedCompletionVersion !== undefined) {
+        if (deps.store.getConsumedCompletionVersion(id) >= suppressedCompletionVersion) {
+          deps.store.clearSuppressedCompletionVersion(id);
+        } else if (getCompletionVersion(record) === suppressedCompletionVersion) {
+          notifyParentOfChildStatus(record);
+          continue;
+        }
+      }
+
+      const suppressedUpdateVersion = deps.store.getSuppressedUpdateVersion(id);
+      if (suppressedUpdateVersion === undefined) continue;
+      if (deps.store.getConsumedUpdateVersion(id) >= suppressedUpdateVersion) {
+        deps.store.clearSuppressedUpdateVersion(id);
         continue;
       }
-      if (getCompletionVersion(record) !== suppressedVersion) continue;
+      if (getPendingUpdateVersion(record) !== suppressedUpdateVersion) {
+        deps.store.clearSuppressedUpdateVersion(id);
+        continue;
+      }
       notifyParentOfChildStatus(record);
     }
   };

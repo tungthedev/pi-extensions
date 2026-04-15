@@ -14,7 +14,6 @@ import type {
   InteractiveLiveChildAttachment,
   LiveChildAttachment,
   RpcLiveChildAttachment,
-  RpcResponse,
   SessionEntryLike,
   SubagentEntryType,
 } from "./types.ts";
@@ -23,6 +22,7 @@ import { appendBounded, createLiveAttachment, resolveChildSessionDir } from "./a
 import {
   closeSurface,
   createSurface,
+  getInteractiveUpdateSignalOffset,
   isMuxAvailable,
   pollForExit,
   sendInteractiveInput,
@@ -61,9 +61,9 @@ import {
   toPublicAgentSnapshot,
 } from "./results.ts";
 import {
+  handleRpcMessage,
   parseJsonLines,
   rejectPendingResponses,
-  respondToUiRequest,
   sendRpcCommand,
 } from "./rpc.ts";
 import {
@@ -221,6 +221,57 @@ export function resolveForkContextSessionFile(options: {
   return forkedSessionFile;
 }
 
+export function buildDurablePatchFromGetState(
+  data: Record<string, unknown> | undefined,
+): Partial<DurableChildRecord> {
+  const patch: Partial<DurableChildRecord> = {
+    status: deriveDurableStatusFromState(data),
+    lastError: undefined,
+    lastPingMessage: undefined,
+  };
+  if (typeof data?.sessionId === "string") {
+    patch.sessionId = data.sessionId;
+  }
+  if (typeof data?.sessionFile === "string") {
+    patch.sessionFile = data.sessionFile;
+  }
+  return patch;
+}
+
+export function ingestCallerUpdate(options: {
+  agentId: string;
+  message: string;
+  store: {
+    hasDurableChild(agentId: string): boolean;
+    recordUpdate(agentId: string, message: string): void;
+  };
+  updateDurableChild: (
+    agentId: string,
+    patch: Partial<DurableChildRecord>,
+    options?: { persistAs?: SubagentEntryType; reason?: string },
+  ) => DurableChildRecord;
+  notifyParentOfChildStatus: (record: DurableChildRecord) => void;
+  persistAs?: SubagentEntryType;
+}): DurableChildRecord | undefined {
+  if (!options.store.hasDurableChild(options.agentId)) {
+    return undefined;
+  }
+
+  options.store.recordUpdate(options.agentId, options.message);
+  const nextRecord = options.updateDurableChild(
+    options.agentId,
+    {
+      status: "live_running",
+      lastError: undefined,
+      lastPingMessage: undefined,
+      lastUpdateMessage: options.message,
+    },
+    { persistAs: options.persistAs ?? SUBAGENT_ENTRY_TYPES.update },
+  );
+  options.notifyParentOfChildStatus(nextRecord);
+  return nextRecord;
+}
+
 export function registerCodexSubagentTools(pi: ExtensionAPI) {
   const store = createSubagentRuntimeStore();
 
@@ -230,6 +281,21 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
 
   const decrementActiveWaits = (ids: string[]) => {
     store.decrementActiveWaits(ids);
+  };
+
+  const sendSubagentNotification = (snapshot: AgentSnapshot, options: { taskSummary?: string } = {}) => {
+    const publicSnapshot = toPublicAgentSnapshot(snapshot);
+    pi.sendMessage(
+      {
+        customType: SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
+        content: formatSubagentNotificationMessage(snapshot, {
+          taskSummary: options.taskSummary,
+        }),
+        display: true,
+        details: options.taskSummary ? { ...publicSnapshot, task_summary: options.taskSummary } : publicSnapshot,
+      },
+      getSubagentNotificationDeliveryOptions(store.getParentIsStreaming()),
+    );
   };
 
   const readySnapshots = createReadySnapshotCoordinator({
@@ -245,18 +311,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     waitForAnyStateChange,
     maxWaitTimeoutMs: MAX_WAIT_AGENT_TIMEOUT_MS,
     sendNotification: (snapshot, taskSummary) => {
-      const publicSnapshot = toPublicAgentSnapshot(snapshot);
-      pi.sendMessage(
-        {
-          customType: SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
-          content: formatSubagentNotificationMessage(snapshot, {
-            taskSummary,
-          }),
-          display: true,
-          details: taskSummary ? { ...publicSnapshot, task_summary: taskSummary } : publicSnapshot,
-        },
-        getSubagentNotificationDeliveryOptions(store.getParentIsStreaming()),
-      );
+      sendSubagentNotification(snapshot, { taskSummary });
     },
   });
 
@@ -390,18 +445,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     persistAs: SubagentEntryType = SUBAGENT_ENTRY_TYPES.update,
   ) => {
     if (!data) return requireDurableChild(agentId);
-
-    const patch: Partial<DurableChildRecord> = {
-      status: deriveDurableStatusFromState(data),
-      lastError: undefined,
-    };
-    if (typeof data.sessionId === "string") {
-      patch.sessionId = data.sessionId;
-    }
-    if (typeof data.sessionFile === "string") {
-      patch.sessionFile = data.sessionFile;
-    }
-    return updateDurableChild(agentId, patch, { persistAs });
+    return updateDurableChild(agentId, buildDurablePatchFromGetState(data), { persistAs });
   };
 
   const bindAttachment = (attachment: RpcLiveChildAttachment) => {
@@ -413,122 +457,117 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       updateDurableChild(attachment.agentId, patch, options);
     };
 
-    const handleRpcMessage = (rawMessage: string): void => {
-      if (!rawMessage.trim()) return;
-
-      let message: Record<string, unknown>;
-      try {
-        message = JSON.parse(rawMessage) as Record<string, unknown>;
-      } catch (error) {
-        handleDurablePatch(
-          {
-            status: "failed",
-            lastError: `Failed to parse RPC output: ${String(error)}`,
-          },
-          { persistAs: SUBAGENT_ENTRY_TYPES.update },
-        );
-        notifyStateChange(attachment);
-        return;
-      }
-
-      const type = typeof message.type === "string" ? message.type : undefined;
-
-      if (type === "response") {
-        const response = message as RpcResponse;
-        const responseId = response.id;
-        if (responseId) {
-          const pending = attachment.pendingResponses.get(responseId);
-          if (pending) {
-            attachment.pendingResponses.delete(responseId);
-            pending.resolve(response);
-          }
-        }
-        return;
-      }
-
-      if (type === "extension_ui_request") {
-        respondToUiRequest(attachment, message);
-        return;
-      }
-
-      attachment.lastLiveAt = Date.now();
-
-      if (type === "agent_start") {
-        store.markActivityRunning(store.getActivityIdentity(attachment.agentId));
-        handleDurablePatch(
-          {
-            status: "live_running",
-            lastError: undefined,
-          },
-          { persistAs: SUBAGENT_ENTRY_TYPES.update },
-        );
-        notifyStateChange(attachment);
-        return;
-      }
-
-      if (type === "tool_execution_start") {
-        const toolCallId = typeof message.toolCallId === "string" ? message.toolCallId : undefined;
-        const toolName = typeof message.toolName === "string" ? message.toolName : undefined;
-        if (toolCallId && toolName) {
-          store.markToolExecutionStart(
-            store.getActivityIdentity(attachment.agentId),
-            toolCallId,
-            toolName,
-          );
-        }
-        return;
-      }
-
-      if (type === "tool_execution_end") {
-        const toolCallId = typeof message.toolCallId === "string" ? message.toolCallId : undefined;
-        const toolName = typeof message.toolName === "string" ? message.toolName : undefined;
-        if (toolCallId) {
-          store.markToolExecutionEnd(attachment.agentId, toolCallId, toolName);
-        }
-        return;
-      }
-
-      if (type === "agent_end") {
-        const assistantText = extractLastAssistantText(message.messages);
-        const nextRecord = updateDurableChild(
-          attachment.agentId,
-          {
-            status: "live_idle",
-            ...(assistantText ? { lastAssistantText: assistantText } : {}),
-          },
-          { persistAs: SUBAGENT_ENTRY_TYPES.update },
-        );
-        notifyParentOfChildStatus(nextRecord);
-        notifyStateChange(attachment);
-        return;
-      }
-
-      if (type === "extension_error") {
-        const eventName = typeof message.event === "string" ? message.event : "extension";
-        const errorText =
-          typeof message.error === "string" ? message.error : "Unknown extension error";
-        handleDurablePatch(
-          {
-            lastError: `${eventName}: ${errorText}`,
-          },
-          { persistAs: SUBAGENT_ENTRY_TYPES.update },
-        );
-        notifyStateChange(attachment);
-        return;
-      }
-
-      if (type === "message_end") {
-        const assistantText = extractLastAssistantText([message.message]);
-        if (assistantText) {
+    const handleRpcOutput = (rawMessage: string): void => {
+      handleRpcMessage({
+        rawMessage,
+        attachment,
+        onParseError(error) {
           handleDurablePatch(
             {
-              lastAssistantText: assistantText,
+              status: "failed",
+              lastError: `Failed to parse RPC output: ${String(error)}`,
             },
             { persistAs: SUBAGENT_ENTRY_TYPES.update },
           );
           notifyStateChange(attachment);
-        }
-      }
+        },
+        onCallerUpdate(message) {
+          attachment.lastLiveAt = Date.now();
+          if (
+            ingestCallerUpdate({
+              agentId: attachment.agentId,
+              message,
+              store,
+              updateDurableChild,
+              notifyParentOfChildStatus,
+            })
+          ) {
+            notifyStateChange(attachment);
+          }
+        },
+        onUnsolicitedMessage(message, type) {
+          attachment.lastLiveAt = Date.now();
+
+          if (type === "agent_start") {
+            store.markActivityRunning(store.getActivityIdentity(attachment.agentId));
+            handleDurablePatch(
+              {
+                status: "live_running",
+                lastError: undefined,
+                lastPingMessage: undefined,
+                lastUpdateMessage: undefined,
+              },
+              { persistAs: SUBAGENT_ENTRY_TYPES.update },
+            );
+            notifyStateChange(attachment);
+            return;
+          }
+
+          if (type === "tool_execution_start") {
+            const toolCallId = typeof message.toolCallId === "string" ? message.toolCallId : undefined;
+            const toolName = typeof message.toolName === "string" ? message.toolName : undefined;
+            if (toolCallId && toolName) {
+              store.markToolExecutionStart(
+                store.getActivityIdentity(attachment.agentId),
+                toolCallId,
+                toolName,
+              );
+            }
+            return;
+          }
+
+          if (type === "tool_execution_end") {
+            const toolCallId = typeof message.toolCallId === "string" ? message.toolCallId : undefined;
+            const toolName = typeof message.toolName === "string" ? message.toolName : undefined;
+            if (toolCallId) {
+              store.markToolExecutionEnd(attachment.agentId, toolCallId, toolName);
+            }
+            return;
+          }
+
+          if (type === "agent_end") {
+            const assistantText = extractLastAssistantText(message.messages);
+            const nextRecord = updateDurableChild(
+              attachment.agentId,
+              {
+                status: "live_idle",
+                ...(assistantText ? { lastAssistantText: assistantText } : {}),
+              },
+              { persistAs: SUBAGENT_ENTRY_TYPES.update },
+            );
+            notifyParentOfChildStatus(nextRecord);
+            notifyStateChange(attachment);
+            return;
+          }
+
+          if (type === "extension_error") {
+            const eventName = typeof message.event === "string" ? message.event : "extension";
+            const errorText =
+              typeof message.error === "string" ? message.error : "Unknown extension error";
+            handleDurablePatch(
+              {
+                lastError: `${eventName}: ${errorText}`,
+              },
+              { persistAs: SUBAGENT_ENTRY_TYPES.update },
+            );
+            notifyStateChange(attachment);
+            return;
+          }
+
+          if (type === "message_end") {
+            const assistantText = extractLastAssistantText([message.message]);
+            if (assistantText) {
+              handleDurablePatch(
+                {
+                  lastAssistantText: assistantText,
+                },
+                { persistAs: SUBAGENT_ENTRY_TYPES.update },
+              );
+              notifyStateChange(attachment);
+            }
+          }
+        },
+      });
     };
 
     attachment.stdoutBuffer = "";
@@ -538,7 +577,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       const parsed = parseJsonLines(attachment.stdoutBuffer);
       attachment.stdoutBuffer = parsed.rest;
       for (const line of parsed.lines) {
-        handleRpcMessage(line);
+        handleRpcOutput(line);
       }
     });
 
@@ -581,7 +620,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         attachment.stdoutBuffer += tail;
       }
       if (attachment.stdoutBuffer.trim()) {
-        handleRpcMessage(attachment.stdoutBuffer);
+        handleRpcOutput(attachment.stdoutBuffer);
         attachment.stdoutBuffer = "";
       }
 
@@ -630,7 +669,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   const launchInteractiveChild = async (options: {
     record: DurableChildRecord;
     prompt: string;
-    profileBootstrap: {
+    profileBootstrap?: {
       name: string;
       developerInstructions?: string;
       model?: string;
@@ -639,6 +678,8 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     };
     toolSet: "pi" | "codex" | "droid";
     forkedSessionFile?: string;
+    launchMode?: "spawn" | "resume";
+    sessionFileOverride?: string;
   }): Promise<{
     attachment: InteractiveLiveChildAttachment;
     record: DurableChildRecord;
@@ -648,18 +689,20 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     }
 
     const childSessionDir = resolveChildSessionDir();
+    const launchMode = options.launchMode ?? "spawn";
     const sessionFile =
+      options.sessionFileOverride ??
       options.forkedSessionFile ??
       path.join(childSessionDir, `${options.record.agentId}-${Date.now().toString(36)}.jsonl`);
     const promptDir = path.join(childSessionDir, "prompts");
     const configDir = path.join(childSessionDir, "launchers");
     const promptFile = path.join(promptDir, `${options.record.agentId}-${Date.now()}.md`);
     const configFile = path.join(configDir, `${options.record.agentId}-${Date.now()}.json`);
-    const wrappedPrompt = wrapInteractiveSpawnPrompt(options.prompt);
+    const promptContent = launchMode === "resume" ? options.prompt.trim() : wrapInteractiveSpawnPrompt(options.prompt);
     fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
     fs.mkdirSync(promptDir, { recursive: true });
     fs.mkdirSync(configDir, { recursive: true });
-    fs.writeFileSync(promptFile, wrappedPrompt, "utf8");
+    fs.writeFileSync(promptFile, promptContent, "utf8");
 
     const surface = createSurface(options.record.name ?? options.record.agentId);
     await new Promise<void>((resolve) => setTimeout(resolve, 500));
@@ -674,12 +717,12 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       INTERACTIVE_EXTENSION_ENTRY,
     ];
 
-    if (options.record.model && !options.forkedSessionFile) {
+    if (launchMode !== "resume" && options.record.model && !options.forkedSessionFile) {
       piArgs.push("--model", options.record.model);
     }
 
-    const developerInstructions = options.profileBootstrap.developerInstructions?.trim();
-    if (developerInstructions) {
+    const developerInstructions = options.profileBootstrap?.developerInstructions?.trim();
+    if (launchMode !== "resume" && developerInstructions) {
       piArgs.push("--append-system-prompt", developerInstructions);
     }
 
@@ -693,6 +736,8 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         ...selectPreservedInteractiveEnv(),
         FORCE_COLOR: "0",
         PI_SUBAGENT_PROJECT_ROOT: process.env.PI_SUBAGENT_PROJECT_ROOT ?? process.cwd(),
+        PI_SUBAGENT_NAME: options.record.name ?? options.record.agentId,
+        PI_SUBAGENT_SESSION: sessionFile,
         [SUBAGENT_CWD_ENV]: options.record.cwd,
         [SUBAGENT_CHILD_ENV]: "1",
         [TOOL_SET_OVERRIDE_ENV]: options.toolSet,
@@ -701,6 +746,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     };
     fs.writeFileSync(configFile, JSON.stringify(launcherConfig), "utf8");
 
+    const initialUpdateSignalOffset = getInteractiveUpdateSignalOffset(sessionFile);
     const command =
       `${shellExternalCommand(process.execPath, [INTERACTIVE_LAUNCHER_ENTRY, configFile])}; ` +
       shellDoneSentinelCommand();
@@ -712,6 +758,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       surface,
       sessionFile,
       abortController: new AbortController(),
+      updateSignalOffset: initialUpdateSignalOffset,
       stateWaiters: [],
       operationQueue: Promise.resolve(),
       lastLiveAt: Date.now(),
@@ -734,12 +781,28 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
   const watchInteractiveAttachment = (attachment: InteractiveLiveChildAttachment): void => {
     void pollForExit(attachment.surface, attachment.abortController.signal, {
       interval: 1_000,
+      sessionFile: attachment.sessionFile,
+      initialUpdateOffset: attachment.updateSignalOffset,
+      onUpdateSignal(message) {
+        attachment.lastLiveAt = Date.now();
+        if (
+          ingestCallerUpdate({
+            agentId: attachment.agentId,
+            message,
+            store,
+            updateDurableChild,
+            notifyParentOfChildStatus,
+          })
+        ) {
+          notifyStateChange(attachment);
+        }
+      },
       onTick() {
         attachment.lastLiveAt = Date.now();
       },
     })
-      .then((exitCode) => {
-        attachment.exitCode = exitCode;
+      .then((result) => {
+        attachment.exitCode = result.exitCode;
         attachment.lastLiveAt = Date.now();
 
         let nextRecord: DurableChildRecord | undefined;
@@ -752,8 +815,15 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
           nextRecord = updateDurableChild(
             attachment.agentId,
             {
-              status: exitCode === 0 ? "live_idle" : "failed",
-              lastError: exitCode === 0 ? undefined : `Interactive child exited with code ${exitCode}`,
+              status: result.exitCode === 0 ? "live_idle" : "failed",
+              lastError:
+                result.reason === "ping"
+                  ? undefined
+                  : result.exitCode === 0
+                    ? undefined
+                    : `Interactive child exited with code ${result.exitCode}`,
+              lastPingMessage: result.reason === "ping" ? result.ping?.message : undefined,
+              lastUpdateMessage: undefined,
               ...(lastAssistantText ? { lastAssistantText } : {}),
             },
             { persistAs: SUBAGENT_ENTRY_TYPES.update },
@@ -899,17 +969,13 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     }
   };
 
-  const ensureLiveAttachment = async (agentId: string): Promise<LiveChildAttachment> => {
+  const ensureLiveAttachment = async (
+    agentId: string,
+    options: { interactiveInput?: string; taskSummary?: string } = {},
+  ): Promise<{ attachment: LiveChildAttachment; deliveredInputAtAttach?: boolean }> => {
     const existingAttachment = store.getLiveAttachment(agentId);
     if (existingAttachment) {
-      return existingAttachment;
-    }
-
-    const record = requireDurableChild(agentId);
-    if (record.transport === "interactive") {
-      throw new Error(
-        `${formatAgentErrorSubject(agentId, record)} is not currently attached. Interactive children can only be controlled while their parent session is still watching them.`,
-      );
+      return { attachment: existingAttachment };
     }
 
     const inFlightResume = store.getResumeOperation(agentId);
@@ -926,6 +992,44 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       if (!currentRecord.sessionFile) {
         throw new Error(`${agentSubject} is not live and has no durable session_file`);
       }
+
+      if (currentRecord.transport === "interactive") {
+        const interactiveInput = options.interactiveInput?.trim();
+        if (!interactiveInput) {
+          throw new Error(
+            `${agentSubject} is not currently attached. Interactive children can only be resumed when you provide a new message.`,
+          );
+        }
+        if (!fs.existsSync(currentRecord.sessionFile)) {
+          throw new Error(
+            `${agentSubject} cannot be resumed because its durable session_file is missing or not yet persisted to disk`,
+          );
+        }
+
+        const resolvedProfiles = resolveAgentProfiles({ includeHidden: true });
+        const profile = currentRecord.agentType
+          ? resolvedProfiles.profiles.get(currentRecord.agentType)
+          : undefined;
+        const { attachment } = await launchInteractiveChild({
+          record: currentRecord,
+          prompt: interactiveInput,
+          profileBootstrap: profile
+            ? {
+                name: profile.name,
+                developerInstructions: profile.developerInstructions,
+                model: profile.model,
+                reasoningEffort: profile.reasoningEffort,
+                source: profile.source,
+              }
+            : undefined,
+          toolSet: "codex",
+          launchMode: "resume",
+          sessionFileOverride: currentRecord.sessionFile,
+        });
+        watchInteractiveAttachment(attachment);
+        return { attachment, deliveredInputAtAttach: true };
+      }
+
       if (!isResumable(currentRecord)) {
         if (currentRecord.status === "failed") {
           throw new Error(currentRecord.lastError ?? `${agentSubject} is in a failed state`);
@@ -963,7 +1067,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       const resumedRecord = lastAssistantText
         ? updateDurableChild(
             agentId,
-            { lastAssistantText, lastError: undefined },
+            { lastAssistantText, lastError: undefined, lastUpdateMessage: undefined },
             { persistAs: SUBAGENT_ENTRY_TYPES.update },
           )
         : requireDurableChild(agentId);
@@ -972,7 +1076,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         store.markActivityRunning(resumedSnapshot);
       }
 
-      return attachment;
+      return { attachment };
     })();
 
     store.setResumeOperation(agentId, resumeOperation);
@@ -1084,6 +1188,8 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     const runningRecord = updateDurableChild(attachment.agentId, {
       status: "live_running",
       lastError: undefined,
+      lastPingMessage: undefined,
+      lastUpdateMessage: undefined,
     });
     store.markActivityRunning(childSnapshot(runningRecord, attachment));
 

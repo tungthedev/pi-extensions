@@ -59,6 +59,54 @@ export async function sendRpcCommand(
   });
 }
 
+export function handleRpcMessage(options: {
+  rawMessage: string;
+  attachment: RpcLiveChildAttachment;
+  onParseError: (error: Error) => void;
+  onCallerUpdate: (message: string) => void;
+  onUnsolicitedMessage: (message: Record<string, unknown>, type: string | undefined) => void;
+}): void {
+  if (!options.rawMessage.trim()) return;
+
+  let message: Record<string, unknown>;
+  try {
+    message = JSON.parse(options.rawMessage) as Record<string, unknown>;
+  } catch (error) {
+    options.onParseError(error instanceof Error ? error : new Error(String(error)));
+    return;
+  }
+
+  const type = typeof message.type === "string" ? message.type : undefined;
+
+  if (type === "response") {
+    const response = message as RpcResponse;
+    const responseId = response.id;
+    if (responseId) {
+      const pending = options.attachment.pendingResponses.get(responseId);
+      if (pending) {
+        options.attachment.pendingResponses.delete(responseId);
+        pending.resolve(response);
+      }
+    }
+    return;
+  }
+
+  if (type === "extension_ui_request") {
+    respondToUiRequest(options.attachment, message);
+    return;
+  }
+
+  if (type === "caller_update") {
+    const updateMessage = typeof message.message === "string" ? message.message : undefined;
+    if (updateMessage) {
+      options.onCallerUpdate(updateMessage);
+    }
+    return;
+  }
+
+  options.onUnsolicitedMessage(message, type);
+}
+
 export function respondToUiRequest(
   attachment: RpcLiveChildAttachment,
   message: Record<string, unknown>,

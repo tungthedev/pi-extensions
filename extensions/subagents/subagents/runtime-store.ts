@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import type { DurableChildRecord, LiveChildAttachment } from "./types.ts";
-import type { RuntimeCompletionState } from "./runtime-types.ts";
+import type { RuntimeCompletionState, RuntimeUpdateState } from "./runtime-types.ts";
 
 import {
   markSubagentActivityRunning,
@@ -56,8 +56,15 @@ export type SubagentRuntimeStore = ReturnType<typeof createSubagentRuntimeStore>
 export function createSubagentRuntimeStore() {
   const attachments = createAttachmentRegistry();
   const completion = createCompletionTracker();
-  const resumeOperationsByAgentId = new Map<string, Promise<LiveChildAttachment>>();
+  const resumeOperationsByAgentId = new Map<
+    string,
+    Promise<{ attachment: LiveChildAttachment; deliveredInputAtAttach?: boolean }>
+  >();
   const subagentActivitiesById = new Map<string, SubagentActivityState>();
+  const latestUpdateMessageByAgentId = new Map<string, string>();
+  const updateVersionByAgentId = new Map<string, number>();
+  const consumedUpdateVersionByAgentId = new Map<string, number>();
+  const suppressedUpdateVersionByAgentId = new Map<string, number>();
 
   let parentIsStreaming = false;
   let activeSessionFile: string | undefined;
@@ -67,6 +74,15 @@ export function createSubagentRuntimeStore() {
   const requestSubagentActivityRender = () => {
     subagentActivityVersion += 1;
     subagentActivityWidget?.requestRender();
+  };
+
+  const resetUpdateTracking = (agentId: string, options: { consume?: boolean } = {}) => {
+    const version = updateVersionByAgentId.get(agentId) ?? 0;
+    latestUpdateMessageByAgentId.delete(agentId);
+    suppressedUpdateVersionByAgentId.delete(agentId);
+    if (options.consume && version > 0) {
+      consumedUpdateVersionByAgentId.set(agentId, version);
+    }
   };
 
   return {
@@ -122,10 +138,16 @@ export function createSubagentRuntimeStore() {
     getResumeOperation(agentId: string) {
       return resumeOperationsByAgentId.get(agentId);
     },
-    setResumeOperation(agentId: string, operation: Promise<LiveChildAttachment>) {
+    setResumeOperation(
+      agentId: string,
+      operation: Promise<{ attachment: LiveChildAttachment; deliveredInputAtAttach?: boolean }>,
+    ) {
       resumeOperationsByAgentId.set(agentId, operation);
     },
-    clearResumeOperation(agentId: string, operation?: Promise<LiveChildAttachment>) {
+    clearResumeOperation(
+      agentId: string,
+      operation?: Promise<{ attachment: LiveChildAttachment; deliveredInputAtAttach?: boolean }>,
+    ) {
       if (!operation || resumeOperationsByAgentId.get(agentId) === operation) {
         resumeOperationsByAgentId.delete(agentId);
       }
@@ -178,6 +200,53 @@ export function createSubagentRuntimeStore() {
     clearSuppressedCompletionVersion(agentId: string) {
       completion.clearSuppressed(agentId);
     },
+    getUpdateVersion(agentId: string) {
+      return updateVersionByAgentId.get(agentId) ?? 0;
+    },
+    setUpdateVersion(agentId: string, version: number) {
+      updateVersionByAgentId.set(agentId, version);
+    },
+    getLatestUpdateMessage(agentId: string) {
+      return latestUpdateMessageByAgentId.get(agentId);
+    },
+    setLatestUpdateMessage(agentId: string, message: string | undefined) {
+      if (message === undefined) {
+        latestUpdateMessageByAgentId.delete(agentId);
+        return;
+      }
+      latestUpdateMessageByAgentId.set(agentId, message);
+    },
+    getConsumedUpdateVersion(agentId: string) {
+      return consumedUpdateVersionByAgentId.get(agentId) ?? 0;
+    },
+    setConsumedUpdateVersion(agentId: string, version: number) {
+      consumedUpdateVersionByAgentId.set(agentId, version);
+    },
+    getSuppressedUpdateVersion(agentId: string) {
+      return suppressedUpdateVersionByAgentId.get(agentId);
+    },
+    setSuppressedUpdateVersion(agentId: string, version: number) {
+      suppressedUpdateVersionByAgentId.set(agentId, version);
+    },
+    updateState(agentId: string): RuntimeUpdateState {
+      return {
+        message: latestUpdateMessageByAgentId.get(agentId),
+        version: updateVersionByAgentId.get(agentId) ?? 0,
+        consumedVersion: consumedUpdateVersionByAgentId.get(agentId) ?? 0,
+        suppressedVersion: suppressedUpdateVersionByAgentId.get(agentId),
+      };
+    },
+    clearUpdateTracking(agentId: string) {
+      resetUpdateTracking(agentId);
+    },
+    clearSuppressedUpdateVersion(agentId: string) {
+      suppressedUpdateVersionByAgentId.delete(agentId);
+    },
+    recordUpdate(agentId: string, message: string) {
+      latestUpdateMessageByAgentId.set(agentId, message);
+      suppressedUpdateVersionByAgentId.delete(agentId);
+      updateVersionByAgentId.set(agentId, (updateVersionByAgentId.get(agentId) ?? 0) + 1);
+    },
     markRunning(agentId: string, patch: Partial<DurableChildRecord> = {}) {
       const current = attachments.getDurable(agentId);
       if (!current) return undefined;
@@ -204,6 +273,7 @@ export function createSubagentRuntimeStore() {
       };
       attachments.setDurable(agentId, next);
       completion.recordTerminal(agentId, next);
+      resetUpdateTracking(agentId, { consume: true });
 
       return next;
     },
@@ -219,6 +289,7 @@ export function createSubagentRuntimeStore() {
       };
       attachments.setDurable(agentId, next);
       completion.recordTerminal(agentId, next);
+      resetUpdateTracking(agentId, { consume: true });
 
       return next;
     },
@@ -235,6 +306,7 @@ export function createSubagentRuntimeStore() {
       };
       attachments.setDurable(agentId, next);
       completion.recordTerminal(agentId, next);
+      resetUpdateTracking(agentId, { consume: true });
 
       return next;
     },

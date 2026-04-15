@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
+import { rmSync, writeFileSync } from "node:fs";
 import test from "node:test";
 
 import { createInteractiveContext } from "./interactive/context.ts";
 import { createTmuxSurfaceSplit, submitTmuxInput } from "./interactive/backends/tmux.ts";
 import { createWezTermSurfaceSplit } from "./interactive/backends/wezterm.ts";
-import { getMuxBackend } from "./interactive.ts";
+import {
+  consumeInteractiveExitSignal,
+  consumeInteractiveUpdateSignals,
+  getMuxBackend,
+} from "./interactive.ts";
 
 test("getMuxBackend respects context-scoped command detection without leaking between invocations", () => {
   const firstContext = createInteractiveContext({
@@ -18,6 +23,106 @@ test("getMuxBackend respects context-scoped command detection without leaking be
 
   assert.equal(getMuxBackend(firstContext), "tmux");
   assert.equal(getMuxBackend(secondContext), null);
+});
+
+test("consumeInteractiveExitSignal returns done markers exactly once", () => {
+  const root = process.env.TEST_TMPDIR ?? "/tmp";
+  const sessionFile = `${root}/interactive-exit-${Date.now().toString(36)}.jsonl`;
+
+  try {
+    writeFileSync(`${sessionFile}.exit`, JSON.stringify({ type: "done" }), "utf8");
+    assert.deepEqual(consumeInteractiveExitSignal(sessionFile), { type: "done" });
+    assert.equal(consumeInteractiveExitSignal(sessionFile), null);
+  } finally {
+    rmSync(`${sessionFile}.exit`, { force: true });
+  }
+});
+
+test("consumeInteractiveExitSignal returns ping markers exactly once", () => {
+  const root = process.env.TEST_TMPDIR ?? "/tmp";
+  const sessionFile = `${root}/interactive-ping-${Date.now().toString(36)}.jsonl`;
+
+  try {
+    writeFileSync(
+      `${sessionFile}.exit`,
+      JSON.stringify({ type: "ping", name: "worker", message: "need help" }),
+      "utf8",
+    );
+    assert.deepEqual(consumeInteractiveExitSignal(sessionFile), {
+      type: "ping",
+      name: "worker",
+      message: "need help",
+    });
+    assert.equal(consumeInteractiveExitSignal(sessionFile), null);
+  } finally {
+    rmSync(`${sessionFile}.exit`, { force: true });
+  }
+});
+
+test("consumeInteractiveUpdateSignals returns new update messages without replaying old ones", () => {
+  const root = process.env.TEST_TMPDIR ?? "/tmp";
+  const sessionFile = `${root}/interactive-update-${Date.now().toString(36)}.jsonl`;
+
+  try {
+    writeFileSync(
+      `${sessionFile}.signals`,
+      [
+        JSON.stringify({ type: "update", message: "first update" }),
+        JSON.stringify({ type: "update", message: "second update" }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    const firstRead = consumeInteractiveUpdateSignals(sessionFile, 0);
+    assert.deepEqual(firstRead.messages, ["first update", "second update"]);
+
+    const secondRead = consumeInteractiveUpdateSignals(sessionFile, firstRead.nextOffset);
+    assert.deepEqual(secondRead.messages, []);
+  } finally {
+    rmSync(`${sessionFile}.signals`, { force: true });
+  }
+});
+
+test("consumeInteractiveUpdateSignals only returns appended update bytes on later reads", () => {
+  const root = process.env.TEST_TMPDIR ?? "/tmp";
+  const sessionFile = `${root}/interactive-update-append-${Date.now().toString(36)}.jsonl`;
+
+  try {
+    writeFileSync(
+      `${sessionFile}.signals`,
+      `${JSON.stringify({ type: "update", message: "first update" })}\n`,
+      "utf8",
+    );
+
+    const firstRead = consumeInteractiveUpdateSignals(sessionFile, 0);
+    assert.deepEqual(firstRead.messages, ["first update"]);
+
+    writeFileSync(
+      `${sessionFile}.signals`,
+      [
+        JSON.stringify({ type: "update", message: "first update" }),
+        JSON.stringify({ type: "update", message: "appended update" }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    const secondRead = consumeInteractiveUpdateSignals(sessionFile, firstRead.nextOffset);
+    assert.deepEqual(secondRead.messages, ["appended update"]);
+
+    const thirdRead = consumeInteractiveUpdateSignals(sessionFile, secondRead.nextOffset);
+    assert.deepEqual(thirdRead.messages, []);
+  } finally {
+    rmSync(`${sessionFile}.signals`, { force: true });
+  }
+});
+
+test("wrapInteractiveSpawnPrompt no longer references subagent_done", async () => {
+  const { wrapInteractiveSpawnPrompt } = await import("./request-utils.ts");
+  const prompt = wrapInteractiveSpawnPrompt("finish the task");
+
+  assert.equal(prompt.includes("subagent_done"), false);
+  assert.match(prompt, /caller_ping/);
+  assert.match(prompt, /caller_update/);
 });
 
 test("backend adapters build stable tmux and wezterm command invocations", () => {

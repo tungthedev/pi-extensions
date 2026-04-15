@@ -1,3 +1,4 @@
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 
 import { createInteractiveContext } from "./interactive/context.ts";
@@ -273,22 +274,165 @@ export function closeSurface(surface: string): void {
   closeZellijSurface(context, surface);
 }
 
+export type InteractiveExitSignal =
+  | { type: "done" }
+  | { type: "ping"; name: string; message: string };
+
+export type InteractiveUpdateSignal = {
+  type: "update";
+  message: string;
+};
+
+export type InteractivePollResult = {
+  reason: "done" | "ping" | "sentinel";
+  exitCode: number;
+  ping?: { name: string; message: string };
+};
+
+function interactiveSignalsPath(sessionFile: string): string {
+  return `${sessionFile}.signals`;
+}
+
+export function getInteractiveUpdateSignalOffset(sessionFile?: string): number {
+  if (!sessionFile) {
+    return 0;
+  }
+
+  try {
+    return readFileSync(interactiveSignalsPath(sessionFile)).byteLength;
+  } catch {
+    return 0;
+  }
+}
+
+export function consumeInteractiveUpdateSignals(
+  sessionFile: string | undefined,
+  offset: number,
+): { messages: string[]; nextOffset: number } {
+  if (!sessionFile) {
+    return { messages: [], nextOffset: offset };
+  }
+
+  try {
+    const raw = readFileSync(interactiveSignalsPath(sessionFile));
+    const nextOffset = raw.byteLength;
+    if (nextOffset <= offset) {
+      return { messages: [], nextOffset };
+    }
+
+    const chunk = raw.subarray(offset).toString("utf8");
+    const messages = chunk
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .flatMap((line) => {
+        try {
+          const data = JSON.parse(line) as InteractiveUpdateSignal;
+          return data.type === "update" && typeof data.message === "string" ? [data.message] : [];
+        } catch {
+          return [];
+        }
+      });
+
+    return { messages, nextOffset };
+  } catch {
+    return { messages: [], nextOffset: offset };
+  }
+}
+
+export function consumeInteractiveExitSignal(
+  sessionFile?: string,
+): InteractiveExitSignal | null {
+  if (!sessionFile) {
+    return null;
+  }
+
+  try {
+    const exitFile = `${sessionFile}.exit`;
+    if (!existsSync(exitFile)) {
+      return null;
+    }
+
+    const data = JSON.parse(readFileSync(exitFile, "utf8")) as {
+      type?: string;
+      name?: string;
+      message?: string;
+    };
+    rmSync(exitFile, { force: true });
+    if (data.type === "done") {
+      return { type: "done" };
+    }
+    if (
+      data.type === "ping" &&
+      typeof data.name === "string" &&
+      data.name.trim().length > 0 &&
+      typeof data.message === "string" &&
+      data.message.trim().length > 0
+    ) {
+      return { type: "ping", name: data.name, message: data.message };
+    }
+  } catch {
+    // Ignore malformed or concurrently-removed exit files and fall back to sentinel detection.
+  }
+
+  return null;
+}
+
 export async function pollForExit(
   surface: string,
   signal: AbortSignal,
-  options: { interval: number; onTick?: (elapsed: number) => void },
-): Promise<number> {
+  options: {
+    interval: number;
+    onTick?: (elapsed: number) => void;
+    sessionFile?: string;
+    initialUpdateOffset?: number;
+    onUpdateSignal?: (message: string) => void;
+  },
+): Promise<InteractivePollResult> {
   const start = Date.now();
+  let updateOffset = options.initialUpdateOffset ?? getInteractiveUpdateSignalOffset(options.sessionFile);
 
   while (true) {
     if (signal.aborted) {
       throw new Error("Aborted while waiting for interactive child to finish");
     }
 
-    const screen = await readScreenAsync(surface, 5);
-    const match = screen.match(/__SUBAGENT_DONE_(\d+)__/);
-    if (match) {
-      return parseInt(match[1], 10);
+    const updates = consumeInteractiveUpdateSignals(options.sessionFile, updateOffset);
+    updateOffset = updates.nextOffset;
+    for (const message of updates.messages) {
+      options.onUpdateSignal?.(message);
+    }
+
+    const exitSignal = consumeInteractiveExitSignal(options.sessionFile);
+    if (exitSignal?.type === "done") {
+      return { reason: "done", exitCode: 0 };
+    }
+    if (exitSignal?.type === "ping") {
+      return {
+        reason: "ping",
+        exitCode: 0,
+        ping: { name: exitSignal.name, message: exitSignal.message },
+      };
+    }
+
+    try {
+      const screen = await readScreenAsync(surface, 5);
+      const match = screen.match(/__SUBAGENT_DONE_(\d+)__/);
+      if (match) {
+        return { reason: "sentinel", exitCode: parseInt(match[1], 10) };
+      }
+    } catch {
+      const retryExitSignal = consumeInteractiveExitSignal(options.sessionFile);
+      if (retryExitSignal?.type === "done") {
+        return { reason: "done", exitCode: 0 };
+      }
+      if (retryExitSignal?.type === "ping") {
+        return {
+          reason: "ping",
+          exitCode: 0,
+          ping: { name: retryExitSignal.name, message: retryExitSignal.message },
+        };
+      }
     }
 
     const elapsed = Math.floor((Date.now() - start) / 1000);

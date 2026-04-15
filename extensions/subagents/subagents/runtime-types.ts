@@ -10,3 +10,10 @@ export type RuntimeCompletionState = {
   suppressedVersion?: number;
   activeWaitCount: number;
 };
+
+export type RuntimeUpdateState = {
+  message?: string;
+  version: number;
+  consumedVersion: number;
+  suppressedVersion?: number;
+};

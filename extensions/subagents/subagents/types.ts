@@ -80,6 +80,8 @@ export type DurableChildRecord = {
   sessionFile?: string;
   lastAssistantText?: string;
   lastError?: string;
+  lastPingMessage?: string;
+  lastUpdateMessage?: string;
   taskSummary?: string;
   closedAt?: string;
   parentSessionFile?: string;
@@ -110,6 +112,7 @@ export type InteractiveLiveChildAttachment = BaseLiveChildAttachment & {
   surface: string;
   sessionFile: string;
   abortController: AbortController;
+  updateSignalOffset?: number;
   detachPersisted?: boolean;
 };
 
@@ -137,6 +140,8 @@ export type AgentSnapshot = {
   session_file?: string;
   last_assistant_text?: string;
   last_error?: string;
+  ping_message?: string;
+  update_message?: string;
   exit_code?: number | null;
 };
 

@@ -118,7 +118,10 @@ export type SubagentLifecycleServiceDeps = {
     prompt: string,
     thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh",
   ) => Promise<DurableChildRecord>;
-  ensureLiveAttachment: (agentId: string) => Promise<LiveChildAttachment>;
+  ensureLiveAttachment: (
+    agentId: string,
+    options?: { interactiveInput?: string; taskSummary?: string },
+  ) => Promise<{ attachment: LiveChildAttachment; deliveredInputAtAttach?: boolean }>;
   requireDurableChild: (agentId: string) => DurableChildRecord;
   updateDurableChild: (
     agentId: string,
@@ -330,7 +333,11 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
     };
 
   const resume = async (request: ResumeLifecycleRequest): Promise<ResumeLifecycleResult> => {
-      const attachment = await deps.ensureLiveAttachment(request.agentId);
+      const ensured = await deps.ensureLiveAttachment(request.agentId, {
+        interactiveInput: request.input,
+        taskSummary: request.taskSummary,
+      });
+      const attachment = ensured.attachment;
       return await deps.queueAgentOperation(attachment, async () => {
         const record = deps.requireDurableChild(request.agentId);
         const agentName = record.name ?? request.agentId;
@@ -345,7 +352,9 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
         let submissionId: string;
         if (deps.isInteractiveAttachment(attachment)) {
           commandType = "interactive_input";
-          deps.sendInteractiveInput(attachment, request.input);
+          if (!ensured.deliveredInputAtAttach) {
+            deps.sendInteractiveInput(attachment, request.input);
+          }
           submissionId = `${request.agentId}:${Date.now()}`;
         } else {
           commandType =
@@ -364,6 +373,8 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
           {
             status: "live_running",
             lastError: undefined,
+            lastPingMessage: undefined,
+            lastUpdateMessage: undefined,
             ...(request.taskSummary ? { taskSummary: request.taskSummary } : {}),
           },
           { persistAs: deps.entryTypes.update },
@@ -417,7 +428,8 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
 
   const stop = async (agentId: string): Promise<StopLifecycleResult> => {
       const record = deps.requireDurableChild(agentId);
-      const attachment = await deps.ensureLiveAttachment(agentId).catch(() => undefined);
+      const ensured = await deps.ensureLiveAttachment(agentId).catch(() => undefined);
+      const attachment = ensured?.attachment;
 
       if (attachment) {
         return await deps.queueAgentOperation(attachment, async () => {
