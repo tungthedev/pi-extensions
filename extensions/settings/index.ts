@@ -15,7 +15,10 @@ import {
   resolveSessionToolSet,
   writeSessionToolSetSnapshot,
 } from "./session.ts";
-import { applyToolSetTransition } from "./tool-set-transition.ts";
+import {
+  applySessionToolSetTransition,
+  applyToolSetTransition,
+} from "./tool-set-transition.ts";
 import {
   formatSystemMdPromptLabel,
   openPiModeSettingsUi,
@@ -51,10 +54,10 @@ async function applyToolSetSelection(
 
 async function cycleToolSet(
   ctx: Pick<ExtensionContext, "hasUI" | "ui" | "sessionManager">,
-  deps: Pick<PiModeCommandDeps, "writeToolSet" | "writeSessionToolSet" | "emitToolSetChange">,
+  deps: Pick<PiModeCommandDeps, "writeSessionToolSet" | "emitToolSetChange">,
 ): Promise<void> {
   const nextToolSet = getNextToolSet(await resolveSessionToolSet(ctx.sessionManager));
-  await applyToolSetSelection(ctx, deps, nextToolSet);
+  await applySessionToolSetTransition(ctx, deps, nextToolSet);
 }
 
 function createDefaultDeps(pi: ExtensionAPI): PiModeCommandDeps {

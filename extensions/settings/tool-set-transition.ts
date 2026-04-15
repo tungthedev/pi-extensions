@@ -8,6 +8,20 @@ export type ToolSetTransitionDeps = {
   emitToolSetChange?: (value: ToolSetPack) => Promise<void> | void;
 };
 
+export type SessionToolSetTransitionDeps = {
+  writeSessionToolSet: (value: ToolSetPack) => Promise<void> | void;
+  emitToolSetChange?: (value: ToolSetPack) => Promise<void> | void;
+};
+
+async function notifyToolSetTransition(
+  ctx: Pick<ExtensionContext, "hasUI" | "ui">,
+  toolSet: ToolSetPack,
+): Promise<void> {
+  if (ctx.hasUI) {
+    ctx.ui.notify(`Mode: ${formatToolSetLabel(toolSet)}`, "info");
+  }
+}
+
 export async function applyToolSetTransition(
   ctx: Pick<ExtensionContext, "hasUI" | "ui">,
   deps: ToolSetTransitionDeps,
@@ -16,8 +30,15 @@ export async function applyToolSetTransition(
   await deps.writeToolSet(toolSet);
   await deps.writeSessionToolSet?.(toolSet);
   await deps.emitToolSetChange?.(toolSet);
+  await notifyToolSetTransition(ctx, toolSet);
+}
 
-  if (ctx.hasUI) {
-    ctx.ui.notify(`Mode: ${formatToolSetLabel(toolSet)}`, "info");
-  }
+export async function applySessionToolSetTransition(
+  ctx: Pick<ExtensionContext, "hasUI" | "ui">,
+  deps: SessionToolSetTransitionDeps,
+  toolSet: ToolSetPack,
+): Promise<void> {
+  await deps.writeSessionToolSet(toolSet);
+  await deps.emitToolSetChange?.(toolSet);
+  await notifyToolSetTransition(ctx, toolSet);
 }

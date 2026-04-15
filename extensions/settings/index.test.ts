@@ -223,7 +223,7 @@ test("handlePiModeCommand writes the include-pi-prompt setting directly", async 
   assert.deepEqual(notifications, ["Include Pi prompt section: Enabled"]);
 });
 
-test("registerPiModeShortcut cycles pi -> codex -> droid -> pi", async () => {
+test("registerPiModeShortcut cycles pi -> codex -> droid -> pi without saving global config", async () => {
   const writes: Array<"pi" | "codex" | "droid"> = [];
   const sessionWrites: Array<"pi" | "codex" | "droid"> = [];
   const emitted: Array<"pi" | "codex" | "droid"> = [];
@@ -284,7 +284,7 @@ test("registerPiModeShortcut cycles pi -> codex -> droid -> pi", async () => {
   await shortcutHandler!(makeCtx("codex"));
   await shortcutHandler!(makeCtx("droid"));
 
-  assert.deepEqual(writes, ["codex", "droid", "pi"]);
+  assert.deepEqual(writes, []);
   assert.deepEqual(sessionWrites, ["codex", "droid", "pi"]);
   assert.deepEqual(emitted, ["codex", "droid", "pi"]);
   assert.deepEqual(notifications, ["Mode: Codex", "Mode: Droid", "Mode: Pi"]);
