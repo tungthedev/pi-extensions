@@ -20,13 +20,22 @@ type NotificationPayload = {
   durable_status: AgentSnapshot["durable_status"];
   last_assistant_text?: string;
   last_error?: string;
+  ping_message?: string;
+  update_message?: string;
   task_summary?: string;
 };
 
 export function formatSubagentNotificationMessage(
   snapshot: Pick<
     AgentSnapshot,
-    "agent_id" | "status" | "durable_status" | "name" | "last_assistant_text" | "last_error"
+    | "agent_id"
+    | "status"
+    | "durable_status"
+    | "name"
+    | "last_assistant_text"
+    | "last_error"
+    | "ping_message"
+    | "update_message"
   >,
   options: { taskSummary?: string } = {},
 ): string {
@@ -39,6 +48,8 @@ export function formatSubagentNotificationMessage(
       ? { last_assistant_text: publicSnapshot.last_assistant_text }
       : {}),
     ...(publicSnapshot.last_error ? { last_error: publicSnapshot.last_error } : {}),
+    ...(publicSnapshot.ping_message ? { ping_message: publicSnapshot.ping_message } : {}),
+    ...(publicSnapshot.update_message ? { update_message: publicSnapshot.update_message } : {}),
     ...(options.taskSummary ? { task_summary: options.taskSummary } : {}),
   };
 
@@ -51,7 +62,7 @@ export function formatSubagentNotificationMessage(
 
 export function parseSubagentNotificationMessage(
   content: string | undefined,
-): (PublicAgentSnapshot & { task_summary?: string }) | undefined {
+): (PublicAgentSnapshot & { task_summary?: string; ping_message?: string; update_message?: string }) | undefined {
   const trimmed = content?.trim();
   if (!trimmed) return undefined;
 
@@ -64,6 +75,8 @@ export function parseSubagentNotificationMessage(
   try {
     return JSON.parse(trimmed.slice(prefix.length, trimmed.length - suffix.length)) as PublicAgentSnapshot & {
       task_summary?: string;
+      ping_message?: string;
+      update_message?: string;
     };
   } catch {
     return undefined;

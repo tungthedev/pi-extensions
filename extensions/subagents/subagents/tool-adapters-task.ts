@@ -46,12 +46,19 @@ function shouldWaitForTaskStatus(status: PublicAgentSnapshot["status"]): boolean
   return status === "running";
 }
 
+function resolvePreferredTaskOutput(agent: PublicAgentSnapshot): string | undefined {
+  if (agent.status === "running") {
+    return agent.update_message ?? agent.ping_message ?? agent.last_assistant_text ?? agent.last_error;
+  }
+  return agent.ping_message ?? agent.last_assistant_text ?? agent.last_error;
+}
+
 function renderForegroundTaskResult(
   agent: PublicAgentSnapshot,
   expanded: boolean,
   theme: ExtensionContext["ui"]["theme"],
 ): Text | Container {
-  const output = normalizeTaskOutput(agent.last_assistant_text ?? agent.last_error);
+  const output = normalizeTaskOutput(resolvePreferredTaskOutput(agent));
   if (!output) {
     return renderEmptySlot();
   }
@@ -156,7 +163,7 @@ export function registerTaskToolAdapters(
                   name,
                   submission_id: resumed.submissionId,
                   status: waitedAgent.status,
-                  output: waitedAgent.last_assistant_text ?? waitedAgent.last_error ?? "",
+                  output: resolvePreferredTaskOutput(waitedAgent) ?? "",
                   timed_out: waited.timedOut,
                 }),
               },
@@ -211,7 +218,7 @@ export function registerTaskToolAdapters(
               text: JSON.stringify({
                 name,
                 status: completedAgent.status,
-                output: completedAgent.last_assistant_text ?? completedAgent.last_error ?? "",
+                output: resolvePreferredTaskOutput(completedAgent) ?? "",
               }),
             },
           ],
@@ -318,7 +325,7 @@ export function registerTaskToolAdapters(
               text: JSON.stringify({
                 name,
                 status: snapshot.status,
-                output: snapshot.last_assistant_text ?? snapshot.last_error ?? "",
+                output: resolvePreferredTaskOutput(snapshot) ?? "",
                 timed_out: false,
               }),
             },
@@ -344,7 +351,7 @@ export function registerTaskToolAdapters(
             text: JSON.stringify({
               name,
               status: waitedSnapshot?.status ?? "running",
-              output: waitedSnapshot?.last_assistant_text ?? waitedSnapshot?.last_error ?? "",
+              output: waitedSnapshot ? resolvePreferredTaskOutput(waitedSnapshot) ?? "" : "",
               timed_out: waited.timedOut,
             }),
           },
@@ -373,7 +380,7 @@ export function registerTaskToolAdapters(
       }
 
       const agent = agents[0];
-      const output = agent.last_assistant_text ?? agent.last_error;
+      const output = resolvePreferredTaskOutput(agent);
       const normalizedOutput = normalizeTaskOutput(output);
       if (!normalizedOutput) {
         return renderEmptySlot();

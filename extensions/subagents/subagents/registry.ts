@@ -20,6 +20,8 @@ export function childSnapshot(
     session_file: record.sessionFile,
     last_assistant_text: record.lastAssistantText,
     last_error: record.lastError,
+    ping_message: record.lastPingMessage,
+    update_message: record.lastUpdateMessage,
     exit_code: attachment?.exitCode,
   };
 }

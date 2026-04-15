@@ -24,6 +24,7 @@ import {
 } from "./internal-test-helpers.ts";
 import { registerCodexToolAdapters } from "./subagents/tool-adapters-codex.ts";
 import { getSubagentNotificationDeliveryOptions } from "./subagents/notifications.ts";
+import { renderAgentCompletionResult, renderTaskNotificationResult } from "./subagents/renderers.ts";
 import { isWaitableChild } from "./subagents/runtime-store.ts";
 import { registerTaskToolAdapters } from "./subagents/tool-adapters-task.ts";
 import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "../shared/toolset-resolver.ts";
@@ -144,6 +145,7 @@ function createCodexLifecycleMock() {
     name: string,
     status: "running" | "idle" | "failed" | "closed" | "timeout" | "detached" = "idle",
     output = `${name} done`,
+    extras: { update_message?: string; ping_message?: string } = {},
   ) => ({
     agent_id: `internal-${name}`,
     name,
@@ -160,15 +162,26 @@ function createCodexLifecycleMock() {
               : "live_idle",
     cwd: "/tmp/project",
     ...(status === "failed" ? { last_error: output } : { last_assistant_text: output }),
+    ...extras,
   } as const);
 
   return {
     calls,
-    setSnapshot(name: string, status: "running" | "idle" | "failed" | "closed" | "timeout" | "detached", output?: string) {
-      snapshots.set(name, buildSnapshot(name, status, output));
+    setSnapshot(
+      name: string,
+      status: "running" | "idle" | "failed" | "closed" | "timeout" | "detached",
+      output?: string,
+      extras?: { update_message?: string; ping_message?: string },
+    ) {
+      snapshots.set(name, buildSnapshot(name, status, output, extras));
     },
-    setWaitedSnapshot(name: string, status: "running" | "idle" | "failed" | "closed" | "timeout" | "detached", output?: string) {
-      waitedSnapshots.set(name, buildSnapshot(name, status, output));
+    setWaitedSnapshot(
+      name: string,
+      status: "running" | "idle" | "failed" | "closed" | "timeout" | "detached",
+      output?: string,
+      extras?: { update_message?: string; ping_message?: string },
+    ) {
+      waitedSnapshots.set(name, buildSnapshot(name, status, output, extras));
     },
     lifecycle: {
       async spawn(request: { name: string; prompt: string; runInBackground?: boolean }) {
@@ -211,7 +224,7 @@ function createCodexLifecycleMock() {
       async waitAny(request: { timeoutMs: number }) {
         calls.waitAny.push(request);
         return {
-          snapshots: [buildSnapshot("researcher_one", "idle", "researcher_one done")],
+          snapshots: [waitedSnapshots.get("researcher_one") ?? buildSnapshot("researcher_one", "idle", "researcher_one done")],
           timedOut: false,
         };
       },
@@ -277,16 +290,16 @@ test("subagents public entrypoint registers tools and sync hooks for parent sess
   assert.equal(events.includes("before_agent_start"), true);
 });
 
-test("child entrypoints register codex plus shell, web, and skill tools", () => {
-  const childTools: string[] = [];
-  const childEvents: string[] = [];
+function captureEntryRegistration(register: (pi: never) => void) {
+  const tools: string[] = [];
+  const events: string[] = [];
 
-  const pi = {
+  register({
     registerTool(tool: { name: string }) {
-      childTools.push(tool.name);
+      tools.push(tool.name);
     },
     on(event: string) {
-      childEvents.push(event);
+      events.push(event);
     },
     registerCommand() {},
     registerMessageRenderer() {},
@@ -294,26 +307,77 @@ test("child entrypoints register codex plus shell, web, and skill tools", () => 
     appendEntry() {},
     getAllTools: () => [],
     setActiveTools() {},
-  } as never;
+  } as never);
 
-  childEntry(pi);
-  interactiveChildEntry(pi);
+  return { tools, events };
+}
 
-  assert.equal(childTools.includes("shell"), true);
-  assert.equal(childTools.includes("skill"), true);
-  assert.equal(childTools.includes("FetchUrl"), true);
-  assert.equal(childTools.includes("request_user_input"), true);
-  assert.equal(childTools.includes("Execute"), true);
-  assert.equal(childTools.includes("TodoWrite"), true);
-  assert.equal(childTools.includes("spawn_agent"), false);
-  assert.equal(childTools.includes("send_message"), false);
-  assert.equal(childTools.includes("wait_agent"), false);
-  assert.equal(childTools.includes("close_agent"), false);
-  assert.equal(childTools.includes("Task"), false);
-  assert.equal(childTools.includes("TaskOutput"), false);
-  assert.equal(childTools.includes("TaskStop"), false);
-  assert.equal(childEvents.includes("session_start"), true);
-  assert.equal(childEvents.includes("before_agent_start"), true);
+test("rpc child entrypoint alone registers caller_update without parent-only tools", () => {
+  const { tools, events } = captureEntryRegistration(childEntry as never);
+
+  assert.equal(tools.includes("shell"), true);
+  assert.equal(tools.includes("skill"), true);
+  assert.equal(tools.includes("FetchUrl"), true);
+  assert.equal(tools.includes("request_user_input"), true);
+  assert.equal(tools.includes("Execute"), true);
+  assert.equal(tools.includes("TodoWrite"), true);
+  assert.equal(tools.includes("spawn_agent"), false);
+  assert.equal(tools.includes("send_message"), false);
+  assert.equal(tools.includes("wait_agent"), false);
+  assert.equal(tools.includes("close_agent"), false);
+  assert.equal(tools.includes("Task"), false);
+  assert.equal(tools.includes("TaskOutput"), false);
+  assert.equal(tools.includes("TaskStop"), false);
+  assert.equal(tools.includes("subagent_done"), false);
+  assert.equal(tools.includes("caller_ping"), false);
+  assert.equal(tools.includes("caller_update"), true);
+  assert.equal(events.includes("session_start"), true);
+  assert.equal(events.includes("before_agent_start"), true);
+});
+
+test("rpc caller_update emits an unsolicited caller_update event without shutting down", async () => {
+  const tools = captureTools((pi) => childEntry({
+    ...pi,
+    on() {},
+    registerCommand() {},
+    registerMessageRenderer() {},
+    sendMessage() {},
+    appendEntry() {},
+    getAllTools: () => [],
+    setActiveTools() {},
+  } as never));
+  const tool = tools.get("caller_update") as { execute: Function } | undefined;
+  assert.ok(tool);
+
+  let shutdowns = 0;
+  let writes = "";
+  const originalWrite = process.stdout.write.bind(process.stdout);
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    writes += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+    return true;
+  }) as never;
+
+  try {
+    const result = await tool.execute("call-1", { message: "still working" }, undefined, undefined, {
+      shutdown() {
+        shutdowns += 1;
+      },
+    });
+
+    assert.equal(shutdowns, 0);
+    assert.match(String(result.content?.[0]?.text ?? ""), /Update sent/);
+    assert.deepEqual(JSON.parse(writes.trim()), { type: "caller_update", message: "still working" });
+  } finally {
+    process.stdout.write = originalWrite as never;
+  }
+});
+
+test("interactive child entrypoint still registers caller_update", () => {
+  const { tools } = captureEntryRegistration(interactiveChildEntry as never);
+
+  assert.equal(tools.includes("caller_ping"), true);
+  assert.equal(tools.includes("caller_update"), true);
+  assert.equal(tools.includes("subagent_done"), false);
 });
 
 test("validateSubagentName accepts lowercase names and rejects invalid ones", () => {
@@ -436,6 +500,20 @@ test("shared resolver switches Codex subagent tool family to send_message", () =
     "TaskOutput",
     "TaskStop",
   ]);
+});
+
+test("notification payload includes update_message", () => {
+  const message = formatSubagentNotificationMessage({
+    agent_id: "internal-1",
+    name: "alpha",
+    status: "running",
+    durable_status: "live_running",
+    update_message: "still auditing",
+    last_assistant_text: "old completion text",
+  });
+
+  const payload = JSON.parse(message.split("\n")[1] ?? "{}");
+  assert.equal(payload.update_message, "still auditing");
 });
 
 test("codex tool adapters use public names and do not leak agent ids", async () => {
@@ -785,6 +863,42 @@ test("task tool adapters require names for spawn and do not leak task ids", asyn
   });
 });
 
+test("wait_agent returns a running snapshot with update_message", async () => {
+  const { lifecycle, setWaitedSnapshot } = createCodexLifecycleMock();
+  const tools = captureTools((pi) =>
+    registerCodexToolAdapters(pi as never, {
+      lifecycle: lifecycle as never,
+      renderSpawnPromptPreview: () => new Text("preview", 0, 0),
+      normalizeWaitAgentTimeoutMs,
+    }),
+  );
+  const waitAgent = tools.get("wait_agent");
+  assert.ok(waitAgent);
+
+  setWaitedSnapshot("researcher_one", "running", "finished text should not win", {
+    update_message: "still auditing",
+  });
+
+  const result = await (waitAgent!.execute as (...args: unknown[]) => Promise<any>)("call-update", {
+    timeout_ms: 45_000,
+  });
+
+  assert.deepEqual(JSON.parse(result.content[0].text), {
+    status: { researcher_one: "running" },
+    timed_out: false,
+    agents: [
+      {
+        name: "researcher_one",
+        status: "running",
+        durable_status: "live_running",
+        cwd: "/tmp/project",
+        last_assistant_text: "finished text should not win",
+        update_message: "still auditing",
+      },
+    ],
+  });
+});
+
 test("TaskOutput returns immediately for non-running tasks and waits for running tasks", async () => {
   const { lifecycle, calls, setSnapshot, setWaitedSnapshot } = createCodexLifecycleMock();
   const tools = captureTools((pi) =>
@@ -837,6 +951,73 @@ test("TaskOutput returns immediately for non-running tasks and waits for running
   });
   assert.deepEqual(calls.waitByNames, [{ names: ["task_running"], timeoutMs: 45_000 }]);
 
+});
+
+test("TaskOutput prefers update_message while task is still running", async () => {
+  const { lifecycle, setSnapshot } = createCodexLifecycleMock();
+  const tools = captureTools((pi) =>
+    registerTaskToolAdapters(pi as never, {
+      lifecycle: lifecycle as never,
+      normalizeWaitAgentTimeoutMs,
+    }),
+  );
+  const taskOutput = tools.get("TaskOutput");
+  assert.ok(taskOutput);
+
+  setSnapshot("task_running", "running", "stale completion text", {
+    update_message: "still working on it",
+  });
+
+  const result = await (taskOutput!.execute as (...args: unknown[]) => Promise<any>)("call-update", {
+    name: "task_running",
+    block: false,
+  });
+
+  assert.deepEqual(JSON.parse(result.content[0].text), {
+    name: "task_running",
+    status: "running",
+    output: "still working on it",
+    timed_out: false,
+  });
+});
+
+test("renderers label running updates as updates instead of finished", () => {
+  const theme = createRenderTheme();
+  const rendered = renderAgentCompletionResult(
+    {
+      agents: [
+        {
+          name: "worker",
+          status: "running",
+          durable_status: "live_running",
+          cwd: "/tmp/project",
+          last_assistant_text: "old completion text",
+          update_message: "still auditing",
+        },
+      ],
+      timed_out: false,
+    },
+    false,
+    theme,
+  ) as { children?: Array<{ text?: string }> };
+
+  assert.match(String(rendered.children?.[0]?.text ?? ""), /Agent update/);
+  assert.match(String(rendered.children?.[1]?.text ?? ""), /worker: update - still auditing/);
+});
+
+test("task summary notifications label running updates as task updates", () => {
+  const theme = createRenderTheme();
+  const rendered = renderTaskNotificationResult(
+    "Audit resume flow",
+    "running",
+    "still auditing",
+    false,
+    theme,
+  ) as { children?: Array<{ children?: Array<{ text?: string }> }> };
+
+  const box = rendered.children?.[1];
+  const title = box?.children?.[0]?.text ?? "";
+  assert.match(String(title), /Task update/);
 });
 
 test("buildWaitAgentContent uses public names in status payloads", () => {
@@ -929,19 +1110,25 @@ test("formatSubagentNotificationMessage wraps public name payloads", () => {
   const message = formatSubagentNotificationMessage({
     agent_id: "internal-1",
     name: "alpha",
-    status: "idle",
-    durable_status: "live_idle",
+    status: "running",
+    durable_status: "live_running",
     last_assistant_text: "child done",
+    ping_message: "need schema guidance",
+    update_message: "still auditing",
   });
 
   const payload = JSON.parse(message.split("\n")[1] ?? "{}");
   assert.deepEqual(payload, {
     name: "alpha",
-    status: "idle",
-    durable_status: "live_idle",
+    status: "running",
+    durable_status: "live_running",
     last_assistant_text: "child done",
+    ping_message: "need schema guidance",
+    update_message: "still auditing",
   });
   assert.equal(parseSubagentNotificationMessage(message)?.name, "alpha");
+  assert.equal(parseSubagentNotificationMessage(message)?.ping_message, "need schema guidance");
+  assert.equal(parseSubagentNotificationMessage(message)?.update_message, "still auditing");
 });
 
 test("getSubagentNotificationDeliveryOptions steers notifications while parent is streaming", () => {

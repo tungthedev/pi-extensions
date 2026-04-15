@@ -40,12 +40,19 @@ export type CodexToolAdapterDeps = {
   normalizeWaitAgentTimeoutMs: (timeoutMs: number | undefined) => number;
 };
 
+function resolvePreferredAgentOutput(agent: PublicAgentSnapshot): string | undefined {
+  if (agent.status === "running") {
+    return agent.update_message ?? agent.ping_message ?? agent.last_assistant_text ?? agent.last_error;
+  }
+  return agent.ping_message ?? agent.last_assistant_text ?? agent.last_error;
+}
+
 function renderForegroundSpawnResult(
   agent: PublicAgentSnapshot,
   expanded: boolean,
   theme: ExtensionContext["ui"]["theme"],
 ): Text | Container {
-  const output = normalizeTaskOutput(agent.last_assistant_text ?? agent.last_error);
+  const output = normalizeTaskOutput(resolvePreferredAgentOutput(agent));
   if (!output) {
     return renderEmptySlot();
   }

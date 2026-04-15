@@ -18,6 +18,8 @@ export function toPublicAgentSnapshot(snapshot: AgentSnapshot): PublicAgentSnaps
     session_file: snapshot.session_file,
     last_assistant_text: snapshot.last_assistant_text,
     last_error: snapshot.last_error,
+    ping_message: snapshot.ping_message,
+    update_message: snapshot.update_message,
     exit_code: snapshot.exit_code,
   };
 }

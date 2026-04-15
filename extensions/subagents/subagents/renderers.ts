@@ -81,6 +81,8 @@ export function previewTaskText(output: string | undefined, maxLines: number): {
 
 export function taskNotificationTitle(status: AgentSnapshot["status"]): string {
   switch (status) {
+    case "running":
+      return "Task update";
     case "failed":
       return "Task failed";
     case "timeout":
@@ -155,12 +157,17 @@ export function renderAgentCompletionResult(
   options: { showTitle?: boolean } = {},
 ) {
   const agentsList = details.agents ?? [];
+  const hasRunningUpdate = agentsList.some((agent) => agent.status === "running" && Boolean(agent.update_message));
   const title =
     details.timed_out && agentsList.length === 0
       ? "Waiting timed out"
-      : agentsList.length === 1
-        ? "Agent finished"
-        : "Agents finished";
+      : hasRunningUpdate
+        ? agentsList.length === 1
+          ? "Agent update"
+          : "Agent updates"
+        : agentsList.length === 1
+          ? "Agent finished"
+          : "Agents finished";
   if (agentsList.length === 0) {
     return new Text(titleLine(theme, "text", title), 0, 0);
   }
@@ -188,8 +195,14 @@ export function renderAgentCompletionResult(
     const displayName = getSubagentDisplayName(agent);
     const statusColor = getStatusColor(agent.status);
     const summary =
-      agent.last_error ?? summarizeSubagentReply(agent.last_assistant_text, expanded ? 600 : 220);
-    let detail = `${theme.fg("accent", displayName)}${theme.fg("muted", ": ")}${theme.fg(statusColor, getSubagentCompletionLabel(agent.status))}`;
+      (agent.status === "running"
+        ? agent.update_message ?? agent.ping_message ?? agent.last_error
+        : agent.ping_message ?? agent.last_error) ??
+      summarizeSubagentReply(agent.last_assistant_text, expanded ? 600 : 220);
+    const statusLabel = agent.status === "running" && agent.update_message
+      ? "update"
+      : getSubagentCompletionLabel(agent.status);
+    let detail = `${theme.fg("accent", displayName)}${theme.fg("muted", ": ")}${theme.fg(statusColor, statusLabel)}`;
     if (summary) {
       detail += `${theme.fg("muted", " - ")}${theme.fg("toolOutput", summary)}`;
     }
@@ -232,8 +245,8 @@ export function registerSubagentNotificationRenderers(pi: Pick<ExtensionAPI, "re
     const messageContent = typeof message.content === "string" ? message.content : undefined;
     const parsed = parseSubagentNotificationMessage(messageContent);
     const details = message.details as
-      | (RenderableAgentSnapshot & { task_summary?: string })
-      | { status?: RenderableAgentSnapshot; task_summary?: string }
+      | (RenderableAgentSnapshot & { task_summary?: string; ping_message?: string; update_message?: string })
+      | { status?: RenderableAgentSnapshot; task_summary?: string; ping_message?: string; update_message?: string }
       | undefined;
     const snapshot = extractSnapshotDetails(details) ?? parsed;
     if (!snapshot) {
@@ -246,7 +259,7 @@ export function registerSubagentNotificationRenderers(pi: Pick<ExtensionAPI, "re
       return renderTaskNotificationResult(
         taskSummary,
         snapshot.status,
-        snapshot.last_assistant_text ?? snapshot.last_error,
+        snapshot.update_message ?? snapshot.ping_message ?? snapshot.last_assistant_text ?? snapshot.last_error,
         expanded,
         theme,
       );
@@ -254,20 +267,31 @@ export function registerSubagentNotificationRenderers(pi: Pick<ExtensionAPI, "re
 
     const displayName = getSubagentDisplayName(snapshot);
     const statusColor =
-      snapshot.status === "idle"
-        ? "success"
-        : snapshot.status === "failed"
-          ? "error"
-          : snapshot.status === "timeout"
-            ? "warning"
-            : "muted";
+      snapshot.update_message
+        ? "accent"
+        : snapshot.status === "idle"
+          ? "success"
+          : snapshot.status === "failed"
+            ? "error"
+            : snapshot.status === "timeout"
+              ? "warning"
+              : snapshot.status === "running"
+                ? "accent"
+                : "muted";
     const summary =
+      snapshot.update_message ??
+      snapshot.ping_message ??
       snapshot.last_error ??
       summarizeSubagentReply(
         snapshot.last_assistant_text,
         expanded ? 600 : MAX_SUBAGENT_NOTIFICATION_PREVIEW_CHARS,
       );
-    let detail = `${theme.fg("accent", displayName)}${theme.fg("muted", ": ")}${theme.fg(statusColor, getSubagentCompletionLabel(snapshot.status))}`;
+    const statusLabel = snapshot.update_message
+      ? "update"
+      : snapshot.ping_message
+        ? "needs help"
+        : getSubagentCompletionLabel(snapshot.status);
+    let detail = `${theme.fg("accent", displayName)}${theme.fg("muted", ": ")}${theme.fg(statusColor, statusLabel)}`;
     if (summary) {
       detail += `\n${theme.fg("muted", " - ")}${theme.fg("toolOutput", summary)}`;
     }
