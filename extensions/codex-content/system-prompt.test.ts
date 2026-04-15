@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  buildCodexPrompt,
   handleCodexSystemPromptBeforeAgentStart,
   resolveCodexPromptBody,
   type CodexSystemPromptDeps,
@@ -40,6 +41,16 @@ test("resolveCodexPromptBody uses exact model match and GPT fallback", () => {
 
   assert.equal(exact, "exact");
   assert.equal(fallback, "gpt fallback");
+});
+
+test("buildCodexPrompt rewrites short-label file reference guidance for Pi rendering", () => {
+  const prompt = buildCodexPrompt(`File References: When referencing files in your response follow the below rules:
+  * Use markdown links (not inline code) for clickable files.
+  * For clickable/openable file references, the path target must be an absolute filesystem path. Labels may be short (for example, [app.ts](/abs/path/app.ts)).`);
+
+  assert.ok(prompt.includes("Do not use short labels like [app.ts](/abs/path/app.ts)."));
+  assert.ok(prompt.includes("Use the same absolute filesystem path for both the label and target (for example, [/abs/path/app.ts](/abs/path/app.ts))."));
+  assert.ok(!prompt.includes("Labels may be short"));
 });
 
 test("handleCodexSystemPromptBeforeAgentStart returns no-op when Codex prompt is not selected", async () => {

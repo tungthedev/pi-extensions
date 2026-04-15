@@ -106,8 +106,26 @@ export function readModelsCatalog(
   return readModelsCatalogFromPath(assetPath);
 }
 
+const PI_FILE_REFERENCE_REPLACEMENTS: Array<[string, string]> = [
+  [
+    "Labels may be short (for example, `[app.ts](/abs/path/app.ts)`).",
+    "Use the same absolute filesystem path for both the label and target (for example, `[/abs/path/app.ts](/abs/path/app.ts)`). Do not use short labels like `[app.ts](/abs/path/app.ts)`.",
+  ],
+  [
+    "Labels may be short (for example, [app.ts](/abs/path/app.ts)).",
+    "Use the same absolute filesystem path for both the label and target (for example, [/abs/path/app.ts](/abs/path/app.ts)). Do not use short labels like [app.ts](/abs/path/app.ts).",
+  ],
+];
+
+function patchPiFileReferenceGuidance(promptBody: string): string {
+  return PI_FILE_REFERENCE_REPLACEMENTS.reduce(
+    (patchedPrompt, [oldText, newText]) => patchedPrompt.replaceAll(oldText, newText),
+    promptBody,
+  );
+}
+
 export function buildCodexPrompt(promptBody: string): string {
-  return promptBody.trim();
+  return patchPiFileReferenceGuidance(promptBody).trim();
 }
 
 export function readFallbackModelsCatalog(
