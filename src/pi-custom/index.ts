@@ -109,6 +109,7 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
     name: "read",
     label: "read",
     description: READ_DESCRIPTION,
+    renderShell: "self",
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       // `pi-custom` owns the single shared `read` tool, so this FFF-aware path resolution
       // automatically applies in Pi, Codex, and Droid modes through toolset resolution.
