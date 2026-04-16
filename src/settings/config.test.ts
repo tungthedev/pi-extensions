@@ -6,9 +6,11 @@ import test from "node:test";
 
 import {
   parsePiModeSettings,
+  readPiModeSettingsSync,
   readSettingsFromFile,
   writeIncludePiPromptSectionSetting,
   writeToolSetSetting,
+  writeWebToolSetting,
 } from "./config.ts";
 import { readSessionToolSet, resolveSessionToolSet, TOOL_SET_OVERRIDE_ENV } from "./session.ts";
 
@@ -21,6 +23,7 @@ test("readSettingsFromFile fails closed on malformed json", async () => {
     toolSet: "pi",
     systemMdPrompt: false,
     includePiPromptSection: false,
+    webTools: {},
   });
 });
 
@@ -29,6 +32,38 @@ test("parsePiModeSettings migrates legacy forge settings to pi", () => {
     toolSet: "pi",
     systemMdPrompt: false,
     includePiPromptSection: false,
+    webTools: {},
+  });
+});
+
+test("readPiModeSettingsSync reads stored web tool settings", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-tung-settings-"));
+  const settingsPath = path.join(tempDir, "settings.json");
+  await writeFile(
+    settingsPath,
+    `${JSON.stringify(
+      {
+        "pi-mode": {
+          webTools: {
+            geminiApiKey: " gemini-secret ",
+            firecrawlApiKey: " firecrawl-secret ",
+          },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  assert.deepEqual(readPiModeSettingsSync(settingsPath), {
+    toolSet: "pi",
+    systemMdPrompt: false,
+    includePiPromptSection: false,
+    webTools: {
+      geminiApiKey: "gemini-secret",
+      firecrawlApiKey: "firecrawl-secret",
+    },
   });
 });
 
@@ -91,6 +126,23 @@ test("writeIncludePiPromptSectionSetting persists the include-pi toggle", async 
 
   const updated = JSON.parse(await readFile(settingsPath, "utf8")) as Record<string, unknown>;
   assert.deepEqual(updated["pi-mode"], { includePiPromptSection: true });
+});
+
+test("writeWebToolSetting persists and clears stored web tool secrets", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-tung-settings-"));
+  const settingsPath = path.join(tempDir, "settings.json");
+  await writeFile(settingsPath, "{}\n", "utf8");
+
+  await writeWebToolSetting("geminiApiKey", " gemini-key ", settingsPath);
+  await writeWebToolSetting("firecrawlApiKey", "firecrawl-key", settingsPath);
+  await writeWebToolSetting("geminiApiKey", undefined, settingsPath);
+
+  const updated = JSON.parse(await readFile(settingsPath, "utf8")) as Record<string, unknown>;
+  assert.deepEqual(updated["pi-mode"], {
+    webTools: {
+      firecrawlApiKey: "firecrawl-key",
+    },
+  });
 });
 
 test("writeToolSetSetting rejects invalid root objects in strict mode", async () => {

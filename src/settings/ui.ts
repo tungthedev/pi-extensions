@@ -1,7 +1,20 @@
 import { getSettingsListTheme, type ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Container, SettingsList, Text, type SettingItem } from "@mariozechner/pi-tui";
+import {
+  Container,
+  Input,
+  SettingsList,
+  Text,
+  type Component,
+  type SettingItem,
+  wrapTextWithAnsi,
+} from "@mariozechner/pi-tui";
 
-import { formatToolSetLabel, type PiModeSettings, type ToolSetPack } from "./config.ts";
+import {
+  formatToolSetLabel,
+  type PiModeSettings,
+  type ToolSetPack,
+  type WebToolSettingKey,
+} from "./config.ts";
 
 export type SettingsCommandAction =
   | { action: "open-root" }
@@ -22,6 +35,7 @@ export type OpenSettingsUiOptions = {
   ) => Promise<void>;
   writeSystemMdPrompt: (value: boolean) => Promise<void>;
   writeIncludePiPromptSection: (value: boolean) => Promise<void>;
+  writeWebToolSetting: (key: WebToolSettingKey, value: string | undefined) => Promise<void>;
 };
 
 const TOOL_SET_LABELS: Record<"Pi" | "Codex" | "Droid", ToolSetPack> = {
@@ -74,7 +88,256 @@ export function buildPiModeSettingItems(settings: PiModeSettings): SettingItem[]
       currentValue: formatIncludePiPromptSectionLabel(settings.includePiPromptSection),
       values: ["Enabled", "Disabled"],
     },
+    {
+      id: "webTools",
+      label: "Web Tools",
+      description:
+        "Store Gemini, Cloudflare, and Firecrawl credentials for web tools. Shell ENV values still take precedence over stored settings.",
+      currentValue: buildWebToolsSummary(settings),
+    },
   ];
+}
+
+function getGeminiEnvValue(): string | undefined {
+  return process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim() || undefined;
+}
+
+function getCloudflareAccountIdEnvValue(): string | undefined {
+  return process.env.CLOUDFLARE_ACCOUNT_ID?.trim() || undefined;
+}
+
+function getCloudflareTokenEnvValue(): string | undefined {
+  return (
+    process.env.CLOUDFLARE_BROWSER_RENDERING_API_TOKEN?.trim() ||
+    process.env.CLOUDFLARE_API_TOKEN?.trim() ||
+    undefined
+  );
+}
+
+function getFirecrawlApiKeyEnvValue(): string | undefined {
+  return process.env.FIRECRAWL_API_KEY?.trim() || undefined;
+}
+
+function formatStoredSettingStatus(storedValue?: string, envValue?: string): string {
+  if (envValue && storedValue) return "ENV override";
+  if (envValue) return "ENV";
+  if (storedValue) return "Stored";
+  return "Not set";
+}
+
+function buildWebToolsSummary(settings: PiModeSettings): string {
+  const geminiReady = Boolean(getGeminiEnvValue() || settings.webTools.geminiApiKey);
+  const cloudflareReady = Boolean(
+    (getCloudflareAccountIdEnvValue() || settings.webTools.cloudflareAccountId) &&
+    (getCloudflareTokenEnvValue() || settings.webTools.cloudflareApiToken),
+  );
+  const firecrawlReady = Boolean(getFirecrawlApiKeyEnvValue() || settings.webTools.firecrawlApiKey);
+  const crawlReady = cloudflareReady || firecrawlReady;
+  const partial = Boolean(
+    settings.webTools.geminiApiKey ||
+    settings.webTools.cloudflareAccountId ||
+    settings.webTools.cloudflareApiToken ||
+    settings.webTools.firecrawlApiKey ||
+    getGeminiEnvValue() ||
+    getCloudflareAccountIdEnvValue() ||
+    getCloudflareTokenEnvValue() ||
+    getFirecrawlApiKeyEnvValue(),
+  );
+
+  if (geminiReady && crawlReady) return "Search + crawl ready";
+  if (geminiReady) return "Search ready";
+  if (crawlReady) return "Crawl ready";
+  if (partial) return "Partially configured";
+  return "Not configured";
+}
+
+function createSecretInputComponent(options: {
+  title: string;
+  description: string;
+  prefill?: string;
+  saveLabel: string;
+  dimText: (text: string) => string;
+  mutedText: (text: string) => string;
+  onSubmit: (value: string | undefined) => Promise<void>;
+  onCancel: () => void;
+}): Component {
+  const input = new Input();
+  let errorMessage: string | undefined;
+
+  if (options.prefill) {
+    input.setValue(options.prefill);
+  }
+
+  input.onSubmit = (value) => {
+    const nextValue = value.trim() || undefined;
+    errorMessage = undefined;
+
+    void options.onSubmit(nextValue).catch((error) => {
+      errorMessage = error instanceof Error ? error.message : String(error);
+      input.invalidate();
+    });
+  };
+  input.onEscape = options.onCancel;
+
+  return {
+    handleInput(data: string) {
+      input.handleInput(data);
+    },
+    invalidate() {
+      input.invalidate();
+    },
+    render(width: number) {
+      const lines = [options.title, ""];
+
+      for (const line of wrapTextWithAnsi(options.description, Math.max(16, width - 2))) {
+        lines.push(line);
+      }
+
+      lines.push("");
+      lines.push(...input.render(width));
+      lines.push("");
+      if (errorMessage) {
+        lines.push(`Error: ${errorMessage}`);
+      }
+      lines.push(
+        options.dimText(`${options.saveLabel}. Submit an empty value to clear the stored setting.`),
+      );
+      lines.push("");
+      lines.push(options.mutedText("[enter] save  [esc] back"));
+      return lines;
+    },
+  };
+}
+
+function renderSettingsListWithFooter(
+  settingsList: SettingsList,
+  width: number,
+  mutedText: (text: string) => string,
+): string[] {
+  const lines = settingsList.render(width);
+  if (lines.length === 0) return lines;
+
+  lines[lines.length - 1] = mutedText("  [space] update/select  [esc] back");
+  return lines;
+}
+
+function createWebToolsSubmenu(
+  ctx: Pick<ExtensionContext, "ui">,
+  options: Pick<OpenSettingsUiOptions, "writeWebToolSetting">,
+  settings: PiModeSettings,
+  stylers: {
+    dimText: (text: string) => string;
+    mutedText: (text: string) => string;
+    breadcrumbText: (parent: string, current: string) => string;
+  },
+  done: (selectedValue?: string) => void,
+): Component {
+  const state = settings;
+
+  const items: SettingItem[] = [
+    {
+      id: "geminiApiKey",
+      label: "Gemini API Key",
+      description:
+        "Used by WebSearch and WebSummary. GEMINI_API_KEY or GOOGLE_API_KEY from the shell overrides the stored value.",
+      currentValue: formatStoredSettingStatus(state.webTools.geminiApiKey, getGeminiEnvValue()),
+    },
+    {
+      id: "cloudflareAccountId",
+      label: "Cloudflare Account ID",
+      description:
+        "Used with the Cloudflare Browser Rendering crawl API. CLOUDFLARE_ACCOUNT_ID from the shell overrides the stored value.",
+      currentValue: formatStoredSettingStatus(
+        state.webTools.cloudflareAccountId,
+        getCloudflareAccountIdEnvValue(),
+      ),
+    },
+    {
+      id: "cloudflareApiToken",
+      label: "Cloudflare API Token",
+      description:
+        "Used for Cloudflare web crawl requests. CLOUDFLARE_BROWSER_RENDERING_API_TOKEN or CLOUDFLARE_API_TOKEN from the shell overrides the stored value.",
+      currentValue: formatStoredSettingStatus(
+        state.webTools.cloudflareApiToken,
+        getCloudflareTokenEnvValue(),
+      ),
+    },
+    {
+      id: "firecrawlApiKey",
+      label: "Firecrawl API Key",
+      description:
+        "Used as the fallback web crawl provider when Cloudflare is not configured. FIRECRAWL_API_KEY from the shell overrides the stored value.",
+      currentValue: formatStoredSettingStatus(
+        state.webTools.firecrawlApiKey,
+        getFirecrawlApiKeyEnvValue(),
+      ),
+    },
+  ];
+
+  const settingsList = new SettingsList(
+    items.map((item) => ({
+      ...item,
+      submenu: (_currentValue, leafDone) =>
+        createSecretInputComponent({
+          title: item.label,
+          description: item.description ?? "",
+          prefill: state.webTools[item.id as WebToolSettingKey],
+          saveLabel: `Stored value for ${item.label}`,
+          dimText: stylers.dimText,
+          mutedText: stylers.mutedText,
+          onSubmit: async (value) => {
+            const key = item.id as WebToolSettingKey;
+            await options.writeWebToolSetting(key, value);
+            state.webTools[key] = value;
+            settingsList.updateValue(
+              key,
+              key === "geminiApiKey"
+                ? formatStoredSettingStatus(state.webTools[key], getGeminiEnvValue())
+                : key === "cloudflareAccountId"
+                  ? formatStoredSettingStatus(state.webTools[key], getCloudflareAccountIdEnvValue())
+                  : key === "cloudflareApiToken"
+                    ? formatStoredSettingStatus(state.webTools[key], getCloudflareTokenEnvValue())
+                    : formatStoredSettingStatus(state.webTools[key], getFirecrawlApiKeyEnvValue()),
+            );
+            ctx.ui.notify(
+              value ? `Saved stored ${item.label}` : `Cleared stored ${item.label}`,
+              "info",
+            );
+            leafDone(
+              key === "geminiApiKey"
+                ? formatStoredSettingStatus(state.webTools[key], getGeminiEnvValue())
+                : key === "cloudflareAccountId"
+                  ? formatStoredSettingStatus(state.webTools[key], getCloudflareAccountIdEnvValue())
+                  : key === "cloudflareApiToken"
+                    ? formatStoredSettingStatus(state.webTools[key], getCloudflareTokenEnvValue())
+                    : formatStoredSettingStatus(state.webTools[key], getFirecrawlApiKeyEnvValue()),
+            );
+          },
+          onCancel: () => leafDone(undefined),
+        }),
+    })),
+    10,
+    getSettingsListTheme(),
+    () => undefined,
+    () => done(buildWebToolsSummary(state)),
+    { enableSearch: false },
+  );
+
+  return {
+    render(width: number) {
+      return [
+        stylers.breadcrumbText("Pi Mode", "Web Tools"),
+        "",
+        ...renderSettingsListWithFooter(settingsList, width, stylers.mutedText),
+      ];
+    },
+    invalidate() {
+      settingsList.invalidate();
+    },
+    handleInput(data: string) {
+      settingsList.handleInput(data);
+    },
+  };
 }
 
 export function parseSettingsCommand(args: string): SettingsCommandAction {
@@ -127,12 +390,40 @@ export async function openPiModeSettingsUi(
 ): Promise<void> {
   if (!ctx.hasUI) return;
 
-  const settings = await options.readSettings();
-  const items = buildPiModeSettingItems(settings);
+  const currentSettings = await options.readSettings();
+  const settings = {
+    ...currentSettings,
+    webTools: { ...currentSettings.webTools },
+  } satisfies PiModeSettings;
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
-    const container = new Container();
-    container.addChild(new Text(theme.fg("accent", theme.bold("Pi Mode")), 1, 1));
+    let showRootHeader = true;
+
+    const items = buildPiModeSettingItems(settings).map((item) =>
+      item.id === "webTools"
+        ? {
+            ...item,
+            submenu: (_currentValue: string, done: (selectedValue?: string) => void) => {
+              showRootHeader = false;
+              return createWebToolsSubmenu(
+                ctx,
+                options,
+                settings,
+                {
+                  dimText: (text) => theme.fg("dim", text),
+                  mutedText: (text) => theme.fg("muted", text),
+                  breadcrumbText: (parent, current) =>
+                    `${theme.fg("muted", parent)} ${theme.fg("muted", ">")} ${theme.fg("accent", theme.bold(current))}`,
+                },
+                (selectedValue) => {
+                  showRootHeader = true;
+                  done(selectedValue);
+                },
+              );
+            },
+          }
+        : item,
+    );
 
     const settingsList = new SettingsList(
       items,
@@ -144,6 +435,7 @@ export async function openPiModeSettingsUi(
           if (nextValue === undefined) return;
 
           await options.applyToolSetTransition(ctx, nextValue);
+          settings.toolSet = nextValue;
           const itemIndex = items.findIndex((item) => item.id === id);
           items[itemIndex] = {
             ...items[itemIndex],
@@ -158,6 +450,7 @@ export async function openPiModeSettingsUi(
           if (nextValue === undefined) return;
 
           await options.writeSystemMdPrompt(nextValue);
+          settings.systemMdPrompt = nextValue;
           const itemIndex = items.findIndex((item) => item.id === id);
           items[itemIndex] = {
             ...items[itemIndex],
@@ -175,6 +468,7 @@ export async function openPiModeSettingsUi(
           if (nextValue === undefined) return;
 
           await options.writeIncludePiPromptSection(nextValue);
+          settings.includePiPromptSection = nextValue;
           const itemIndex = items.findIndex((item) => item.id === id);
           items[itemIndex] = {
             ...items[itemIndex],
@@ -184,6 +478,15 @@ export async function openPiModeSettingsUi(
             `Include Pi prompt section: ${formatIncludePiPromptSectionLabel(nextValue)}`,
             "info",
           );
+          return;
+        }
+
+        if (id === "webTools") {
+          const itemIndex = items.findIndex((item) => item.id === id);
+          items[itemIndex] = {
+            ...items[itemIndex],
+            currentValue: newValue,
+          };
         }
       },
       () => done(undefined),
@@ -192,11 +495,19 @@ export async function openPiModeSettingsUi(
       },
     );
 
-    container.addChild(settingsList);
-
     return {
-      render: (width) => container.render(width),
-      invalidate: () => container.invalidate(),
+      render: (width) => {
+        const lines = renderSettingsListWithFooter(settingsList, width, (text) =>
+          theme.fg("muted", text),
+        );
+
+        if (!showRootHeader) {
+          return lines;
+        }
+
+        return [theme.fg("accent", theme.bold("Pi Mode")), "", ...lines];
+      },
+      invalidate: () => settingsList.invalidate(),
       handleInput: (data) => settingsList.handleInput?.(data),
     };
   });

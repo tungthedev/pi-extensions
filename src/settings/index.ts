@@ -1,11 +1,17 @@
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+  ExtensionContext,
+} from "@mariozechner/pi-coding-agent";
 
 import {
   TOOL_SET_CHANGED_EVENT,
   readPiModeSettings,
+  writeWebToolSetting,
   writeIncludePiPromptSectionSetting,
   writeSystemMdPromptSetting,
   writeToolSetSetting,
+  type WebToolSettingKey,
   type ToolSetChangedPayload,
   type ToolSetPack,
   type PiModeSettings,
@@ -15,15 +21,8 @@ import {
   resolveSessionToolSet,
   writeSessionToolSetSnapshot,
 } from "./session.ts";
-import {
-  applySessionToolSetTransition,
-  applyToolSetTransition,
-} from "./tool-set-transition.ts";
-import {
-  formatSystemMdPromptLabel,
-  openPiModeSettingsUi,
-  parseSettingsCommand,
-} from "./ui.ts";
+import { applySessionToolSetTransition, applyToolSetTransition } from "./tool-set-transition.ts";
+import { formatSystemMdPromptLabel, openPiModeSettingsUi, parseSettingsCommand } from "./ui.ts";
 
 export type PiModeCommandDeps = {
   readSettings: () => Promise<PiModeSettings>;
@@ -31,8 +30,12 @@ export type PiModeCommandDeps = {
   writeSessionToolSet: (value: ToolSetPack) => Promise<void> | void;
   writeSystemMdPrompt: (value: boolean) => Promise<void>;
   writeIncludePiPromptSection: (value: boolean) => Promise<void>;
+  writeWebToolSetting: (key: WebToolSettingKey, value: string | undefined) => Promise<void>;
   emitToolSetChange?: (value: ToolSetPack) => Promise<void> | void;
-  openSettingsUi: (ctx: ExtensionCommandContext, options: { focus?: "toolSet" | "systemMdPrompt" | "includePiPromptSection" }) => Promise<void>;
+  openSettingsUi: (
+    ctx: ExtensionCommandContext,
+    options: { focus?: "toolSet" | "systemMdPrompt" | "includePiPromptSection" },
+  ) => Promise<void>;
 };
 
 function getNextToolSet(current: ToolSetPack): ToolSetPack {
@@ -43,10 +46,7 @@ function getNextToolSet(current: ToolSetPack): ToolSetPack {
 
 async function applyToolSetSelection(
   ctx: Pick<ExtensionContext, "hasUI" | "ui">,
-  deps: Pick<
-    PiModeCommandDeps,
-    "writeToolSet" | "writeSessionToolSet" | "emitToolSetChange"
-  >,
+  deps: Pick<PiModeCommandDeps, "writeToolSet" | "writeSessionToolSet" | "emitToolSetChange">,
   toolSet: ToolSetPack,
 ): Promise<void> {
   await applyToolSetTransition(ctx, deps, toolSet);
@@ -67,6 +67,7 @@ function createDefaultDeps(pi: ExtensionAPI): PiModeCommandDeps {
     writeSessionToolSet: (value) => writeSessionToolSetSnapshot(pi, value),
     writeSystemMdPrompt: (value) => writeSystemMdPromptSetting(value),
     writeIncludePiPromptSection: (value) => writeIncludePiPromptSectionSetting(value),
+    writeWebToolSetting: (key, value) => writeWebToolSetting(key, value),
     emitToolSetChange: (value) => {
       pi.events.emit(TOOL_SET_CHANGED_EVENT, {
         toolSet: value,
@@ -84,6 +85,7 @@ function createDefaultDeps(pi: ExtensionAPI): PiModeCommandDeps {
         },
         writeSystemMdPrompt: (value) => writeSystemMdPromptSetting(value),
         writeIncludePiPromptSection: (value) => writeIncludePiPromptSectionSetting(value),
+        writeWebToolSetting: (key, value) => writeWebToolSetting(key, value),
         applyToolSetTransition: (ctx, value) =>
           applyToolSetTransition(
             ctx,
@@ -127,10 +129,7 @@ export async function handlePiModeCommand(
 
   if (action.action === "set-include-pi-prompt-section") {
     await deps.writeIncludePiPromptSection(action.value);
-    ctx.ui.notify(
-      `Include Pi prompt section: ${action.value ? "Enabled" : "Disabled"}`,
-      "info",
-    );
+    ctx.ui.notify(`Include Pi prompt section: ${action.value ? "Enabled" : "Disabled"}`, "info");
     return;
   }
 

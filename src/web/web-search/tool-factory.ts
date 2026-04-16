@@ -6,6 +6,14 @@ import { Type } from "@sinclair/typebox";
 import { detailLine, titleLine } from "../../shared/renderers/common.ts";
 import { shortenText } from "../../shared/text.ts";
 import {
+  buildRenderableMarkdown,
+  formatWebToolError,
+  type DroidSearchParams,
+  type FetchParams,
+  type SearchParams,
+  type WebSearchProvider,
+} from "./core.ts";
+import {
   type Citation,
   DEFAULT_FETCH_MAX_CHARS,
   DEFAULT_MAX_RESULTS,
@@ -17,16 +25,8 @@ import {
   trimToMaxChars,
   wrapUntrustedWebContent,
 } from "./gemini.ts";
-import {
-  buildRenderableMarkdown,
-  formatWebToolError,
-  type DroidSearchParams,
-  type FetchParams,
-  type SearchParams,
-  type WebSearchProvider,
-} from "./core.ts";
-import { runGeminiDroidSearch } from "./providers/gemini-adapter.ts";
 import { resolveExaApiKey, runExaSearch } from "./providers/exa.ts";
+import { runGeminiDroidSearch } from "./providers/gemini-adapter.ts";
 import { renderWebResult } from "./render.ts";
 
 const WEB_SEARCH_TOOL_NAME = "WebSearch";
@@ -108,8 +108,6 @@ function buildSummarySuccessResult(options: {
 }
 
 export function createWebSearchTool(): ToolDefinition {
-  const provider = resolveWebSearchProvider();
-
   return {
     name: WEB_SEARCH_TOOL_NAME,
     label: "Web Search",
@@ -156,6 +154,7 @@ export function createWebSearchTool(): ToolDefinition {
       text: Type.Optional(Type.Boolean({ description: "Request fuller text when available" })),
     }),
     async execute(_toolCallId, rawParams, signal) {
+      const provider = resolveWebSearchProvider();
       const params = rawParams as SearchParams;
       const objective = params.objective?.trim();
       const query = params.query?.trim();
@@ -308,7 +307,6 @@ export function createUnavailableWebSearchTool(
 }
 
 export function createDroidWebSearchTool(): ToolDefinition {
-  const provider = resolveWebSearchProvider();
   return {
     name: "WebSearch",
     label: "Web Search",
@@ -335,6 +333,7 @@ export function createDroidWebSearchTool(): ToolDefinition {
       text: Type.Optional(Type.Boolean({ description: "Request fuller text when available" })),
     }),
     async execute(_toolCallId, rawParams, signal) {
+      const provider = resolveWebSearchProvider();
       const params = rawParams as DroidSearchParams;
       const subject = params.query.trim();
       try {
@@ -374,7 +373,12 @@ export function createDroidWebSearchTool(): ToolDefinition {
     renderCall(rawArgs, theme) {
       const args = rawArgs as DroidSearchParams;
       return new Text(
-        titleLine(theme, "text", "Searching", theme.fg("accent", summarizeSubject("search", args.query))),
+        titleLine(
+          theme,
+          "text",
+          "Searching",
+          theme.fg("accent", summarizeSubject("search", args.query)),
+        ),
         0,
         0,
       );
@@ -480,16 +484,6 @@ export function createWebSummaryTool(): ToolDefinition {
 }
 
 export default function webSearchPack(pi: ExtensionAPI) {
-  const provider = resolveWebSearchProvider();
-
-  if (provider === "unavailable") {
-    pi.registerTool(createUnavailableWebSearchTool());
-    return;
-  }
-
   pi.registerTool(createWebSearchTool());
-
-  if (resolveGeminiApiKey()) {
-    pi.registerTool(createWebSummaryTool());
-  }
+  pi.registerTool(createWebSummaryTool());
 }

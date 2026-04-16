@@ -28,6 +28,7 @@ test("handleSystemMdBeforeAgentStart returns no-op when SYSTEM.md is missing", a
       toolSet: "codex",
       systemMdPrompt: true,
       includePiPromptSection: false,
+      webTools: {},
     }),
   };
 
@@ -48,6 +49,7 @@ test("handleSystemMdBeforeAgentStart replaces the system prompt with root SYSTEM
       toolSet: "codex",
       systemMdPrompt: true,
       includePiPromptSection: false,
+      webTools: {},
     }),
   };
 
@@ -68,6 +70,7 @@ test("handleSystemMdBeforeAgentStart returns no-op when system-md prompt is disa
       toolSet: "codex",
       systemMdPrompt: false,
       includePiPromptSection: false,
+      webTools: {},
     }),
   };
 

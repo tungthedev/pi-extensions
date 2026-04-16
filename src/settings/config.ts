@@ -1,4 +1,5 @@
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { mutateJsonObjectFile, readJsonObjectFile } from "../shared/json-settings.ts";
@@ -16,10 +17,20 @@ export const DEFAULT_SYSTEM_MD_PROMPT = false;
 export const DEFAULT_INCLUDE_PI_PROMPT_SECTION = false;
 export const TOOL_SET_CHANGED_EVENT = "settings:tool-set-changed";
 
+export type WebToolSettings = {
+  geminiApiKey?: string;
+  cloudflareAccountId?: string;
+  cloudflareApiToken?: string;
+  firecrawlApiKey?: string;
+};
+
+export type WebToolSettingKey = keyof WebToolSettings;
+
 export type PiModeSettings = {
   toolSet: ToolSetPack;
   systemMdPrompt: boolean;
   includePiPromptSection: boolean;
+  webTools: WebToolSettings;
 };
 
 type SettingsRoot = Record<string, unknown>;
@@ -42,6 +53,55 @@ function normalizeSystemMdPrompt(value: unknown): boolean {
 
 function normalizeIncludePiPromptSection(value: unknown): boolean {
   return typeof value === "boolean" ? value : DEFAULT_INCLUDE_PI_PROMPT_SECTION;
+}
+
+function normalizeOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+function normalizeWebToolSettings(value: unknown): WebToolSettings {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const webTools = value as SettingsRoot;
+  const normalized: WebToolSettings = {};
+  const geminiApiKey = normalizeOptionalString(webTools.geminiApiKey);
+  const cloudflareAccountId = normalizeOptionalString(webTools.cloudflareAccountId);
+  const cloudflareApiToken = normalizeOptionalString(webTools.cloudflareApiToken);
+  const firecrawlApiKey = normalizeOptionalString(webTools.firecrawlApiKey);
+
+  if (geminiApiKey) normalized.geminiApiKey = geminiApiKey;
+  if (cloudflareAccountId) normalized.cloudflareAccountId = cloudflareAccountId;
+  if (cloudflareApiToken) normalized.cloudflareApiToken = cloudflareApiToken;
+  if (firecrawlApiKey) normalized.firecrawlApiKey = firecrawlApiKey;
+
+  return normalized;
+}
+
+function readSettingsRootSync(filePath: string, options: { strict?: boolean } = {}): SettingsRoot {
+  try {
+    const raw = readFileSync(filePath, "utf8");
+    if (!raw.trim()) return {};
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      if (options.strict) {
+        throw new Error(`Invalid settings format in ${filePath}: expected object`);
+      }
+      return {};
+    }
+
+    return parsed as SettingsRoot;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return {};
+    }
+    if (options.strict) throw error;
+    return {};
+  }
 }
 
 export function formatToolSetLabel(value: ToolSetPack): "Pi" | "Codex" | "Droid" {
@@ -67,17 +127,20 @@ export function parsePiModeSettings(root: unknown): PiModeSettings {
     namespace && typeof namespace === "object" && !Array.isArray(namespace)
       ? (namespace as SettingsRoot).includePiPromptSection
       : undefined;
+  const webTools =
+    namespace && typeof namespace === "object" && !Array.isArray(namespace)
+      ? (namespace as SettingsRoot).webTools
+      : undefined;
 
   return {
     toolSet: normalizeToolSet(toolSet),
     systemMdPrompt: normalizeSystemMdPrompt(systemMdPrompt),
     includePiPromptSection: normalizeIncludePiPromptSection(includePiPromptSection),
+    webTools: normalizeWebToolSettings(webTools),
   };
 }
 
-export async function readPiModeSettingsFromFile(
-  filePath: string,
-): Promise<PiModeSettings> {
+export async function readPiModeSettingsFromFile(filePath: string): Promise<PiModeSettings> {
   return parsePiModeSettings(await readJsonObjectFile(filePath));
 }
 
@@ -87,15 +150,15 @@ export async function readPiModeSettings(
   return readPiModeSettingsFromFile(filePath);
 }
 
-export async function readSettingsFromFile(
-  filePath: string,
-): Promise<PiModeSettings> {
+export function readPiModeSettingsSync(filePath = getGlobalPiSettingsPath()): PiModeSettings {
+  return parsePiModeSettings(readSettingsRootSync(filePath));
+}
+
+export async function readSettingsFromFile(filePath: string): Promise<PiModeSettings> {
   return readPiModeSettingsFromFile(filePath);
 }
 
-export async function readSettings(
-  filePath = getGlobalPiSettingsPath(),
-): Promise<PiModeSettings> {
+export async function readSettings(filePath = getGlobalPiSettingsPath()): Promise<PiModeSettings> {
   return readPiModeSettings(filePath);
 }
 
@@ -107,8 +170,7 @@ async function writeSettings(
     filePath,
     (root) => {
       const nextRoot = root as SettingsRoot;
-      const currentNamespace =
-        nextRoot[PI_MODE_NAMESPACE];
+      const currentNamespace = nextRoot[PI_MODE_NAMESPACE];
       const namespace =
         currentNamespace && typeof currentNamespace === "object" && !Array.isArray(currentNamespace)
           ? { ...(currentNamespace as SettingsRoot) }
@@ -161,4 +223,28 @@ export async function writeIncludePiPromptSectionSetting(
     }),
     filePath,
   );
+}
+
+export async function writeWebToolSetting(
+  key: WebToolSettingKey,
+  value: string | undefined,
+  filePath = getGlobalPiSettingsPath(),
+): Promise<void> {
+  const normalizedValue = normalizeOptionalString(value);
+
+  await writeSettings((namespace) => {
+    const current = normalizeWebToolSettings(namespace.webTools);
+    const webTools: SettingsRoot = { ...current };
+
+    if (normalizedValue) {
+      webTools[key] = normalizedValue;
+    } else {
+      delete webTools[key];
+    }
+
+    return {
+      ...namespace,
+      webTools,
+    };
+  }, filePath);
 }

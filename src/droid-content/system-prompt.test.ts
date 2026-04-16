@@ -36,6 +36,7 @@ test("handleDroidSystemPromptBeforeAgentStart returns no-op when Droid prompt is
       toolSet: "pi",
       systemMdPrompt: true,
       includePiPromptSection: false,
+      webTools: {},
     }),
     buildPromptForModel: () => "Droid block",
   };
@@ -61,6 +62,7 @@ test("handleDroidSystemPromptBeforeAgentStart defers to SYSTEM.md when enabled a
       toolSet: "droid",
       systemMdPrompt: true,
       includePiPromptSection: false,
+      webTools: {},
     }),
     buildPromptForModel: () => "Droid block",
   };
@@ -84,6 +86,7 @@ test("handleDroidSystemPromptBeforeAgentStart still replaces when SYSTEM.md is e
       toolSet: "droid",
       systemMdPrompt: true,
       includePiPromptSection: false,
+      webTools: {},
     }),
     buildPromptForModel: () => "Droid block",
   };
@@ -111,6 +114,7 @@ test("handleDroidSystemPromptBeforeAgentStart uses the Droid prompt when SYSTEM.
       toolSet: "droid",
       systemMdPrompt: false,
       includePiPromptSection: false,
+      webTools: {},
     }),
     buildPromptForModel: () => "Droid block",
   };
@@ -132,6 +136,7 @@ test("handleDroidSystemPromptBeforeAgentStart still replaces when SYSTEM.md is n
       toolSet: "droid",
       systemMdPrompt: false,
       includePiPromptSection: false,
+      webTools: {},
     }),
     buildPromptForModel: () => "Droid block",
   };
@@ -153,6 +158,7 @@ test("handleDroidSystemPromptBeforeAgentStart replaces the active system prompt"
       toolSet: "droid",
       systemMdPrompt: true,
       includePiPromptSection: false,
+      webTools: {},
     }),
     buildPromptForModel: () => "Droid block",
   };
@@ -174,6 +180,7 @@ test("handleDroidSystemPromptBeforeAgentStart appends the Droid prompt after the
       toolSet: "droid",
       systemMdPrompt: false,
       includePiPromptSection: true,
+      webTools: {},
     }),
     buildPromptForModel: () => "Droid block",
   };

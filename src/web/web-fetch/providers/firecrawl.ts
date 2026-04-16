@@ -1,3 +1,5 @@
+import { readPiModeSettingsSync } from "../../../settings/config.ts";
+
 export type FirecrawlFetchResult = {
   markdown: string;
   title?: string | null;
@@ -6,8 +8,10 @@ export type FirecrawlFetchResult = {
 };
 
 export function resolveFirecrawlApiKey(): string | undefined {
-  const apiKey = process.env.FIRECRAWL_API_KEY?.trim();
-  return apiKey || undefined;
+  const envApiKey = process.env.FIRECRAWL_API_KEY?.trim();
+  if (envApiKey) return envApiKey;
+
+  return readPiModeSettingsSync().webTools.firecrawlApiKey;
 }
 
 export function hasFirecrawlConfig(): boolean {

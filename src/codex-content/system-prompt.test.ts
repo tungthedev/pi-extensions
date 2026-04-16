@@ -44,12 +44,17 @@ test("resolveCodexPromptBody uses exact model match and GPT fallback", () => {
 });
 
 test("buildCodexPrompt rewrites short-label file reference guidance for Pi rendering", () => {
-  const prompt = buildCodexPrompt(`File References: When referencing files in your response follow the below rules:
+  const prompt =
+    buildCodexPrompt(`File References: When referencing files in your response follow the below rules:
   * Use markdown links (not inline code) for clickable files.
   * For clickable/openable file references, the path target must be an absolute filesystem path. Labels may be short (for example, [app.ts](/abs/path/app.ts)).`);
 
   assert.ok(prompt.includes("Do not use short labels like [app.ts](/abs/path/app.ts)."));
-  assert.ok(prompt.includes("Use the same absolute filesystem path for both the label and target (for example, [/abs/path/app.ts](/abs/path/app.ts))."));
+  assert.ok(
+    prompt.includes(
+      "Use the same absolute filesystem path for both the label and target (for example, [/abs/path/app.ts](/abs/path/app.ts)).",
+    ),
+  );
   assert.ok(!prompt.includes("Labels may be short"));
 });
 
@@ -59,6 +64,7 @@ test("handleCodexSystemPromptBeforeAgentStart returns no-op when Codex prompt is
       toolSet: "pi",
       systemMdPrompt: true,
       includePiPromptSection: false,
+      webTools: {},
     }),
     buildPromptForModel: () => "Codex block",
   };
@@ -82,6 +88,7 @@ test("handleCodexSystemPromptBeforeAgentStart defers to SYSTEM.md when enabled a
       toolSet: "codex",
       systemMdPrompt: true,
       includePiPromptSection: false,
+      webTools: {},
     }),
     buildPromptForModel: () => "Codex block",
   };
@@ -103,6 +110,7 @@ test("handleCodexSystemPromptBeforeAgentStart still replaces when SYSTEM.md is e
       toolSet: "codex",
       systemMdPrompt: true,
       includePiPromptSection: false,
+      webTools: {},
     }),
     buildPromptForModel: () => "Codex block",
   };
@@ -128,6 +136,7 @@ test("handleCodexSystemPromptBeforeAgentStart uses the Codex prompt when SYSTEM.
       toolSet: "codex",
       systemMdPrompt: false,
       includePiPromptSection: false,
+      webTools: {},
     }),
     buildPromptForModel: () => "Codex block",
   };
@@ -149,6 +158,7 @@ test("handleCodexSystemPromptBeforeAgentStart still replaces when SYSTEM.md is n
       toolSet: "codex",
       systemMdPrompt: false,
       includePiPromptSection: false,
+      webTools: {},
     }),
     buildPromptForModel: () => "Codex block",
   };
@@ -170,6 +180,7 @@ test("handleCodexSystemPromptBeforeAgentStart replaces the selected Codex prompt
       toolSet: "codex",
       systemMdPrompt: true,
       includePiPromptSection: false,
+      webTools: {},
     }),
     buildPromptForModel: () => "Codex block",
   };
@@ -191,6 +202,7 @@ test("handleCodexSystemPromptBeforeAgentStart appends the Codex prompt after the
       toolSet: "codex",
       systemMdPrompt: false,
       includePiPromptSection: true,
+      webTools: {},
     }),
     buildPromptForModel: () => "Codex block",
   };

@@ -6,9 +6,9 @@ import { Type } from "@sinclair/typebox";
 import { titleLine } from "../../shared/renderers/common.ts";
 import { shortenText } from "../../shared/text.ts";
 import { wrapUntrustedWebContent } from "../web-search/gemini.ts";
-import { formatFetchUrlError, renderFetchUrlResult } from "./render.ts";
 import { hasCloudflareConfig, runCloudflareFetch } from "./providers/cloudflare.ts";
 import { hasFirecrawlConfig, runFirecrawlFetch } from "./providers/firecrawl.ts";
+import { formatFetchUrlError, renderFetchUrlResult } from "./render.ts";
 
 export type WebFetchProvider = "cloudflare" | "firecrawl" | "unavailable";
 
@@ -59,23 +59,32 @@ function validateFetchUrl(url: string): string {
   return trimmed;
 }
 
-
 export function createUnavailableFetchUrlTool(): ToolDefinition {
   return {
     name: "FetchUrl",
     label: "Web Fetch",
-    description: "Fetch a user-provided URL and return markdown content. Returns a runtime error when no provider is configured.",
-    parameters: Type.Object({ url: Type.String({ description: "The URL to scrape content from" }) }),
+    description:
+      "Fetch a user-provided URL and return markdown content. Returns a runtime error when no provider is configured.",
+    parameters: Type.Object({
+      url: Type.String({ description: "The URL to scrape content from" }),
+    }),
     async execute(_toolCallId, rawParams) {
       const params = rawParams as { url: string };
-      return formatFetchUrlError("No web fetch provider is configured. Set Cloudflare or Firecrawl credentials.", {
-        provider: "unavailable",
-        subject: params.url,
-      });
+      return formatFetchUrlError(
+        "No web fetch provider is configured. Set Cloudflare or Firecrawl credentials.",
+        {
+          provider: "unavailable",
+          subject: params.url,
+        },
+      );
     },
     renderCall(rawArgs, theme) {
       const args = rawArgs as { url: string };
-      return new Text(titleLine(theme, "text", "Fetching", theme.fg("accent", shortenText(args.url, 96, "URL"))), 0, 0);
+      return new Text(
+        titleLine(theme, "text", "Fetching", theme.fg("accent", shortenText(args.url, 96, "URL"))),
+        0,
+        0,
+      );
     },
     renderResult(result, options, theme) {
       return renderFetchUrlResult(result, theme, options);
@@ -84,8 +93,6 @@ export function createUnavailableFetchUrlTool(): ToolDefinition {
 }
 
 export function createFetchUrlTool(): ToolDefinition {
-  const provider = resolveWebFetchProvider();
-
   return {
     name: "FetchUrl",
     label: "Web Fetch",
@@ -107,6 +114,7 @@ DO NOT use this tool for:
       url: Type.String({ description: "The URL to scrape content from" }),
     }),
     async execute(_toolCallId, rawParams, signal) {
+      const provider = resolveWebFetchProvider();
       const params = rawParams as { url: string };
       let url: string;
       try {
@@ -122,7 +130,12 @@ DO NOT use this tool for:
         if (provider === "cloudflare") {
           const result = await runCloudflareFetch(url, signal);
           return {
-            content: [{ type: "text" as const, text: wrapUntrustedWebContent(result.markdown, "web_fetch") }],
+            content: [
+              {
+                type: "text" as const,
+                text: wrapUntrustedWebContent(result.markdown, "web_fetch"),
+              },
+            ],
             details: {
               provider,
               subject: result.url,
@@ -137,7 +150,12 @@ DO NOT use this tool for:
         if (provider === "firecrawl") {
           const result = await runFirecrawlFetch(url, signal);
           return {
-            content: [{ type: "text" as const, text: wrapUntrustedWebContent(result.markdown, "web_fetch") }],
+            content: [
+              {
+                type: "text" as const,
+                text: wrapUntrustedWebContent(result.markdown, "web_fetch"),
+              },
+            ],
             details: {
               provider,
               subject: result.url,
@@ -149,10 +167,13 @@ DO NOT use this tool for:
           };
         }
 
-        return formatFetchUrlError("No web fetch provider is configured. Set Cloudflare or Firecrawl credentials.", {
-          provider,
-          subject: url,
-        });
+        return formatFetchUrlError(
+          "No web fetch provider is configured. Set Cloudflare or Firecrawl credentials.",
+          {
+            provider,
+            subject: url,
+          },
+        );
       } catch (error) {
         return formatFetchUrlError(error instanceof Error ? error.message : String(error), {
           provider,
@@ -162,7 +183,11 @@ DO NOT use this tool for:
     },
     renderCall(rawArgs, theme) {
       const args = rawArgs as { url: string };
-      return new Text(titleLine(theme, "text", "Fetching", theme.fg("accent", shortenText(args.url, 96, "URL"))), 0, 0);
+      return new Text(
+        titleLine(theme, "text", "Fetching", theme.fg("accent", shortenText(args.url, 96, "URL"))),
+        0,
+        0,
+      );
     },
     renderResult(result, options, theme) {
       return renderFetchUrlResult(result, theme, options);

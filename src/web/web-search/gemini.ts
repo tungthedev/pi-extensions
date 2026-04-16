@@ -6,6 +6,8 @@ import {
   type UrlMetadata,
 } from "@google/genai";
 
+import { readPiModeSettingsSync } from "../../settings/config.ts";
+
 export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 export const DEFAULT_MAX_RESULTS = 10;
 export const DEFAULT_FETCH_MAX_CHARS = 12_000;
@@ -34,8 +36,10 @@ export type GeminiFetchArgs = {
 };
 
 export function resolveGeminiApiKey(): string | undefined {
-  const apiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
-  return apiKey || undefined;
+  const envApiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
+  if (envApiKey) return envApiKey;
+
+  return readPiModeSettingsSync().webTools.geminiApiKey;
 }
 
 export function resolveGeminiModel(input?: string): string {
@@ -119,7 +123,12 @@ export function wrapUntrustedWebContent(
   text: string,
   source: "web_search" | "web_fetch" | "web_extract" | "web_summary",
 ): string {
-  const label = source === "web_search" ? "web search" : source === "web_summary" ? "web summary" : "web extract";
+  const label =
+    source === "web_search"
+      ? "web search"
+      : source === "web_summary"
+        ? "web summary"
+        : "web extract";
   return [
     `<untrusted-${label.replace(/\s+/g, "-")}-content>`,
     "The following content comes from external web sources.",

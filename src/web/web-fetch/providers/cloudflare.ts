@@ -1,3 +1,5 @@
+import { readPiModeSettingsSync } from "../../../settings/config.ts";
+
 const DEFAULT_TIMEOUT_MS = 90_000;
 const POLL_INTERVAL_MS = 1_500;
 
@@ -9,10 +11,13 @@ export type CloudflareFetchResult = {
 };
 
 function resolveCloudflareConfig(): { accountId: string; apiToken: string } {
-  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
+  const settings = readPiModeSettingsSync();
+  const accountId =
+    process.env.CLOUDFLARE_ACCOUNT_ID?.trim() || settings.webTools.cloudflareAccountId;
   const apiToken =
     process.env.CLOUDFLARE_BROWSER_RENDERING_API_TOKEN?.trim() ||
-    process.env.CLOUDFLARE_API_TOKEN?.trim();
+    process.env.CLOUDFLARE_API_TOKEN?.trim() ||
+    settings.webTools.cloudflareApiToken;
 
   if (!accountId) throw new Error("CLOUDFLARE_ACCOUNT_ID is not set.");
   if (!apiToken) {
@@ -47,7 +52,10 @@ async function cloudflareRequest<T>(pathname: string, init: RequestInit = {}) {
     | undefined;
 
   if (!response.ok || !body?.success) {
-    const message = body?.errors?.map((error) => error.message).filter(Boolean).join("; ");
+    const message = body?.errors
+      ?.map((error) => error.message)
+      .filter(Boolean)
+      .join("; ");
     throw new Error(message || `Cloudflare request failed (${response.status})`);
   }
 

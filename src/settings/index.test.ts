@@ -1,13 +1,8 @@
+import { initTheme } from "@mariozechner/pi-coding-agent";
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { initTheme } from "@mariozechner/pi-coding-agent";
-
-import {
-  handlePiModeCommand,
-  registerPiModeShortcut,
-  type PiModeCommandDeps,
-} from "./index.ts";
+import { handlePiModeCommand, registerPiModeShortcut, type PiModeCommandDeps } from "./index.ts";
 import { applyToolSetTransition } from "./tool-set-transition.ts";
 import { openPiModeSettingsUi } from "./ui.ts";
 
@@ -27,6 +22,7 @@ test("handlePiModeCommand writes the selected tool set directly", async () => {
       toolSet: "pi",
       systemMdPrompt: true,
       includePiPromptSection: false,
+      webTools: {},
     }),
     writeToolSet: async (value) => {
       writes.push(value);
@@ -39,6 +35,9 @@ test("handlePiModeCommand writes the selected tool set directly", async () => {
     },
     writeIncludePiPromptSection: async () => {
       throw new Error("writeIncludePiPromptSection should not run");
+    },
+    writeWebToolSetting: async () => {
+      throw new Error("writeWebToolSetting should not run");
     },
     emitToolSetChange: async (value) => {
       emitted.push(value);
@@ -108,6 +107,7 @@ test("openPiModeSettingsUi applies the same tool-set transition side effects", a
         toolSet: "pi",
         systemMdPrompt: true,
         includePiPromptSection: false,
+        webTools: {},
       }),
       applyToolSetTransition: (transitionCtx, value) =>
         applyToolSetTransition(
@@ -131,6 +131,9 @@ test("openPiModeSettingsUi applies the same tool-set transition side effects", a
       writeIncludePiPromptSection: async () => {
         throw new Error("writeIncludePiPromptSection should not run");
       },
+      writeWebToolSetting: async () => {
+        throw new Error("writeWebToolSetting should not run");
+      },
     },
   );
 
@@ -149,6 +152,7 @@ test("handlePiModeCommand writes the selected system-md setting directly", async
       toolSet: "codex",
       systemMdPrompt: true,
       includePiPromptSection: false,
+      webTools: {},
     }),
     writeToolSet: async () => {
       throw new Error("writeToolSet should not run");
@@ -159,6 +163,9 @@ test("handlePiModeCommand writes the selected system-md setting directly", async
     },
     writeIncludePiPromptSection: async () => {
       throw new Error("writeIncludePiPromptSection should not run");
+    },
+    writeWebToolSetting: async () => {
+      throw new Error("writeWebToolSetting should not run");
     },
     openSettingsUi: async () => {
       throw new Error("settings UI should not open for direct writes");
@@ -190,6 +197,7 @@ test("handlePiModeCommand writes the include-pi-prompt setting directly", async 
       toolSet: "droid",
       systemMdPrompt: false,
       includePiPromptSection: false,
+      webTools: {},
     }),
     writeToolSet: async () => {
       throw new Error("writeToolSet should not run");
@@ -200,6 +208,9 @@ test("handlePiModeCommand writes the include-pi-prompt setting directly", async 
     },
     writeIncludePiPromptSection: async (value) => {
       writes.push(value);
+    },
+    writeWebToolSetting: async () => {
+      throw new Error("writeWebToolSetting should not run");
     },
     openSettingsUi: async () => {
       throw new Error("settings UI should not open for direct writes");
@@ -230,39 +241,46 @@ test("registerPiModeShortcut cycles pi -> codex -> droid -> pi without saving gl
   const notifications: string[] = [];
   let shortcutHandler: ((ctx: unknown) => Promise<void>) | undefined;
 
-  registerPiModeShortcut({
-    registerShortcut(_key: string, config: { handler: (ctx: unknown) => Promise<void> }) {
-      shortcutHandler = config.handler;
+  registerPiModeShortcut(
+    {
+      registerShortcut(_key: string, config: { handler: (ctx: unknown) => Promise<void> }) {
+        shortcutHandler = config.handler;
+      },
+      appendEntry() {},
+      events: {
+        emit() {},
+      },
+    } as never,
+    {
+      readSettings: async () => ({
+        toolSet: "pi",
+        systemMdPrompt: false,
+        includePiPromptSection: false,
+        webTools: {},
+      }),
+      writeToolSet: async (value) => {
+        writes.push(value);
+      },
+      writeSessionToolSet: async (value) => {
+        sessionWrites.push(value);
+      },
+      writeSystemMdPrompt: async () => {
+        throw new Error("writeSystemMdPrompt should not run");
+      },
+      writeIncludePiPromptSection: async () => {
+        throw new Error("writeIncludePiPromptSection should not run");
+      },
+      writeWebToolSetting: async () => {
+        throw new Error("writeWebToolSetting should not run");
+      },
+      emitToolSetChange: async (value) => {
+        emitted.push(value);
+      },
+      openSettingsUi: async () => {
+        throw new Error("settings UI should not open while cycling");
+      },
     },
-    appendEntry() {},
-    events: {
-      emit() {},
-    },
-  } as never, {
-    readSettings: async () => ({
-      toolSet: "pi",
-      systemMdPrompt: false,
-      includePiPromptSection: false,
-    }),
-    writeToolSet: async (value) => {
-      writes.push(value);
-    },
-    writeSessionToolSet: async (value) => {
-      sessionWrites.push(value);
-    },
-    writeSystemMdPrompt: async () => {
-      throw new Error("writeSystemMdPrompt should not run");
-    },
-    writeIncludePiPromptSection: async () => {
-      throw new Error("writeIncludePiPromptSection should not run");
-    },
-    emitToolSetChange: async (value) => {
-      emitted.push(value);
-    },
-    openSettingsUi: async () => {
-      throw new Error("settings UI should not open while cycling");
-    },
-  });
+  );
 
   assert.notEqual(shortcutHandler, undefined);
 
@@ -297,6 +315,7 @@ test("handlePiModeCommand opens the package settings UI for root invocations", a
       toolSet: "codex",
       systemMdPrompt: true,
       includePiPromptSection: false,
+      webTools: {},
     }),
     writeToolSet: async () => {
       throw new Error("writeToolSet should not run");
@@ -307,6 +326,9 @@ test("handlePiModeCommand opens the package settings UI for root invocations", a
     },
     writeIncludePiPromptSection: async () => {
       throw new Error("writeIncludePiPromptSection should not run");
+    },
+    writeWebToolSetting: async () => {
+      throw new Error("writeWebToolSetting should not run");
     },
     openSettingsUi: async (_ctx, options) => {
       openedFocus = options.focus;
