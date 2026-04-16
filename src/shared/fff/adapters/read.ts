@@ -55,7 +55,7 @@ function locationToReadParams(
 function formatReadResolutionError(pathValue: string, error: unknown): string {
   if (AmbiguousPathError.is(error)) {
     return [
-      `Could not resolve \"${pathValue}\" uniquely for read.`,
+      `Could not resolve "${pathValue}" uniquely for read.`,
       "Top matches:",
       ...formatCandidateLines(error.candidates),
     ].join("\n");

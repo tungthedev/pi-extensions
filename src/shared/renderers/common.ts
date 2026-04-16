@@ -55,7 +55,7 @@ function expandHintText(hiddenCount?: number, hiddenLabel = "line"): string {
 }
 
 export function expandHintLine(theme: Theme, hiddenCount?: number, hiddenLabel = "line"): string {
-  return `${theme.fg("dim", "  ")}${theme.fg("muted", expandHintText(hiddenCount, hiddenLabel))}`;
+  return `${theme.fg("muted", expandHintText(hiddenCount, hiddenLabel))}`;
 }
 
 export function renderLines(lines: string[]): Text {
