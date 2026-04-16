@@ -1,95 +1,114 @@
-# @tungthedev/pi-extensions
+# There are many Pi extensions, but this one is mine.
 
-A collection of Pi extensions:
+`@tungthedev/pi-extensions` is a bundled Pi package that upgrades the default Pi experience with a better editor, inline Mermaid rendering, web research tools, skill loading, workspace tooling, tool-set switching for Pi/Codex/Droid modes, and a TUI-first subagent manager.
 
-- `ext-manager` — An in-app extension manager. Trigger with `/extmgr`.
-- `editor` — Replaces Pi's default editor with a boxed composer and an extensible status row.
-- `mermaid` — Renders Mermaid code blocks inline in chat and opens a full diagram viewer on demand.
-- `workspace` — Bundles Pi-native file tools with shared FFF lifecycle support for `read`, `find`, `grep`, and editor `@path` autocomplete.
-- `web` — Adds unified `WebSearch`, `WebSummary`, and `FetchUrl` tools for grounded web research and page fetching.
-- `skill` — Adds a global `skill` tool for loading reusable agent skills from local skill directories.
-- `pi-modes` — Bundles Pi/Codex/Droid mode management, prompt composition, shell compatibility, and subagent tools.
+The package currently ships these extensions:
 
-## Compatibility
-
-Current `main` targets Pi `0.65.0` and newer.
-
-- Use `@tungthedev/pi-extensions@1.1.0` with older Pi releases `<0.65.0`.
-
-## Env Setup
-
-Some extensions need provider credentials in your shell environment before starting Pi.
-
-- `web` uses `EXA_API_KEY` when available for search, otherwise `GEMINI_API_KEY`.
-- `WebSummary` requires `GEMINI_API_KEY`.
-- `FetchUrl` requires `CLOUDFLARE_ACCOUNT_ID` and either `CLOUDFLARE_BROWSER_RENDERING_API_TOKEN` or `CLOUDFLARE_API_TOKEN`.
-
-If the required Gemini env var is missing, `WebSummary` is not registered, so the model will not see or call it.
-
-If the required Cloudflare env vars are missing, `FetchUrl` still registers but will return a runtime error when invoked.
-
-Example:
-
-```bash
-export GEMINI_API_KEY=your-gemini-key
-export CLOUDFLARE_ACCOUNT_ID=your-account-id
-export CLOUDFLARE_BROWSER_RENDERING_API_TOKEN=your-browser-rendering-token
-pi
-```
+- `editor` custom composer UI with cleaner status row
+- `mermaid` for inline Mermaid rendering and a full diagram viewer
+- `web` for `WebSearch`, `WebSummary`, and `FetchUrl`
+- `skill` for loading local Pi skills with the `skill` tool
+- `pi-modes` for Codex/Droid tool-set switching, prompts, and subagents
+- `ext-manager` for managing extensions from inside Pi
 
 ## Install
 
-From npm (after publishing):
+From npm:
 
 ```bash
 pi install npm:@tungthedev/pi-extensions
 ```
 
-For older Pi versions:
+From git:
 
 ```bash
-pi install npm:@tungthedev/pi-extensions@1.1.0
+pi install https://github.com/tungthedev/pi-extensions
 ```
 
-Or from a local checkout:
+## What You Get
+
+### Editor
+
+The `editor` extension replaces Pi's default composer with a boxed editor UI and an extensible status row. It also integrates with the package's file and skill discovery features so autocomplete can stay consistent across modes.
+
+### Mermaid
+
+The `mermaid` extension detects Mermaid code blocks in chat, renders them inline, and keeps a session diagram index you can browse later.
+
+- Shortcut: `ctrl+shift+m`
+- Command: `/mermaid`
+
+### Better `grep` and `find`
+
+The `workspace` extension extends Pi-native file tools and routing discovery-heavy operations through the shared FFF backend. FFF improves fuzzy path resolution, repository discovery, and editor `@path` autocomplete
+
+Commands:
+
+- `/fff-status` shows the current FFF index state and storage paths for the session
+- `/fff-reindex` triggers a rebuild of the current session index
+
+### Web Research
+
+The `web` extension registers three tools:
+
+- `WebSearch` for web discovery and current documentation lookup
+- `WebSummary` for grounded summaries of a specific URL using Gemini URL Context
+- `FetchUrl` for scraping user-provided URLs into markdown via a configured fetch provider
+
+Web tools become available when provider credentials are available.
+
+You can use enviromnent variables:
 
 ```bash
-pi install /absolute/path/to/pi-extensions
-# or
-pi install ./pi-extensions
+export GEMINI_API_KEY=your-gemini-key # for WebSearch and WebSummary
+export EXA_API_KEY=your-exa-key # for WebSearch
+export CLOUDFLARE_ACCOUNT_ID=your-account-id # for FetchUrl
+export CLOUDFLARE_API_TOKEN=your-browser-rendering-token # need browser rendering edit permission
+export FIRECRAWL_API_KEY=your-firecrawl-key # for FetchUrl
+pi
 ```
 
-From another project, add the package to `.pi/settings.json`:
+Or via `/pi-mode` > Web Tools config:
 
-```json
-{
-  "packages": ["/absolute/path/to/pi-extensions"]
-}
-```
+### Skills
 
-## Development
+The `skill` extension adds a global `skill` tool that resolves content from loaded Pi skills and returns the skill instructions directly to the agent.
 
-## Shared FFF Backend
+### Pi Modes And Subagents
 
-This package now uses `pi-fff` as an internal backend for the existing file-discovery and content-search surfaces.
+The `pi-modes` extension bundles several mode-specific surfaces:
 
-- Pi keeps `read`, `find`, and `grep`.
-- Codex keeps `read`, `find_files`, and `grep_files`.
-- Droid keeps `read`, `Glob`, and `Grep`.
+- Pi/Codex/Droid tool-set switching
+- Pi mode settings and prompt toggles
+- Codex and Droid tools and system prompt
+- Builtin subagents. You can also add yours.
 
-The public tool names and owners stay the same. FFF is used behind those tools when the request shape fits fuzzy path resolution or repo discovery well, with legacy fallbacks retained for strict glob or compatibility-heavy edge cases. The boxed editor also stays in place and gains `@path` autocomplete alongside the existing `$skill` autocomplete.
+Commands and shortcuts:
 
-Operational commands:
+- `/pi-mode` opens the Pi mode settings UI or updates package settings
+- `/subagents` opens the interactive subagent manager
+- `ctrl+shift+t` cycles the active tool set between Pi, Codex, and Droid
 
-- `/fff-status` shows the current session index state, indexed-file count, and storage paths.
-- `/fff-reindex` triggers a rebuild of the current session index and reports the updated state.
+### Extension Manager
 
-Install dependencies and run checks:
+The `ext-manager` extension provides an in-app extension manager UI.
 
-```bash
-bun install
-bun run check
-bun run test
-bun run lint
-bun run typecheck
-```
+- Command: `/extmgr`
+
+### Themes
+
+The package also ships bundled themes under `themes/`:
+
+- `ayu-dark`
+- `one-dark-pro`
+- `dracula`
+
+## Package Layout
+
+- `extensions/` contains the Pi extension entrypoints declared in `package.json`
+- `src/` contains the implementation for editor, web, workspace, FFF, modes, subagents, and shared utilities
+- `themes/` contains bundled Pi themes
+
+## License
+
+MIT
