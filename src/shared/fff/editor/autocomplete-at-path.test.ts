@@ -134,8 +134,8 @@ test("@path autocomplete retries after warming the runtime when the first search
       return Result.ok([
         {
           item: {
-            path: "/repo/extensions/settings/index.ts",
-            relativePath: "extensions/settings/index.ts",
+            path: "/repo/src/settings/index.ts",
+            relativePath: "src/settings/index.ts",
             fileName: "index.ts",
             size: 1,
             modified: 0,
@@ -162,7 +162,7 @@ test("@path autocomplete retries after warming the runtime when the first search
 
   assert.equal(warmCalls, 1);
   assert.equal(searchCalls, 2);
-  assert.equal(suggestions?.items[0]?.value, "@extensions/settings/index.ts");
+  assert.equal(suggestions?.items[0]?.value, "@src/settings/index.ts");
 });
 
 test("shouldTriggerAtPathAutocomplete fires for typed path characters and backspace within @ tokens", () => {

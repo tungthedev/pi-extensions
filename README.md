@@ -1,18 +1,14 @@
 # @tungthedev/pi-extensions
 
-A collection of Pi packages:
+A collection of Pi extensions:
 
-- `ext-manager` — An in-app extension manager. Trigger with `/extmgr`
+- `ext-manager` — An in-app extension manager. Trigger with `/extmgr`.
 - `editor` — Replaces Pi's default editor with a boxed composer and an extensible status row.
-- `fff` — Internal shared FFF lifecycle support that upgrades existing file search, grep, read, and editor autocomplete flows without adding a new public tool family.
 - `mermaid` — Renders Mermaid code blocks inline in chat and opens a full diagram viewer on demand.
-- `read` — Adds a standalone `read_file` tool with Pi-native read behavior and compact Codex-style call rendering.
+- `workspace` — Bundles Pi-native file tools with shared FFF lifecycle support for `read`, `find`, `grep`, and editor `@path` autocomplete.
 - `web` — Adds unified `WebSearch`, `WebSummary`, and `FetchUrl` tools for grounded web research and page fetching.
 - `skill` — Adds a global `skill` tool for loading reusable agent skills from local skill directories.
-- `codex-content` — Overrides default tools with Codex-style compatibility tools, TUI rendering, and Codex prompt support.
-- `system-md` — Uses the repo root `SYSTEM.md` file as the system prompt when the extension is enabled.
-- `settings` — Adds the `/tungthedev` package settings command and package-scoped config UI.
-- `subagents` — Adds persistent subagent tools for spawning, resuming, messaging, and waiting on child agents.
+- `pi-modes` — Bundles Pi/Codex/Droid mode management, prompt composition, shell compatibility, and subagent tools.
 
 ## Compatibility
 
