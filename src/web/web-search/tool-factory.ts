@@ -3,7 +3,7 @@ import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 
-import { detailLine, titleLine } from "../../shared/renderers/common.ts";
+import { renderToolCall } from "../../shared/renderers/common.ts";
 import { shortenText } from "../../shared/text.ts";
 import {
   buildRenderableMarkdown,
@@ -264,7 +264,7 @@ export function createWebSearchTool(): ToolDefinition {
       const subject = args.query?.trim() || args.objective?.trim();
       const queryCount = args.search_queries?.length ?? 0;
       const suffix = `${theme.fg("accent", summarizeSubject("search", subject))}${queryCount > 0 ? theme.fg("dim", ` (${queryCount} query${queryCount === 1 ? "" : "ies"})`) : ""}`;
-      return new Text(titleLine(theme, "text", "Searching", suffix), 0, 0);
+      return renderToolCall(theme, "Searching", suffix);
     },
     renderResult(result, options, theme) {
       return renderWebResult(result, theme, options);
@@ -294,11 +294,7 @@ export function createUnavailableWebSearchTool(
       );
     },
     renderCall(_args, theme) {
-      return new Text(
-        titleLine(theme, "text", "Searching", theme.fg("dim", "provider unavailable")),
-        0,
-        0,
-      );
+      return renderToolCall(theme, "Searching", theme.fg("dim", "provider unavailable"));
     },
     renderResult(result, options, theme) {
       return renderWebResult(result, theme, options);
@@ -372,15 +368,10 @@ export function createDroidWebSearchTool(): ToolDefinition {
     },
     renderCall(rawArgs, theme) {
       const args = rawArgs as DroidSearchParams;
-      return new Text(
-        titleLine(
-          theme,
-          "text",
-          "Searching",
-          theme.fg("accent", summarizeSubject("search", args.query)),
-        ),
-        0,
-        0,
+      return renderToolCall(
+        theme,
+        "Searching",
+        theme.fg("accent", summarizeSubject("search", args.query)),
       );
     },
     renderResult(result, options, theme) {
@@ -466,7 +457,7 @@ export function createWebSummaryTool(): ToolDefinition {
       const args = rawArgs as FetchParams;
       const suffix = theme.fg("accent", summarizeSubject("summary", args.url));
       const context = shortenText((args.prompt || args.objective)?.trim(), 72);
-      const title = new Text(titleLine(theme, "text", "Summarizing", suffix), 0, 0);
+      const title = renderToolCall(theme, "Summarizing", suffix);
 
       if (!context) {
         return title;
@@ -474,7 +465,7 @@ export function createWebSummaryTool(): ToolDefinition {
 
       const container = new Container();
       container.addChild(title);
-      container.addChild(new Text(detailLine(theme, context, true), 0, 0));
+      container.addChild(new Text(theme.fg("dim", context), 0, 0));
       return container;
     },
     renderResult(result, options, theme) {

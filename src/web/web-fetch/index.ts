@@ -3,7 +3,7 @@ import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 
-import { titleLine } from "../../shared/renderers/common.ts";
+import { renderToolCall } from "../../shared/renderers/common.ts";
 import { shortenText } from "../../shared/text.ts";
 import { wrapUntrustedWebContent } from "../web-search/gemini.ts";
 import { hasCloudflareConfig, runCloudflareFetch } from "./providers/cloudflare.ts";
@@ -80,10 +80,13 @@ export function createUnavailableFetchUrlTool(): ToolDefinition {
     },
     renderCall(rawArgs, theme) {
       const args = rawArgs as { url: string };
-      return new Text(
-        titleLine(theme, "text", "Fetching", theme.fg("accent", shortenText(args.url, 96, "URL"))),
-        0,
-        0,
+      const provider = resolveWebFetchProvider();
+      const providerSuffix =
+        provider === "unavailable" ? theme.fg("dim", " (provider unavailable)") : "";
+      return renderToolCall(
+        theme,
+        "Fetch",
+        `${theme.fg("accent", shortenText(args.url, 96, "URL"))}${providerSuffix}`,
       );
     },
     renderResult(result, options, theme) {
@@ -183,10 +186,12 @@ DO NOT use this tool for:
     },
     renderCall(rawArgs, theme) {
       const args = rawArgs as { url: string };
-      return new Text(
-        titleLine(theme, "text", "Fetching", theme.fg("accent", shortenText(args.url, 96, "URL"))),
-        0,
-        0,
+      const provider = resolveWebFetchProvider();
+      const providerSuffix = provider === "unavailable" ? "" : theme.fg("dim", ` (${provider})`);
+      return renderToolCall(
+        theme,
+        "Fetch",
+        `${theme.fg("accent", shortenText(args.url, 96, "URL"))}${providerSuffix}`,
       );
     },
     renderResult(result, options, theme) {

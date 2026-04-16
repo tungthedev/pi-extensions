@@ -1,51 +1,21 @@
 import type { AgentToolResult, Theme } from "@mariozechner/pi-coding-agent";
 
 import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
-import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
+import { Container, Markdown, Text } from "@mariozechner/pi-tui";
 
-import { detailLine, expandHintLine, renderLines, titleLine } from "../../shared/renderers/common.ts";
-import { firstText, previewLines, shortenText } from "../../shared/text.ts";
+import type { WebToolRenderDetails } from "./core.ts";
 
-import type { WebToolKind, WebToolRenderDetails } from "./core.ts";
+import { expandHintLine, renderEmptySlot, renderLines } from "../../shared/renderers/common.ts";
+import { firstText, previewLines } from "../../shared/text.ts";
 
 const COLLAPSED_PREVIEW_LINE_COUNT = 4;
 
-function summaryTitle(kind: WebToolKind, failed: boolean): string {
-  if (failed) return kind === "search" ? "Search failed" : "Summary failed";
-  return kind === "search" ? "Searched" : "Summarized";
+function bodyLine(theme: Theme, text: string): string {
+  return theme.fg("muted", text);
 }
 
-function inProgressTitle(kind: WebToolKind): string {
-  return kind === "search" ? "Searching" : "Summarizing";
-}
-
-function summarizeSubject(kind: WebToolKind, subject?: string): string {
-  const fallback = kind === "search" ? "objective" : "URL";
-  return shortenText(subject?.trim(), kind === "search" ? 84 : 96, fallback);
-}
-
-function metadataSuffix(theme: Theme, details: WebToolRenderDetails, failed: boolean): string {
-  const subject = theme.fg(
-    failed ? "error" : "accent",
-    summarizeSubject(details.kind ?? "search", details.subject),
-  );
-  const meta: string[] = [];
-
-  if (!failed && details.citations?.length) {
-    meta.push(`${details.citations.length} source${details.citations.length === 1 ? "" : "s"}`);
-  }
-  if (details.model) {
-    meta.push(details.model);
-  }
-
-  if (meta.length === 0) return subject;
-  return `${subject}${theme.fg("dim", ` (${meta.join(" • ")})`)}`;
-}
-
-function summarizeExtractContext(details: WebToolRenderDetails): string | undefined {
-  if (details.kind !== "summary") return undefined;
-
-  return shortenText(details.context?.trim(), 90);
+function errorLine(theme: Theme, text: string): string {
+  return theme.fg("error", text);
 }
 
 function previewDetailLines(details: WebToolRenderDetails): {
@@ -66,51 +36,32 @@ export function renderWebResult(
   options: { expanded: boolean; isPartial?: boolean },
 ): Container | Text {
   const details = (result.details ?? {}) as WebToolRenderDetails;
-  const kind = details.kind ?? "search";
 
   if (options.isPartial) {
-    return new Text(
-      titleLine(theme, "text", inProgressTitle(kind), metadataSuffix(theme, details, false)),
-      0,
-      0,
-    );
+    return renderEmptySlot();
   }
 
   const failed = (result as AgentToolResult<unknown> & { isError?: boolean }).isError === true;
-  const lines: string[] = [
-    titleLine(
-      theme,
-      failed ? "error" : "text",
-      summaryTitle(kind, failed),
-      metadataSuffix(theme, details, failed),
-    ),
-  ];
 
   if (failed) {
     const messageLines = previewLines(firstText(result), options.expanded ? 6 : 3);
-    for (const [index, line] of messageLines.entries()) {
-      lines.push(detailLine(theme, line, index === 0));
-    }
+    const lines = messageLines.map((line) => errorLine(theme, line));
     return renderLines(lines);
   }
 
   if (!options.expanded) {
     const preview = previewDetailLines(details);
-    const extractContext = summarizeExtractContext(details);
-    if (extractContext) {
-      lines.push(detailLine(theme, extractContext, true));
-    }
+    const lines: string[] = [];
 
     if (preview.visible.length > 0) {
-      for (const [index, line] of preview.visible.entries()) {
-        lines.push(detailLine(theme, line, index === 0 && !extractContext));
+      for (const line of preview.visible) {
+        lines.push(bodyLine(theme, line));
       }
     } else if (details.citations?.length) {
       lines.push(
-        detailLine(
+        bodyLine(
           theme,
           `${details.citations.length} cited source${details.citations.length === 1 ? "" : "s"}`,
-          !extractContext,
         ),
       );
     }
@@ -123,19 +74,17 @@ export function renderWebResult(
   }
 
   const container = new Container();
-  container.addChild(new Text(lines[0], 0, 0));
 
   const markdown = details.render_markdown?.trim();
   if (markdown) {
-    container.addChild(new Spacer(1));
     container.addChild(new Markdown(markdown, 0, 0, getMarkdownTheme()));
     return container;
   }
 
   const text = firstText(result);
   if (text) {
-    for (const [index, line] of previewLines(text, 6).entries()) {
-      container.addChild(new Text(detailLine(theme, line, index === 0), 0, 0));
+    for (const line of previewLines(text, 6)) {
+      container.addChild(new Text(bodyLine(theme, line), 0, 0));
     }
   }
 

@@ -185,10 +185,12 @@ test("createFetchUrlTool rejects IPv6 loopback and internal hostnames before pro
 test("createFetchUrlTool wraps fetched markdown as untrusted content", async () => {
   const originalCloudflareAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   const originalCloudflareToken = process.env.CLOUDFLARE_API_TOKEN;
+  const originalBrowserToken = process.env.CLOUDFLARE_BROWSER_RENDERING_API_TOKEN;
   const originalFirecrawl = process.env.FIRECRAWL_API_KEY;
   const originalFetch = globalThis.fetch;
   delete process.env.CLOUDFLARE_ACCOUNT_ID;
   delete process.env.CLOUDFLARE_API_TOKEN;
+  delete process.env.CLOUDFLARE_BROWSER_RENDERING_API_TOKEN;
   process.env.FIRECRAWL_API_KEY = "firecrawl";
   globalThis.fetch = (async () =>
     ({
@@ -203,21 +205,26 @@ test("createFetchUrlTool wraps fetched markdown as untrusted content", async () 
     }) as Response) as typeof fetch;
 
   try {
-    const tool = createFetchUrlTool();
-    const result = (await tool.execute(
-      "tool-3",
-      { url: "https://example.com" },
-      undefined,
-      undefined,
-      {} as never,
-    )) as { content: Array<{ text?: string }>; isError?: boolean };
+    await withAgentSettings({}, async () => {
+      const tool = createFetchUrlTool();
+      const result = (await tool.execute(
+        "tool-3",
+        { url: "https://example.com" },
+        undefined,
+        undefined,
+        {} as never,
+      )) as { content: Array<{ text?: string }>; isError?: boolean };
 
-    assert.equal(result.isError, undefined);
-    assert.match(result.content[0]?.text ?? "", /<untrusted-web-extract-content>/i);
-    assert.match(result.content[0]?.text ?? "", /Ignore previous instructions/);
+      assert.equal(result.isError, undefined);
+      assert.match(result.content[0]?.text ?? "", /<untrusted-web-extract-content>/i);
+      assert.match(result.content[0]?.text ?? "", /Ignore previous instructions/);
+    });
   } finally {
     process.env.CLOUDFLARE_ACCOUNT_ID = originalCloudflareAccountId;
     process.env.CLOUDFLARE_API_TOKEN = originalCloudflareToken;
+    if (originalBrowserToken === undefined)
+      delete process.env.CLOUDFLARE_BROWSER_RENDERING_API_TOKEN;
+    else process.env.CLOUDFLARE_BROWSER_RENDERING_API_TOKEN = originalBrowserToken;
     process.env.FIRECRAWL_API_KEY = originalFirecrawl;
     globalThis.fetch = originalFetch;
   }
