@@ -6,6 +6,8 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import type { AutocompleteProvider, EditorTheme, TUI } from "@mariozechner/pi-tui";
 
+import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+
 import { CustomEditor } from "@mariozechner/pi-coding-agent";
 
 import { ensureSessionFffRuntime, resolveSessionFffRuntimeKey } from "../fff/session-runtime.ts";
@@ -162,6 +164,11 @@ class CodexBoxedEditor extends CustomEditor {
     return `${theme.fg("muted", "│")}${inner}${theme.fg("muted", "│")}`;
   }
 
+  private normalizeRenderedWidth(line: string, width: number): string {
+    if (visibleWidth(line) <= width) return line;
+    return truncateToWidth(line, width, "");
+  }
+
   private styleLegend(legendText: string): string {
     const theme = this.getAppTheme();
     const toolSetLabel = this.getToolSetLabel();
@@ -198,8 +205,10 @@ class CodexBoxedEditor extends CustomEditor {
       if (!remaining) break;
       const slice = segment.text.slice(0, remaining.length);
       if (!slice) continue;
-      const renderedSlice =
-        segment.text === "wo. Skills" ? theme.strikethrough(theme.fg(segment.color, slice)) : theme.fg(segment.color, slice);
+      const isToolSetLabel = segment.text === toolSetLabel;
+      const baseSlice = isToolSetLabel ? theme.bold(slice) : slice;
+      const coloredSlice = theme.fg(segment.color, baseSlice);
+      const renderedSlice = segment.text === "wo. Skills" ? theme.strikethrough(coloredSlice) : coloredSlice;
       styled += renderedSlice;
       remaining = remaining.slice(slice.length);
     }
@@ -222,8 +231,11 @@ class CodexBoxedEditor extends CustomEditor {
     const rendered: string[] = [];
 
     rendered.push(
-      buildTopBorderLine(this.getAppTheme(), width, this.getTopBorderLegend(), (legendText) =>
-        this.styleLegend(legendText),
+      this.normalizeRenderedWidth(
+        buildTopBorderLine(this.getAppTheme(), width, this.getTopBorderLegend(), (legendText) =>
+          this.styleLegend(legendText),
+        ),
+        width,
       ),
     );
 

@@ -1,6 +1,6 @@
 {
   "name": "@tungthedev/pi-extensions",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "A Pi package containing editor, mermaid, workspace, web, skill, pi-modes, and ext-manager extensions.",
   "keywords": [
     "codex",

@@ -4,27 +4,51 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 
 ## [Unreleased]
 
-### Breaking Changes
+## [2.0.2] - 2026-04-20
 
-- Raised the supported Pi baseline to `0.65.0`.
-- `/subagents` is now a TUI-first role manager backed by markdown roles in `~/.agents` and the nearest project `.agents/` directory.
-- Codex/TOML-managed custom subagent roles are no longer loaded at runtime. Legacy Codex and `~/.pi/agent/agents` role paths now emit migration warnings instead.
+### Added
 
-### Notes
-
-- If you are using Pi `<0.65.0`, stay on `@tungthedev/pi-extensions@1.1.0`.
+- Added a session-only `Load Skills` toggle so you can enable or disable skill-list prompt injection for the current session without changing saved settings.
+- Added `ctrl+alt+k` shortcut for toggling `Load Skills` in the current session.
 
 ### Changed
 
-- Integrated a shared FFF backend behind the existing Pi, Codex, and Droid file-search surfaces, keeping public tool names unchanged while improving fuzzy path resolution, discovery, and `@path` editor autocomplete.
-- Added `/fff-status` and `/fff-reindex` operational commands for viewing FFF index progress and triggering reindexing.
-- Updated `codex-system-prompt` to resolve prompts from the bundled catalog first, `PI_CODEX_MODEL_CATALOG_PATH` second, and `~/.codex/models_cache.json` third, before falling back to the `gpt-5.4` prompt for any unknown model.
+- Updated the Pi mode settings flow so `Load Skills` changes can be applied at the session level.
+- Updated the mode-cycle shortcut in the README to `ctrl+alt+m`.
+
+### Fixed
+
+- Render the editor border legend tool-set label with bold styling and keep top-border width calculations stable when ANSI styling increases the raw string length.
+
+## [2.0.0] - 2026-04-16
+
+### Breaking Changes
+
+- Raised the supported Pi baseline to `0.65.0`.
+- Removed Forge mode.
+- Codex/TOML-managed custom subagent roles are no longer loaded at runtime. Legacy Codex and `~/.pi/agent/agents` role paths now emit migration warnings instead.
+
+### Added
+
+- Added Droid mode with Droid-style tools, prompts, and web-search support.
+- Added session-scoped Pi mode settings and the `/pi-mode` settings UI for switching tool sets and prompt options.
+- Added settings-backed web tool secrets for Gemini, Cloudflare, and Firecrawl.
+- Added a shared FFF backend behind the Pi, Codex, and Droid file-search surfaces, plus `/fff-status` and `/fff-reindex`.
+- Added interactive subagent sessions, progress notifications, and a markdown-backed role manager for `/subagents`.
+
+### Changed
+
+- Replaced the old read extension path with `pi-custom` so Pi-native file tools can participate in shared tool-set resolution.
+- Redesigned the editor context bar and aligned autocomplete behavior with shared skill and `@path` discovery.
+- Updated web tool rendering and provider handling across the bundled mode surfaces.
 - Renamed the `codex-subagents` extension surface to `subagents` in the package manifest and README while keeping the existing subagent tool contracts.
-- Updated the built-in `explorer` role to use the Sage research prompt as its developer instructions.
 
 ### Fixed
 
 - Correctly parse Codex `models_cache.json` catalogs, including cache metadata fields and the shared `models` array format.
+- Preserved interactive subagent tool access when launching interactive child sessions.
+- Kept shortcut-driven mode changes session-scoped instead of leaking into saved settings.
+- Hardened subagent task runtime behavior and provider-tool availability checks when credentials are missing.
 
 ## [1.1.0] - 2026-03-31
 

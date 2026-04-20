@@ -1,5 +1,7 @@
 import type { AutocompleteProvider } from "@mariozechner/pi-tui";
 
+import { visibleWidth } from "@mariozechner/pi-tui";
+
 import { Result } from "better-result";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -253,4 +255,92 @@ test("installCodexEditorUi applies and removes external status segments through 
   assert.ok(!before.includes("syncing"));
   assert.ok(afterSet.includes("syncing"));
   assert.ok(!afterRemove.includes("syncing"));
+});
+
+test("installCodexEditorUi renders the tool-set label in bold without changing border width", async () => {
+  const lifecycleHandlers = new Map<string, Function[]>();
+  let editorFactory:
+    | ((
+        tui: { requestRender(): void; terminal: { rows: number } },
+        editorTheme: unknown,
+        keybindings: unknown,
+      ) => { render(width: number): string[] })
+    | undefined;
+
+  installCodexEditorUi({
+    getThinkingLevel() {
+      return "medium";
+    },
+    on(event: string, handler: Function) {
+      lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
+    },
+    events: {
+      on() {},
+    },
+  } as never);
+
+  const ctx = {
+    cwd: "/tmp/project",
+    model: { id: "gpt-5.4-mini" },
+    getContextUsage() {
+      return undefined;
+    },
+    sessionManager: {
+      getBranch() {
+        return [
+          { type: "custom", customType: "pi-mode:tool-set", data: { toolSet: "codex" } },
+          { type: "custom", customType: "pi-mode:load-skills", data: { loadSkills: true } },
+        ];
+      },
+    },
+    ui: {
+      theme: {
+        fg: (color: string, text: string) => {
+          const ansi = color === "accent" ? "\u001b[35m" : "\u001b[90m";
+          return `${ansi}${text}\u001b[39m`;
+        },
+        bg: (_color: string, text: string) => text,
+        bold: (text: string) => `\u001b[1m${text}\u001b[22m`,
+        strikethrough: (text: string) => `\u001b[9m${text}\u001b[29m`,
+        getFgAnsi: () => "",
+        getBgAnsi: () => "",
+        getColorMode: () => "truecolor",
+      },
+      setEditorComponent(factory: typeof editorFactory) {
+        editorFactory = factory;
+      },
+      setFooter(factory: Function) {
+        factory(undefined, undefined, {
+          getGitBranch: () => "main",
+          onBranchChange: () => () => undefined,
+        });
+      },
+      setWidget() {},
+    },
+  };
+
+  for (const handler of lifecycleHandlers.get("session_start") ?? []) {
+    await handler(undefined, ctx as never);
+  }
+
+  assert.ok(editorFactory);
+
+  const editor = editorFactory!(
+    {
+      requestRender() {},
+      terminal: { rows: 40 },
+    },
+    {
+      borderColor: (text: string) => text,
+      selectList: {},
+    },
+    {
+      matches: () => false,
+    },
+  );
+
+  const topLine = editor.render(48)[0] ?? "";
+  assert.equal(visibleWidth(topLine), 48);
+  assert.ok(topLine.includes("Codex"));
+  assert.ok(topLine.includes("\u001b[1m"));
 });
