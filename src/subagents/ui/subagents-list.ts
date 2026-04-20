@@ -186,8 +186,8 @@ export function renderList(
     const label = entry.role.source === "builtin" && entry.role.name === "default"
       ? theme.fg("muted", `${entry.role.name}${sourcePart}${locked}`)
       : selected
-        ? `${theme.fg("accent", entry.role.name)}${sourcePart}${entry.role.overridesBuiltin ? " override" : ""}${locked}`
-        : `${entry.role.name}${sourcePart}${entry.role.overridesBuiltin ? " override" : ""}${locked}`;
+        ? `${theme.fg("accent", entry.role.name)}${sourcePart}${locked}`
+        : `${entry.role.name}${sourcePart}${locked}`;
     const prefix = `${selected ? activeCursor(theme) : "  "}${padToWidth(label, labelWidth)}`;
     const remainingWidth = Math.max(0, innerWidth - visibleWidth(prefix));
     const description = remainingWidth > 1 ? truncateToWidth(entry.role.description, remainingWidth - 1) : "";
