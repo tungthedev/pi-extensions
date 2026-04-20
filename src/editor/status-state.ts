@@ -8,7 +8,7 @@ import type {
 import type { InlineSegment, WidgetRowRegistry } from "./widget-row.ts";
 
 import { formatToolSetLabel } from "../settings/config.ts";
-import { resolveSessionToolSet } from "../settings/session.ts";
+import { resolveSessionLoadSkills, resolveSessionToolSet } from "../settings/session.ts";
 import { formatLeftStatus, formatRightStatus } from "./status-format.ts";
 import { EDITOR_BASE_LEFT_SEGMENT_KEY, EDITOR_BASE_RIGHT_SEGMENT_KEY } from "./types.ts";
 
@@ -18,6 +18,7 @@ export type EditorStatusState = {
   modelId?: string;
   thinkingLevel?: string;
   toolSetLabel?: string;
+  loadSkillsEnabled?: boolean;
   usage?: ContextUsage;
 };
 
@@ -78,4 +79,5 @@ export async function syncStateFromSettings(
   ctx: Pick<ExtensionContext, "sessionManager">,
 ): Promise<void> {
   state.toolSetLabel = formatToolSetLabel(await resolveSessionToolSet(ctx.sessionManager));
+  state.loadSkillsEnabled = await resolveSessionLoadSkills(ctx.sessionManager);
 }

@@ -30,6 +30,9 @@ test("handlePiModeCommand writes the selected tool set directly", async () => {
     writeSessionToolSet: async (value) => {
       sessionWrites.push(value);
     },
+    writeSessionLoadSkills: async () => {
+      throw new Error("writeSessionLoadSkills should not run");
+    },
     writeLoadSkills: async () => {
       throw new Error("writeLoadSkills should not run");
     },
@@ -41,6 +44,9 @@ test("handlePiModeCommand writes the selected tool set directly", async () => {
     },
     emitToolSetChange: async (value) => {
       emitted.push(value);
+    },
+    emitLoadSkillsChange: async () => {
+      throw new Error("emitLoadSkillsChange should not run");
     },
     openSettingsUi: async () => {
       throw new Error("settings UI should not open for direct writes");
@@ -125,8 +131,8 @@ test("openPiModeSettingsUi applies the same tool-set transition side effects", a
           },
           value,
         ),
-      writeLoadSkills: async () => {
-        throw new Error("writeLoadSkills should not run");
+      applyLoadSkillsTransition: async () => {
+        throw new Error("applyLoadSkillsTransition should not run");
       },
       writeSystemMdPrompt: async () => {
         throw new Error("writeSystemMdPrompt should not run");
@@ -158,6 +164,9 @@ test("handlePiModeCommand writes the selected system-md setting directly", async
       throw new Error("writeToolSet should not run");
     },
     writeSessionToolSet: async () => {},
+    writeSessionLoadSkills: async () => {
+      throw new Error("writeSessionLoadSkills should not run");
+    },
     writeLoadSkills: async () => {
       throw new Error("writeLoadSkills should not run");
     },
@@ -166,6 +175,9 @@ test("handlePiModeCommand writes the selected system-md setting directly", async
     },
     writeWebToolSetting: async () => {
       throw new Error("writeWebToolSetting should not run");
+    },
+    emitLoadSkillsChange: async () => {
+      throw new Error("emitLoadSkillsChange should not run");
     },
     openSettingsUi: async () => {
       throw new Error("settings UI should not open for direct writes");
@@ -194,12 +206,12 @@ test("registerPiModeShortcut cycles pi -> codex -> droid -> pi without saving gl
   const sessionWrites: Array<"pi" | "codex" | "droid"> = [];
   const emitted: Array<"pi" | "codex" | "droid"> = [];
   const notifications: string[] = [];
-  let shortcutHandler: ((ctx: unknown) => Promise<void>) | undefined;
+  const shortcutHandlers = new Map<string, (ctx: unknown) => Promise<void>>();
 
   registerPiModeShortcut(
     {
-      registerShortcut(_key: string, config: { handler: (ctx: unknown) => Promise<void> }) {
-        shortcutHandler = config.handler;
+      registerShortcut(key: string, config: { handler: (ctx: unknown) => Promise<void> }) {
+        shortcutHandlers.set(key, config.handler);
       },
       appendEntry() {},
       events: {
@@ -219,6 +231,9 @@ test("registerPiModeShortcut cycles pi -> codex -> droid -> pi without saving gl
       writeSessionToolSet: async (value) => {
         sessionWrites.push(value);
       },
+      writeSessionLoadSkills: async () => {
+        throw new Error("writeSessionLoadSkills should not run");
+      },
       writeLoadSkills: async () => {
         throw new Error("writeLoadSkills should not run");
       },
@@ -231,13 +246,17 @@ test("registerPiModeShortcut cycles pi -> codex -> droid -> pi without saving gl
       emitToolSetChange: async (value) => {
         emitted.push(value);
       },
+      emitLoadSkillsChange: async () => {
+        throw new Error("emitLoadSkillsChange should not run");
+      },
       openSettingsUi: async () => {
         throw new Error("settings UI should not open while cycling");
       },
     },
   );
 
-  assert.notEqual(shortcutHandler, undefined);
+  assert.notEqual(shortcutHandlers.get("ctrl+alt+m"), undefined);
+  assert.notEqual(shortcutHandlers.get("ctrl+alt+k"), undefined);
 
   const makeCtx = (toolSet: "pi" | "codex" | "droid") => ({
     hasUI: true,
@@ -253,14 +272,92 @@ test("registerPiModeShortcut cycles pi -> codex -> droid -> pi without saving gl
     },
   });
 
-  await shortcutHandler!(makeCtx("pi"));
-  await shortcutHandler!(makeCtx("codex"));
-  await shortcutHandler!(makeCtx("droid"));
+  await shortcutHandlers.get("ctrl+alt+m")!(makeCtx("pi"));
+  await shortcutHandlers.get("ctrl+alt+m")!(makeCtx("codex"));
+  await shortcutHandlers.get("ctrl+alt+m")!(makeCtx("droid"));
 
   assert.deepEqual(writes, []);
   assert.deepEqual(sessionWrites, ["codex", "droid", "pi"]);
   assert.deepEqual(emitted, ["codex", "droid", "pi"]);
   assert.deepEqual(notifications, ["Mode: Codex", "Mode: Droid", "Mode: Pi"]);
+});
+
+test("registerPiModeShortcut toggles load-skills for the current session without saving global config", async () => {
+  const writes: boolean[] = [];
+  const sessionWrites: boolean[] = [];
+  const emitted: boolean[] = [];
+  const notifications: string[] = [];
+  const shortcutHandlers = new Map<string, (ctx: unknown) => Promise<void>>();
+
+  registerPiModeShortcut(
+    {
+      registerShortcut(key: string, config: { handler: (ctx: unknown) => Promise<void> }) {
+        shortcutHandlers.set(key, config.handler);
+      },
+      appendEntry() {},
+      events: {
+        emit() {},
+      },
+    } as never,
+    {
+      readSettings: async () => ({
+        toolSet: "pi",
+        loadSkills: true,
+        systemMdPrompt: false,
+        webTools: {},
+      }),
+      writeToolSet: async () => {
+        throw new Error("writeToolSet should not run");
+      },
+      writeSessionToolSet: async () => {
+        throw new Error("writeSessionToolSet should not run");
+      },
+      writeSessionLoadSkills: async (value) => {
+        sessionWrites.push(value);
+      },
+      writeLoadSkills: async (value) => {
+        writes.push(value);
+      },
+      writeSystemMdPrompt: async () => {
+        throw new Error("writeSystemMdPrompt should not run");
+      },
+      writeWebToolSetting: async () => {
+        throw new Error("writeWebToolSetting should not run");
+      },
+      emitToolSetChange: async () => {
+        throw new Error("emitToolSetChange should not run");
+      },
+      emitLoadSkillsChange: async (value) => {
+        emitted.push(value);
+      },
+      openSettingsUi: async () => {
+        throw new Error("settings UI should not open while toggling");
+      },
+    },
+  );
+
+  assert.notEqual(shortcutHandlers.get("ctrl+alt+k"), undefined);
+
+  const makeCtx = (loadSkills: boolean) => ({
+    hasUI: true,
+    ui: {
+      notify(message: string) {
+        notifications.push(message);
+      },
+    },
+    sessionManager: {
+      getBranch() {
+        return [{ type: "custom", customType: "pi-mode:load-skills", data: { loadSkills } }];
+      },
+    },
+  });
+
+  await shortcutHandlers.get("ctrl+alt+k")!(makeCtx(true));
+  await shortcutHandlers.get("ctrl+alt+k")!(makeCtx(false));
+
+  assert.deepEqual(writes, []);
+  assert.deepEqual(sessionWrites, [false, true]);
+  assert.deepEqual(emitted, [false, true]);
 });
 
 test("handlePiModeCommand opens the package settings UI for root invocations", async () => {
@@ -276,6 +373,9 @@ test("handlePiModeCommand opens the package settings UI for root invocations", a
       throw new Error("writeToolSet should not run");
     },
     writeSessionToolSet: async () => {},
+    writeSessionLoadSkills: async () => {
+      throw new Error("writeSessionLoadSkills should not run");
+    },
     writeLoadSkills: async () => {
       throw new Error("writeLoadSkills should not run");
     },
@@ -284,6 +384,9 @@ test("handlePiModeCommand opens the package settings UI for root invocations", a
     },
     writeWebToolSetting: async () => {
       throw new Error("writeWebToolSetting should not run");
+    },
+    emitLoadSkillsChange: async () => {
+      throw new Error("emitLoadSkillsChange should not run");
     },
     openSettingsUi: async (_ctx, options) => {
       openedFocus = options.focus;
@@ -308,6 +411,9 @@ test("handlePiModeCommand rejects removed include-pi-prompt commands", async () 
       throw new Error("writeToolSet should not run");
     },
     writeSessionToolSet: async () => {},
+    writeSessionLoadSkills: async () => {
+      throw new Error("writeSessionLoadSkills should not run");
+    },
     writeLoadSkills: async () => {
       throw new Error("writeLoadSkills should not run");
     },
@@ -316,6 +422,9 @@ test("handlePiModeCommand rejects removed include-pi-prompt commands", async () 
     },
     writeWebToolSetting: async () => {
       throw new Error("writeWebToolSetting should not run");
+    },
+    emitLoadSkillsChange: async () => {
+      throw new Error("emitLoadSkillsChange should not run");
     },
     openSettingsUi: async () => {
       throw new Error("settings UI should not open");
@@ -342,6 +451,8 @@ test("handlePiModeCommand rejects removed include-pi-prompt commands", async () 
 
 test("handlePiModeCommand writes the selected load-skills setting directly", async () => {
   const writes: boolean[] = [];
+  const sessionWrites: boolean[] = [];
+  const emitted: boolean[] = [];
   const notifications: string[] = [];
   const deps: PiModeCommandDeps = {
     readSettings: async () => ({
@@ -354,6 +465,9 @@ test("handlePiModeCommand writes the selected load-skills setting directly", asy
       throw new Error("writeToolSet should not run");
     },
     writeSessionToolSet: async () => {},
+    writeSessionLoadSkills: async (value) => {
+      sessionWrites.push(value);
+    },
     writeLoadSkills: async (value) => {
       writes.push(value);
     },
@@ -362,6 +476,9 @@ test("handlePiModeCommand writes the selected load-skills setting directly", asy
     },
     writeWebToolSetting: async () => {
       throw new Error("writeWebToolSetting should not run");
+    },
+    emitLoadSkillsChange: async (value) => {
+      emitted.push(value);
     },
     openSettingsUi: async () => {
       throw new Error("settings UI should not open for direct writes");
@@ -382,7 +499,8 @@ test("handlePiModeCommand writes the selected load-skills setting directly", asy
   );
 
   assert.deepEqual(writes, [false]);
-  assert.deepEqual(notifications, ["Load Skills: Disabled"]);
+  assert.deepEqual(sessionWrites, [false]);
+  assert.deepEqual(emitted, [false]);
 });
 
 test("buildPiModeSettingItems includes the Load Skills setting", () => {

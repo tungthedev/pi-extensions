@@ -4,19 +4,19 @@ import type {
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 
-import { readSettings, type PiModeSettings } from "./config.ts";
+import { resolveSessionLoadSkills } from "./session.ts";
 
 const SKILLS_SECTION_START =
   "\n\nThe following skills provide specialized instructions for specific tasks.\nUse the read tool to load a skill's file when the task matches its description.\nWhen a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\n<available_skills>\n";
 const SKILLS_SECTION_END = "\n</available_skills>";
 
 export type LoadSkillsPromptDeps = {
-  readSettings: () => Promise<PiModeSettings>;
+  resolveLoadSkills: (ctx: Pick<ExtensionContext, "sessionManager">) => Promise<boolean>;
 };
 
 function createDefaultDeps(): LoadSkillsPromptDeps {
   return {
-    readSettings: () => readSettings(),
+    resolveLoadSkills: (ctx) => resolveSessionLoadSkills(ctx.sessionManager),
   };
 }
 
@@ -36,11 +36,10 @@ export function stripSkillListFromPrompt(prompt: string | undefined): string | u
 
 export async function handleLoadSkillsBeforeAgentStart(
   event: BeforeAgentStartEvent,
-  _ctx: ExtensionContext,
+  ctx: ExtensionContext,
   deps: LoadSkillsPromptDeps = createDefaultDeps(),
 ): Promise<{ systemPrompt: string } | undefined> {
-  const settings = await deps.readSettings();
-  if (settings.loadSkills) return undefined;
+  if (await deps.resolveLoadSkills(ctx)) return undefined;
 
   const systemPrompt = stripSkillListFromPrompt(event.systemPrompt);
   if (!systemPrompt || systemPrompt === event.systemPrompt) return undefined;

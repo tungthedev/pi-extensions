@@ -6,8 +6,20 @@ import type { EditorStatusState } from "./status-state.ts";
 
 const HORIZONTAL = "─";
 
-export function formatEditorBorderLegend(toolSetLabel?: string): string | undefined {
-  return toolSetLabel ? `Mode: ${toolSetLabel}` : undefined;
+export function formatLoadSkillsLegend(loadSkillsEnabled?: boolean): string | undefined {
+  if (loadSkillsEnabled === undefined) return undefined;
+  return loadSkillsEnabled ? "w. Skills" : "wo. Skills";
+}
+
+export function formatEditorBorderLegend(
+  toolSetLabel?: string,
+  loadSkillsEnabled?: boolean,
+): string | undefined {
+  if (!toolSetLabel) return undefined;
+
+  const loadSkillsLegend = formatLoadSkillsLegend(loadSkillsEnabled);
+  const baseLegend = loadSkillsLegend ? `${toolSetLabel} ${loadSkillsLegend}` : toolSetLabel;
+  return `${baseLegend} (ctrl+alt+m)`;
 }
 
 export function formatTopBorderLine(width: number, legend?: string): string {

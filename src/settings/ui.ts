@@ -31,7 +31,10 @@ export type OpenSettingsUiOptions = {
     ctx: Pick<ExtensionContext, "hasUI" | "ui">,
     value: ToolSetPack,
   ) => Promise<void>;
-  writeLoadSkills: (value: boolean) => Promise<void>;
+  applyLoadSkillsTransition: (
+    ctx: Pick<ExtensionContext, "hasUI" | "ui">,
+    value: boolean,
+  ) => Promise<void>;
   writeSystemMdPrompt: (value: boolean) => Promise<void>;
   writeWebToolSetting: (key: WebToolSettingKey, value: string | undefined) => Promise<void>;
 };
@@ -470,14 +473,13 @@ export async function openPiModeSettingsUi(
           const nextValue = LOAD_SKILLS_LABELS[newValue as keyof typeof LOAD_SKILLS_LABELS];
           if (nextValue === undefined) return;
 
-          await options.writeLoadSkills(nextValue);
+          await options.applyLoadSkillsTransition(ctx, nextValue);
           settings.loadSkills = nextValue;
           const itemIndex = items.findIndex((item) => item.id === id);
           items[itemIndex] = {
             ...items[itemIndex],
             currentValue: formatLoadSkillsLabel(nextValue),
           };
-          ctx.ui.notify(`Load Skills: ${formatLoadSkillsLabel(nextValue)}`, "info");
           return;
         }
 

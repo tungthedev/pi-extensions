@@ -12,7 +12,12 @@ import {
   writeToolSetSetting,
   writeWebToolSetting,
 } from "./config.ts";
-import { readSessionToolSet, resolveSessionToolSet, TOOL_SET_OVERRIDE_ENV } from "./session.ts";
+import {
+  readSessionLoadSkills,
+  readSessionToolSet,
+  resolveSessionToolSet,
+  TOOL_SET_OVERRIDE_ENV,
+} from "./session.ts";
 
 test("readSettingsFromFile fails closed on malformed json", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-tung-settings-"));
@@ -73,6 +78,16 @@ test("readSessionToolSet migrates legacy forge session entries to pi", () => {
       { type: "custom", customType: "pi-mode:tool-set", data: { toolSet: "forge" } },
     ]),
     "pi",
+  );
+});
+
+test("readSessionLoadSkills reads the latest load-skills session override", () => {
+  assert.equal(
+    readSessionLoadSkills([
+      { type: "custom", customType: "pi-mode:load-skills", data: { loadSkills: true } },
+      { type: "custom", customType: "pi-mode:load-skills", data: { loadSkills: false } },
+    ]),
+    false,
   );
 });
 

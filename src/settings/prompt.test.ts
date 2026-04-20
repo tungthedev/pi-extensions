@@ -31,12 +31,7 @@ Current working directory: /tmp/project`,
 
 test("handleLoadSkillsBeforeAgentStart strips the skill list when Load Skills is disabled", async () => {
   const deps: LoadSkillsPromptDeps = {
-    readSettings: async () => ({
-      toolSet: "pi",
-      loadSkills: false,
-      systemMdPrompt: false,
-      webTools: {},
-    }),
+    resolveLoadSkills: async () => false,
   };
 
   const result = await handleLoadSkillsBeforeAgentStart(
@@ -53,12 +48,7 @@ Current working directory: /tmp/project`,
 
 test("handleLoadSkillsBeforeAgentStart returns no-op when Load Skills is enabled", async () => {
   const deps: LoadSkillsPromptDeps = {
-    readSettings: async () => ({
-      toolSet: "pi",
-      loadSkills: true,
-      systemMdPrompt: false,
-      webTools: {},
-    }),
+    resolveLoadSkills: async () => true,
   };
 
   const result = await handleLoadSkillsBeforeAgentStart(
@@ -68,4 +58,21 @@ test("handleLoadSkillsBeforeAgentStart returns no-op when Load Skills is enabled
   );
 
   assert.equal(result, undefined);
+});
+
+test("handleLoadSkillsBeforeAgentStart honors the session-scoped load-skills override", async () => {
+  const deps: LoadSkillsPromptDeps = {
+    resolveLoadSkills: async () => false,
+  };
+
+  const result = await handleLoadSkillsBeforeAgentStart(
+    { systemPrompt: PROMPT_WITH_SKILLS } as never,
+    { sessionManager: { getBranch: () => [] } } as never,
+    deps,
+  );
+
+  assert.deepEqual(result, {
+    systemPrompt: `Base prompt\nCurrent date: 2026-04-20
+Current working directory: /tmp/project`,
+  });
 });

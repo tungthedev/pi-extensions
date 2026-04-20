@@ -12,10 +12,15 @@ export type ToolSetChangedPayload = {
   toolSet: ToolSetPack;
 };
 
+export type LoadSkillsChangedPayload = {
+  loadSkills: boolean;
+};
+
 export const DEFAULT_TOOL_SET: ToolSetPack = "pi";
 export const DEFAULT_LOAD_SKILLS = true;
 export const DEFAULT_SYSTEM_MD_PROMPT = false;
 export const TOOL_SET_CHANGED_EVENT = "settings:tool-set-changed";
+export const LOAD_SKILLS_CHANGED_EVENT = "settings:load-skills-changed";
 
 export type WebToolSettings = {
   geminiApiKey?: string;

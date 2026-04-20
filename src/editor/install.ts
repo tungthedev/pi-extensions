@@ -10,8 +10,10 @@ import { CustomEditor } from "@mariozechner/pi-coding-agent";
 
 import { ensureSessionFffRuntime, resolveSessionFffRuntimeKey } from "../fff/session-runtime.ts";
 import {
+  LOAD_SKILLS_CHANGED_EVENT,
   TOOL_SET_CHANGED_EVENT,
   formatToolSetLabel,
+  type LoadSkillsChangedPayload,
   type ToolSetChangedPayload,
 } from "../settings/config.ts";
 import {
@@ -63,6 +65,7 @@ class CodexBoxedEditor extends CustomEditor {
     private readonly getAppTheme: () => Theme,
     private readonly getTopBorderLegend: () => string | undefined,
     private readonly getToolSetLabel: () => string | undefined,
+    private readonly getLoadSkillsEnabled: () => boolean | undefined,
     private readonly pathAutocompleteRuntime?: ReturnType<typeof ensureSessionFffRuntime>,
   ) {
     super(tui, editorTheme, keybindings);
@@ -168,11 +171,26 @@ class CodexBoxedEditor extends CustomEditor {
 
     const segments = [
       { text: " ", color: "muted" as const },
-      { text: "Mode:", color: "muted" as const },
-      { text: " ", color: "muted" as const },
       { text: toolSetLabel, color: "accent" as const },
-      { text: " ", color: "muted" as const },
     ];
+
+    const loadSkillsEnabled = this.getLoadSkillsEnabled();
+    if (loadSkillsEnabled !== undefined) {
+      segments.push(
+        { text: " ", color: "muted" as const },
+        {
+          text: loadSkillsEnabled ? "w. Skills" : "wo. Skills",
+          color: loadSkillsEnabled ? ("accent" as const) : ("muted" as const),
+        },
+      );
+    }
+
+    segments.push(
+      { text: " ", color: "muted" as const },
+      { text: "(ctrl+alt+m)", color: "muted" as const },
+    );
+
+    segments.push({ text: " ", color: "muted" as const });
 
     let remaining = legendText;
     let styled = "";
@@ -180,7 +198,9 @@ class CodexBoxedEditor extends CustomEditor {
       if (!remaining) break;
       const slice = segment.text.slice(0, remaining.length);
       if (!slice) continue;
-      styled += theme.fg(segment.color, slice);
+      const renderedSlice =
+        segment.text === "wo. Skills" ? theme.strikethrough(theme.fg(segment.color, slice)) : theme.fg(segment.color, slice);
+      styled += renderedSlice;
       remaining = remaining.slice(slice.length);
     }
 
@@ -247,8 +267,9 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
           editorTheme,
           keybindings,
           () => ctx.ui.theme,
-          () => formatEditorBorderLegend(state.toolSetLabel),
+          () => formatEditorBorderLegend(state.toolSetLabel, state.loadSkillsEnabled),
           () => state.toolSetLabel,
+          () => state.loadSkillsEnabled,
           fffRuntime,
         );
       },
@@ -315,6 +336,14 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
     if (!payload?.toolSet) return;
 
     state.toolSetLabel = formatToolSetLabel(payload.toolSet);
+    syncStatusRow(state, statusRow, externalSegments, getStatusTheme);
+  });
+
+  pi.events.on(LOAD_SKILLS_CHANGED_EVENT, (data: unknown) => {
+    const payload = data as LoadSkillsChangedPayload;
+    if (typeof payload?.loadSkills !== "boolean") return;
+
+    state.loadSkillsEnabled = payload.loadSkills;
     syncStatusRow(state, statusRow, externalSegments, getStatusTheme);
   });
 

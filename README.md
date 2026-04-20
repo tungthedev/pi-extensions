@@ -87,7 +87,8 @@ Commands and shortcuts:
 
 - `/pi-mode` opens the Pi mode settings UI or updates package settings
 - `/subagents` opens the interactive subagent manager
-- `ctrl+shift+t` cycles the active tool set between Pi, Codex, and Droid
+- `ctrl+alt+m` cycles the active tool set between Pi, Codex, and Droid
+- `ctrl+alt+k` toggles Load Skills for the current session without saving settings
 
 ### Extension Manager
 

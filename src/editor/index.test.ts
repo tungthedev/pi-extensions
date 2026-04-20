@@ -9,6 +9,7 @@ import { composeAutocompleteProvider } from "../shared/fff/editor/autocomplete-c
 import {
   EDITOR_REMOVE_STATUS_SEGMENT_EVENT,
   EDITOR_SET_STATUS_SEGMENT_EVENT,
+  formatEditorBorderLegend,
   formatRightStatus,
   installCodexEditorUi,
   normalizeCodexEditorInput,
@@ -46,6 +47,11 @@ test("normalizeCodexEditorInput maps extra Shift+Enter sequences to canonical sh
   assert.equal(normalizeCodexEditorInput("\u001b[13;2u"), "\u001b[13;2u");
   assert.equal(normalizeCodexEditorInput("\u001b[27;2;13~"), "\u001b[13;2u");
   assert.equal(normalizeCodexEditorInput("\r"), "\r");
+});
+
+test("formatEditorBorderLegend uses the new skills state labels", () => {
+  assert.equal(formatEditorBorderLegend("Codex", true), "Codex w. Skills (ctrl+alt+m)");
+  assert.equal(formatEditorBorderLegend("Droid", false), "Droid wo. Skills (ctrl+alt+m)");
 });
 
 test("wrapped autocomplete provider maps $ skill tokens to /skill queries", async () => {
@@ -197,7 +203,10 @@ test("installCodexEditorUi applies and removes external status segments through 
     },
     sessionManager: {
       getBranch() {
-        return [{ type: "custom", customType: "pi-mode:tool-set", data: { toolSet: "codex" } }];
+        return [
+          { type: "custom", customType: "pi-mode:tool-set", data: { toolSet: "codex" } },
+          { type: "custom", customType: "pi-mode:load-skills", data: { loadSkills: false } },
+        ];
       },
     },
     ui: {
