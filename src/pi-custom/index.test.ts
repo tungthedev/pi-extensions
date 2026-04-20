@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { Box } from "@mariozechner/pi-tui";
+
 import {
   resetSessionFffRuntimesForTests,
   setSessionFffRuntimeForTests,
@@ -29,6 +31,7 @@ function captureTools(): Record<string, any> {
 
 const theme = {
   fg: (_color: string, text: string) => text,
+  bg: (_color: string, text: string) => `[bg]${text}[/bg]`,
   bold: (text: string) => text,
 } as any;
 
@@ -519,6 +522,37 @@ test("write uses call summary and hides collapsed result", () => {
     { isError: false, lastComponent: undefined } as never,
   );
   assert.deepEqual(collapsed.render(120), []);
+});
+
+test("read uses a self-rendered Box shell with horizontal-only padding and no background", () => {
+  const tools = captureTools();
+  const tool = tools.read;
+  const state: Record<string, unknown> = {};
+
+  const call = tool.renderCall(
+    { path: "src/a.ts", offset: 2, limit: 3 },
+    theme,
+    { state, lastComponent: undefined } as never,
+  );
+
+  assert.equal(tool.renderShell, "self");
+  assert.ok(call instanceof Box);
+  assert.deepEqual(trimRenderedLines(call.render(120)), ["  Read src/a.ts:2-4"]);
+
+  const collapsed = tool.renderResult(
+    { content: [{ type: "text", text: "alpha\nbeta" }] },
+    { expanded: false, isPartial: false },
+    theme,
+    { state, isError: false, lastComponent: undefined } as never,
+  );
+
+  assert.deepEqual(collapsed.render(120), []);
+
+  const rendered = trimRenderedLines(call.render(120));
+  assert.equal(rendered[0]?.includes("[bg]"), false);
+  assert.equal(rendered.at(-1)?.includes("[bg]"), false);
+  assert.notEqual(rendered[0]?.trim().length, 0);
+  assert.notEqual(rendered.at(-1)?.trim().length, 0);
 });
 
 test("find shows a one-line collapsed summary", () => {

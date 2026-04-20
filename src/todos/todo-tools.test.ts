@@ -94,7 +94,7 @@ test("shared todo write adds reminder content and hides widget when nothing is i
   assert.deepEqual(statuses.at(-1), { key: "shared:todos", value: undefined });
   assert.deepEqual(widgets.at(-1), {
     key: "shared:todos",
-    lines: ["Todos [0/2]: Task A"],
+    lines: ["▣ Task A", "□ Task B"],
     placement: "aboveEditor",
   });
 
@@ -121,6 +121,36 @@ test("shared todo write adds reminder content and hides widget when nothing is i
   assert.deepEqual(widgets.at(-1), {
     key: "shared:todos",
     lines: undefined,
+    placement: "aboveEditor",
+  });
+});
+
+test("shared todo widget previews active task, next tasks, and overflow count", async () => {
+  const { tools, ui, statuses, widgets } = createHarness();
+  const todoWrite = tools.get("custom_write");
+  assert.ok(todoWrite);
+
+  await todoWrite.execute(
+    "call-1",
+    {
+      todos: [
+        { content: "Completed earlier", status: "completed" },
+        { content: "Build widget preview", status: "in_progress" },
+        { content: "Share icon renderer", status: "pending" },
+        { content: "Add widget tests", status: "pending" },
+        { content: "Verify full suite", status: "pending" },
+        { content: "Write release note", status: "pending" },
+      ],
+    },
+    undefined,
+    undefined,
+    { ui },
+  );
+
+  assert.deepEqual(statuses.at(-1), { key: "shared:todos", value: undefined });
+  assert.deepEqual(widgets.at(-1), {
+    key: "shared:todos",
+    lines: ["▣ Build widget preview", "□ Share icon renderer", "□ Add widget tests (+2 more)"],
     placement: "aboveEditor",
   });
 });

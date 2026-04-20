@@ -160,7 +160,7 @@ export function renderAgentCompletionResult(
   const hasRunningUpdate = agentsList.some((agent) => agent.status === "running" && Boolean(agent.update_message));
   const title =
     details.timed_out && agentsList.length === 0
-      ? "Waiting timed out"
+      ? "Timed out"
       : hasRunningUpdate
         ? agentsList.length === 1
           ? "Agent update"
@@ -169,7 +169,7 @@ export function renderAgentCompletionResult(
           ? "Agent finished"
           : "Agents finished";
   if (agentsList.length === 0) {
-    return new Text(titleLine(theme, "text", title), 0, 0);
+    return new Text(titleLine(theme, "dim", title), 0, 0);
   }
 
   const markdownTheme = getMarkdownTheme();

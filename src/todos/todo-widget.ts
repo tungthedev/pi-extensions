@@ -1,6 +1,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { countTodoProgress, type TodoItem } from "./todo-state.ts";
+import { renderTodoPreviewLine } from "./todo-render.ts";
+import type { TodoItem } from "./todo-state.ts";
 
 export function syncTodoUi(
   ctx: ExtensionContext,
@@ -12,16 +13,25 @@ export function syncTodoUi(
 ): void {
   ctx.ui.setStatus(options.statusKey, undefined);
 
-  const inProgressItem = items.find((item) => item.status === "in_progress");
-  if (!inProgressItem) {
+  const inProgressIndex = items.findIndex((item) => item.status === "in_progress");
+  if (inProgressIndex === -1) {
     ctx.ui.setWidget(options.widgetKey, undefined, { placement: "aboveEditor" });
     return;
   }
 
-  const progress = countTodoProgress(items);
+  const inProgressItem = items[inProgressIndex];
+  const upcomingPendingItems = items.slice(inProgressIndex + 1).filter((item) => item.status === "pending");
+  const visiblePendingItems = upcomingPendingItems.slice(0, 2);
+  const hiddenPendingCount = upcomingPendingItems.length - visiblePendingItems.length;
+  const previewItems = [inProgressItem, ...visiblePendingItems];
+
   ctx.ui.setWidget(
     options.widgetKey,
-    [ctx.ui.theme.fg("accent", `Todos [${progress.completed}/${progress.total}]: ${inProgressItem.content}`)],
+    previewItems.map((item, index) =>
+      renderTodoPreviewLine(item, ctx.ui.theme, {
+        moreCount: index === previewItems.length - 1 ? hiddenPendingCount : undefined,
+      }),
+    ),
     { placement: "aboveEditor" },
   );
 }

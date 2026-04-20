@@ -1,4 +1,4 @@
-import type { AgentToolResult, Theme } from "@mariozechner/pi-coding-agent";
+import type { AgentToolResult, Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
 
 import { Container, Text } from "@mariozechner/pi-tui";
 
@@ -22,7 +22,7 @@ export function renderToolCall(theme: Theme, title: string, suffix?: string): Te
 
 export function titleLine(
   theme: Theme,
-  bulletColor: "text" | "success" | "error" | "accent",
+  bulletColor: ThemeColor,
   title: string,
   suffix?: string,
 ): string {

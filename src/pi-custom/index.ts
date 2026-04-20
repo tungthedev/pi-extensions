@@ -1,5 +1,6 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
 import type { ReadToolInput } from "@mariozechner/pi-coding-agent";
+import { Box, Container, type Component } from "@mariozechner/pi-tui";
 
 import {
   createEditToolDefinition,
@@ -32,6 +33,41 @@ import { applyResolvedToolset } from "../shared/toolset-resolver.ts";
 
 const READ_DESCRIPTION =
   "Read the contents of a file. Accepts absolute paths, cwd-relative paths, @-prefixed paths, and ~ home-directory paths. Supports text files and images (jpg, png, gif, webp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset/limit until complete.";
+
+type ReadRenderState = {
+  box?: Box;
+  callComponent?: Component;
+  resultComponent?: Component;
+  emptySlot?: Container;
+};
+
+function getReadRenderState(context: { state?: Record<string, unknown> }): ReadRenderState {
+  const state = (context.state ??= {});
+  const existing = state.readRenderState;
+  if (existing && typeof existing === "object") {
+    return existing as ReadRenderState;
+  }
+
+  const nextState: ReadRenderState = {};
+  state.readRenderState = nextState;
+  return nextState;
+}
+
+function getReadRenderBox(context: { state?: Record<string, unknown> }): Box {
+  const state = getReadRenderState(context);
+  state.box ??= new Box(1, 0);
+  return state.box;
+}
+
+function syncReadRenderBox(box: Box, state: ReadRenderState): void {
+  box.clear();
+  if (state.callComponent) {
+    box.addChild(state.callComponent);
+  }
+  if (state.resultComponent) {
+    box.addChild(state.resultComponent);
+  }
+}
 
 async function syncReadToolSet(
   pi: ExtensionAPI,
@@ -117,11 +153,20 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
       const nativeRead = createReadTool(ctx.cwd);
       return await nativeRead.execute(toolCallId, resolvedParams, signal, onUpdate);
     },
-    renderCall(args, theme) {
-      return readRenderer.renderCall(args as Record<string, unknown>, theme);
+    renderCall(args, theme, context) {
+      const state = getReadRenderState(context as { state?: Record<string, unknown> });
+      const box = getReadRenderBox(context as { state?: Record<string, unknown> });
+      state.callComponent = readRenderer.renderCall(args as Record<string, unknown>, theme as Theme);
+      syncReadRenderBox(box, state);
+      return box;
     },
     renderResult(result, options, theme, context) {
-      return readRenderer.renderResult(result, options, theme, context);
+      const state = getReadRenderState(context as { state?: Record<string, unknown> });
+      const box = getReadRenderBox(context as { state?: Record<string, unknown> });
+      state.resultComponent = readRenderer.renderResult(result, options, theme, context);
+      syncReadRenderBox(box, state);
+      state.emptySlot ??= new Container();
+      return state.emptySlot;
     },
   });
 
