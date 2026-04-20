@@ -99,15 +99,3 @@ export function getSubagentCompletionLabel(status: AgentSnapshot["status"]): str
       return "Running";
   }
 }
-
-export function formatSubagentModelLabel(
-  model: string | undefined,
-  reasoningEffort: string | undefined,
-): string | undefined {
-  const trimmedModel = model?.trim();
-  const trimmedReasoningEffort = reasoningEffort?.trim();
-  if (!trimmedModel) {
-    return undefined;
-  }
-  return trimmedReasoningEffort ? `${trimmedModel} ${trimmedReasoningEffort}` : trimmedModel;
-}

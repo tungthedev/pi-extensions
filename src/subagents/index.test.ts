@@ -856,6 +856,93 @@ test("wait_agent returns a running snapshot with update_message", async () => {
       },
     ],
   });
+
+  const theme = createRenderTheme();
+  const rendered = (waitAgent!.renderResult as (...args: unknown[]) => unknown)(
+    {
+      details: result.details,
+    },
+    { expanded: false },
+    theme,
+  ) as { text?: string };
+
+  assert.equal(rendered.text, "researcher_one\nstill auditing");
+});
+
+test("wait_agent renderResult shows muted timeout text without a title bullet", () => {
+  const tools = captureTools((pi) =>
+    registerCodexToolAdapters(pi as never, {
+      lifecycle: createCodexLifecycleMock().lifecycle as never,
+      renderSpawnPromptPreview: () => new Text("preview", 0, 0),
+      normalizeWaitAgentTimeoutMs,
+    }),
+  );
+  const waitAgent = tools.get("wait_agent");
+  assert.ok(waitAgent);
+
+  const rendered = (waitAgent!.renderResult as (...args: unknown[]) => unknown)(
+    {
+      details: {
+        agents: [],
+        timed_out: true,
+      },
+    },
+    { expanded: false },
+    createRenderTheme(),
+  ) as { text?: string };
+
+  assert.equal(rendered.text, "Timed out");
+});
+
+test("wait_agent renderResult concatenates agent names and outputs in order", () => {
+  const tools = captureTools((pi) =>
+    registerCodexToolAdapters(pi as never, {
+      lifecycle: createCodexLifecycleMock().lifecycle as never,
+      renderSpawnPromptPreview: () => new Text("preview", 0, 0),
+      normalizeWaitAgentTimeoutMs,
+    }),
+  );
+  const waitAgent = tools.get("wait_agent");
+  assert.ok(waitAgent);
+
+  const rendered = (waitAgent!.renderResult as (...args: unknown[]) => unknown)(
+    {
+      details: {
+        agents: [
+          {
+            name: "researcher_one",
+            status: "running",
+            durable_status: "live_running",
+            cwd: "/tmp/project",
+            last_assistant_text: "finished text should not win",
+            update_message: "still indexing",
+          },
+          {
+            name: "reviewer_two",
+            status: "idle",
+            durable_status: "live_idle",
+            cwd: "/tmp/project",
+            last_assistant_text: "done with auth audit",
+          },
+          {
+            name: "scout_three",
+            status: "failed",
+            durable_status: "failed",
+            cwd: "/tmp/project",
+            last_error: "found one failing test",
+          },
+        ],
+        timed_out: false,
+      },
+    },
+    { expanded: false },
+    createRenderTheme(),
+  ) as { text?: string };
+
+  assert.equal(
+    rendered.text,
+    "researcher_one\nstill indexing\n\nreviewer_two\ndone with auth audit\n\nscout_three\nfound one failing test",
+  );
 });
 
 test("renderers label running updates as updates instead of finished", () => {

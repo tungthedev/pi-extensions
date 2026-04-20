@@ -26,12 +26,12 @@ import {
   buildSpawnAgentContent,
   toPublicAgentSnapshot,
 } from "./results.ts";
-import { formatSubagentModelLabel } from "./rendering.ts";
 import {
   extractSnapshotDetails,
   normalizeTaskOutput,
   previewTaskText,
   renderAgentCompletionResult,
+  renderWaitAgentResult,
 } from "./renderers.ts";
 
 export type CodexToolAdapterDeps = {
@@ -155,11 +155,6 @@ export function registerCodexToolAdapters(
           "Only use when copying the current persisted session branch into the child will clearly help by avoiding re-explaining a long history and letting the subagent start faster, usually for debugging or continuing complex ongoing work. Never use it for simple self-contained tasks, or for work that benefits from fresh context and low bias such as review or audit tasks.",
       }),
     ),
-    model: Type.Optional(
-      Type.String({
-        description: "Optional model override for the child agent.",
-      }),
-    ),
     reasoning_effort: Type.Optional(
       Type.String({
         description: "Optional reasoning effort override for the child agent.",
@@ -196,7 +191,6 @@ export function registerCodexToolAdapters(
         name: validateSubagentName(params.name),
         prompt,
         requestedAgentType: params.agent_type,
-        requestedModel: params.model,
         requestedReasoningEffort: params.reasoning_effort,
         runInBackground: params.wait_for_agent !== true,
         interactive: params.interactive,
@@ -235,10 +229,9 @@ export function registerCodexToolAdapters(
         typeof args.name === "string" && args.name.trim().length > 0 ? args.name.trim() : "agent";
       const agentType = resolveRequestedAgentType(args.agent_type);
       const roleLabel = agentType !== "default" ? ` [${agentType}]` : "";
-      const modelLabel = formatSubagentModelLabel(args.model, args.reasoning_effort);
       const transportLabel = args.interactive ? theme.fg("muted", " (interactive)") : "";
       const backgroundLabel = args.wait_for_agent ? "" : theme.fg("muted", " (background)");
-      const agentName = `${theme.fg("accent", `${publicName}${roleLabel}`)}${modelLabel ? theme.fg("muted", ` (${modelLabel})`) : ""}${transportLabel}`;
+      const agentName = `${theme.fg("accent", `${publicName}${roleLabel}`)}${transportLabel}`;
       const callLine = new Text(
         toolCallLine(theme, "Spawn", `${agentName}${backgroundLabel}`),
         0,
@@ -391,7 +384,7 @@ export function registerCodexToolAdapters(
       if (!details) {
         return renderFallbackResult(result, theme.fg("muted", buildWaitAgentContent([], false)));
       }
-      return renderAgentCompletionResult(details, Boolean(options.expanded), theme);
+      return renderWaitAgentResult(details, Boolean(options.expanded), theme);
     },
   });
 

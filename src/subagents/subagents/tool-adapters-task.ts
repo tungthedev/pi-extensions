@@ -22,7 +22,6 @@ import {
 } from "./renderers.ts";
 import { buildSpawnAgentTypeDescription, resolveAgentProfiles } from "./profiles.ts";
 import type { createSubagentLifecycleService } from "./lifecycle-service.ts";
-import { formatSubagentModelLabel } from "./rendering.ts";
 
 export type TaskToolAdapterDeps = {
   lifecycle: ReturnType<typeof createSubagentLifecycleService>;
@@ -114,11 +113,6 @@ export function registerTaskToolAdapters(
         description: "Public name from a previous invocation to resume with full context preserved.",
       }),
     ),
-    model: Type.Optional(
-      Type.String({
-        description: "Optional model override for the task.",
-      }),
-    ),
   });
 
   const taskTool: RegisteredTool = {
@@ -178,7 +172,6 @@ export function registerTaskToolAdapters(
         name,
         prompt: params.prompt,
         requestedAgentType: params.subagent_type,
-        requestedModel: params.model,
         requestedReasoningEffort: params.complexity,
         runInBackground: false,
         taskSummary,
@@ -211,8 +204,7 @@ export function registerTaskToolAdapters(
       const publicName = resolveTaskToolName(args);
       const agentType = resolveRequestedAgentType(args.subagent_type);
       const roleLabel = agentType !== "default" ? ` [${agentType}]` : "";
-      const modelLabel = formatSubagentModelLabel(args.model, args.complexity);
-      const taskName = `${theme.fg("accent", `${publicName}${roleLabel}`)}${modelLabel ? theme.fg("muted", ` (${modelLabel})`) : ""}`;
+      const taskName = theme.fg("accent", `${publicName}${roleLabel}`);
       const callLine = new Text(toolCallLine(theme, "Task", taskName), 0, 0);
 
       const prompt = typeof args.prompt === "string" ? args.prompt.trim() : "";

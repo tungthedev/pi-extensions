@@ -240,6 +240,52 @@ export function renderAgentCompletionResult(
   return container;
 }
 
+function resolvePreferredWaitAgentOutput(agent: RenderableAgentSnapshot): string | undefined {
+  if (agent.status === "running") {
+    return agent.update_message ?? agent.ping_message ?? agent.last_assistant_text ?? agent.last_error;
+  }
+
+  return agent.ping_message ?? agent.last_assistant_text ?? agent.last_error;
+}
+
+export function renderWaitAgentResult(
+  details: {
+    agents?: RenderableAgentSnapshot[];
+    timed_out?: boolean;
+  },
+  expanded: boolean,
+  theme: ExtensionContext["ui"]["theme"],
+): Text {
+  const agentsList = details.agents ?? [];
+  if (details.timed_out && agentsList.length === 0) {
+    return new Text(theme.fg("muted", "Timed out"), 0, 0);
+  }
+
+  const lines: string[] = [];
+  for (const [index, agent] of agentsList.entries()) {
+    if (index > 0) {
+      lines.push("");
+    }
+
+    lines.push(theme.fg("text", getSubagentDisplayName(agent)));
+
+    const output = normalizeTaskOutput(resolvePreferredWaitAgentOutput(agent));
+    if (!output) {
+      continue;
+    }
+
+    lines.push(...output.split("\n").map((line) => theme.fg("muted", line)));
+  }
+
+  if (expanded || lines.length <= MAX_TASK_REPLY_PREVIEW_LINES) {
+    return new Text(lines.join("\n"), 0, 0);
+  }
+
+  const visibleLines = lines.slice(0, MAX_TASK_REPLY_PREVIEW_LINES);
+  visibleLines.push(expandHintLine(theme, lines.length - MAX_TASK_REPLY_PREVIEW_LINES, "row"));
+  return new Text(visibleLines.join("\n"), 0, 0);
+}
+
 export function registerSubagentNotificationRenderers(pi: Pick<ExtensionAPI, "registerMessageRenderer">) {
   const renderNotification = (message: { content?: unknown; details?: unknown }, expanded: boolean, theme: ExtensionContext["ui"]["theme"]) => {
     const messageContent = typeof message.content === "string" ? message.content : undefined;

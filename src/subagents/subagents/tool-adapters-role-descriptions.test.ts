@@ -100,5 +100,8 @@ test("tool-facing role descriptions refresh when cwd changes", async () => {
     assert.doesNotMatch(spawnDescriptionA, /Delegate from project B/);
     assert.match(spawnDescriptionB, /Delegate from project B/);
     assert.doesNotMatch(spawnDescriptionB, /Delegate from project A/);
+
+    assert.equal("model" in (taskTool.parameters as any).properties, false);
+    assert.equal("model" in (spawnTool.parameters as any).properties, false);
   });
 });
