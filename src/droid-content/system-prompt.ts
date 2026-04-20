@@ -9,12 +9,9 @@ import fs from "node:fs";
 import { readSettings, type PiModeSettings } from "../settings/config.ts";
 import { resolveSessionToolSet } from "../settings/session.ts";
 import {
-  appendPromptContribution,
-  buildPromptResult,
-  replacePromptContribution,
-  resolvePromptContribution,
-} from "../shared/prompt-composition.ts";
-import { resolveSystemMdPromptContribution } from "../system-md/state.ts";
+  composeCustomPromptWithPiSections,
+} from "../shared/custom-prompt.ts";
+import { resolveSystemMdPrompt } from "../system-md/state.ts";
 
 const DROID_IDENTITY_PATH = new URL("./assets/identity.txt", import.meta.url);
 const DROID_BASE_PATH = new URL("./assets/base.txt", import.meta.url);
@@ -114,12 +111,11 @@ export function buildSelectedDroidPrompt(modelId: string | undefined): string {
   return sections.filter(Boolean).join("\n\n").trim();
 }
 
-function buildRuntimeMetadata(ctx: Pick<ExtensionContext, "sessionManager">): string {
-  const today = new Date().toISOString().slice(0, 10);
-  return [
-    `Current date: ${today}`,
-    `Current working directory: ${ctx.sessionManager.getCwd()}`,
-  ].join("\n");
+export function composeDroidPromptWithPiSections(
+  basePrompt: string | undefined,
+  droidPrompt: string | undefined,
+): string | undefined {
+  return composeCustomPromptWithPiSections(basePrompt, droidPrompt);
 }
 
 export async function handleDroidSystemPromptBeforeAgentStart(
@@ -132,17 +128,15 @@ export async function handleDroidSystemPromptBeforeAgentStart(
     return undefined;
   }
 
-  return buildPromptResult(
+  if (resolveSystemMdPrompt(ctx.cwd, settings.systemMdPrompt)) {
+    return undefined;
+  }
+
+  const systemPrompt = composeDroidPromptWithPiSections(
     _event.systemPrompt,
-    resolvePromptContribution([
-      resolveSystemMdPromptContribution(ctx.cwd, settings.systemMdPrompt),
-      settings.includePiPromptSection
-        ? appendPromptContribution(deps.buildPromptForModel(ctx.model?.id))
-        : replacePromptContribution(
-            `${deps.buildPromptForModel(ctx.model?.id)}\n\n${buildRuntimeMetadata(ctx)}`,
-          ),
-    ]),
+    deps.buildPromptForModel(ctx.model?.id),
   );
+  return systemPrompt ? { systemPrompt } : undefined;
 }
 
 export function registerDroidSystemPrompt(

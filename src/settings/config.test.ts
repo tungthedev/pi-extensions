@@ -8,7 +8,7 @@ import {
   parsePiModeSettings,
   readPiModeSettingsSync,
   readSettingsFromFile,
-  writeIncludePiPromptSectionSetting,
+  writeLoadSkillsSetting,
   writeToolSetSetting,
   writeWebToolSetting,
 } from "./config.ts";
@@ -21,8 +21,8 @@ test("readSettingsFromFile fails closed on malformed json", async () => {
 
   assert.deepEqual(await readSettingsFromFile(settingsPath), {
     toolSet: "pi",
+    loadSkills: true,
     systemMdPrompt: false,
-    includePiPromptSection: false,
     webTools: {},
   });
 });
@@ -30,8 +30,8 @@ test("readSettingsFromFile fails closed on malformed json", async () => {
 test("parsePiModeSettings migrates legacy forge settings to pi", () => {
   assert.deepEqual(parsePiModeSettings({ "pi-mode": { toolSet: "forge" } }), {
     toolSet: "pi",
+    loadSkills: true,
     systemMdPrompt: false,
-    includePiPromptSection: false,
     webTools: {},
   });
 });
@@ -58,8 +58,8 @@ test("readPiModeSettingsSync reads stored web tool settings", async () => {
 
   assert.deepEqual(readPiModeSettingsSync(settingsPath), {
     toolSet: "pi",
+    loadSkills: true,
     systemMdPrompt: false,
-    includePiPromptSection: false,
     webTools: {
       geminiApiKey: "gemini-secret",
       firecrawlApiKey: "firecrawl-secret",
@@ -117,15 +117,15 @@ test("writeToolSetSetting preserves unrelated root settings", async () => {
   assert.deepEqual(updated["pi-mode"], { toolSet: "droid" });
 });
 
-test("writeIncludePiPromptSectionSetting persists the include-pi toggle", async () => {
+test("writeLoadSkillsSetting persists the load-skills toggle", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-tung-settings-"));
   const settingsPath = path.join(tempDir, "settings.json");
   await writeFile(settingsPath, "{}\n", "utf8");
 
-  await writeIncludePiPromptSectionSetting(true, settingsPath);
+  await writeLoadSkillsSetting(false, settingsPath);
 
   const updated = JSON.parse(await readFile(settingsPath, "utf8")) as Record<string, unknown>;
-  assert.deepEqual(updated["pi-mode"], { includePiPromptSection: true });
+  assert.deepEqual(updated["pi-mode"], { loadSkills: false });
 });
 
 test("writeWebToolSetting persists and clears stored web tool secrets", async () => {

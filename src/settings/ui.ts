@@ -1,9 +1,7 @@
 import { getSettingsListTheme, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import {
-  Container,
   Input,
   SettingsList,
-  Text,
   type Component,
   type SettingItem,
   wrapTextWithAnsi,
@@ -19,22 +17,22 @@ import {
 export type SettingsCommandAction =
   | { action: "open-root" }
   | { action: "open-tool-set" }
+  | { action: "open-load-skills" }
   | { action: "open-system-md-prompt" }
-  | { action: "open-include-pi-prompt-section" }
   | { action: "set-tool-set"; value: ToolSetPack }
+  | { action: "set-load-skills"; value: boolean }
   | { action: "set-system-md-prompt"; value: boolean }
-  | { action: "set-include-pi-prompt-section"; value: boolean }
   | { action: "invalid"; message: string };
 
 export type OpenSettingsUiOptions = {
-  focus?: "toolSet" | "systemMdPrompt" | "includePiPromptSection";
+  focus?: "toolSet" | "loadSkills" | "systemMdPrompt";
   readSettings: () => Promise<PiModeSettings>;
   applyToolSetTransition: (
     ctx: Pick<ExtensionContext, "hasUI" | "ui">,
     value: ToolSetPack,
   ) => Promise<void>;
+  writeLoadSkills: (value: boolean) => Promise<void>;
   writeSystemMdPrompt: (value: boolean) => Promise<void>;
-  writeIncludePiPromptSection: (value: boolean) => Promise<void>;
   writeWebToolSetting: (key: WebToolSettingKey, value: string | undefined) => Promise<void>;
 };
 
@@ -49,7 +47,7 @@ const SYSTEM_MD_PROMPT_LABELS: Record<"Enabled" | "Disabled", boolean> = {
   Disabled: false,
 };
 
-const INCLUDE_PI_PROMPT_SECTION_LABELS: Record<"Enabled" | "Disabled", boolean> = {
+const LOAD_SKILLS_LABELS: Record<"Enabled" | "Disabled", boolean> = {
   Enabled: true,
   Disabled: false,
 };
@@ -58,7 +56,7 @@ export function formatSystemMdPromptLabel(value: boolean): "Enabled" | "Disabled
   return value ? "Enabled" : "Disabled";
 }
 
-export function formatIncludePiPromptSectionLabel(value: boolean): "Enabled" | "Disabled" {
+export function formatLoadSkillsLabel(value: boolean): "Enabled" | "Disabled" {
   return value ? "Enabled" : "Disabled";
 }
 
@@ -73,19 +71,19 @@ export function buildPiModeSettingItems(settings: PiModeSettings): SettingItem[]
       values: ["Pi", "Codex", "Droid"],
     },
     {
-      id: "systemMdPrompt",
-      label: "Inject SYSTEM.md",
+      id: "loadSkills",
+      label: "Load Skills",
       description:
-        "Injects the repo root SYSTEM.md into the active Pi, Codex, or Droid system prompt when enabled.",
-      currentValue: formatSystemMdPromptLabel(settings.systemMdPrompt),
+        "Includes Pi's available skill list in the system prompt when enabled. Disabling this keeps skills installed, but hides the list from the prompt.",
+      currentValue: formatLoadSkillsLabel(settings.loadSkills),
       values: ["Enabled", "Disabled"],
     },
     {
-      id: "includePiPromptSection",
-      label: "Include Pi prompt section",
+      id: "systemMdPrompt",
+      label: "Inject SYSTEM.md",
       description:
-        "Keeps the incoming Pi coding-environment prompt and appends the selected Codex or Droid prompt after it when enabled.",
-      currentValue: formatIncludePiPromptSectionLabel(settings.includePiPromptSection),
+        "Uses the repo root SYSTEM.md as the prompt body in Pi, Codex, or Droid mode when enabled.",
+      currentValue: formatSystemMdPromptLabel(settings.systemMdPrompt),
       values: ["Enabled", "Disabled"],
     },
     {
@@ -370,15 +368,23 @@ export function parseSettingsCommand(args: string): SettingsCommandAction {
     return { action: "invalid", message: `Unknown system-md value: ${parts[1]}` };
   }
 
-  if (parts[0] === "include-pi-prompt") {
-    if (parts.length === 1) return { action: "open-include-pi-prompt-section" };
+  if (parts[0] === "load-skills") {
+    if (parts.length === 1) return { action: "open-load-skills" };
     if (parts[1] === "on" || parts[1] === "enabled") {
-      return { action: "set-include-pi-prompt-section", value: true };
+      return { action: "set-load-skills", value: true };
     }
     if (parts[1] === "off" || parts[1] === "disabled") {
-      return { action: "set-include-pi-prompt-section", value: false };
+      return { action: "set-load-skills", value: false };
     }
-    return { action: "invalid", message: `Unknown include-pi-prompt value: ${parts[1]}` };
+    return { action: "invalid", message: `Unknown load-skills value: ${parts[1]}` };
+  }
+
+  if (parts[0] === "include-pi-prompt") {
+    return {
+      action: "invalid",
+      message:
+        "Include Pi prompt section has been removed. Prompt selection now follows mode + optional SYSTEM.md.",
+    };
   }
 
   return { action: "invalid", message: `Unknown setting: ${parts[0]}` };
@@ -460,24 +466,18 @@ export async function openPiModeSettingsUi(
           return;
         }
 
-        if (id === "includePiPromptSection") {
-          const nextValue =
-            INCLUDE_PI_PROMPT_SECTION_LABELS[
-              newValue as keyof typeof INCLUDE_PI_PROMPT_SECTION_LABELS
-            ];
+        if (id === "loadSkills") {
+          const nextValue = LOAD_SKILLS_LABELS[newValue as keyof typeof LOAD_SKILLS_LABELS];
           if (nextValue === undefined) return;
 
-          await options.writeIncludePiPromptSection(nextValue);
-          settings.includePiPromptSection = nextValue;
+          await options.writeLoadSkills(nextValue);
+          settings.loadSkills = nextValue;
           const itemIndex = items.findIndex((item) => item.id === id);
           items[itemIndex] = {
             ...items[itemIndex],
-            currentValue: formatIncludePiPromptSectionLabel(nextValue),
+            currentValue: formatLoadSkillsLabel(nextValue),
           };
-          ctx.ui.notify(
-            `Include Pi prompt section: ${formatIncludePiPromptSectionLabel(nextValue)}`,
-            "info",
-          );
+          ctx.ui.notify(`Load Skills: ${formatLoadSkillsLabel(nextValue)}`, "info");
           return;
         }
 

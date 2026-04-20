@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { composeCustomPromptWithPiSections } from "../shared/custom-prompt.ts";
 import {
   buildCodexPrompt,
   handleCodexSystemPromptBeforeAgentStart,
@@ -10,9 +11,34 @@ import {
   type CodexSystemPromptDeps,
 } from "./system-prompt.ts";
 
-function buildExpectedReplacement(prompt: string, cwd: string): string {
-  const today = new Date().toISOString().slice(0, 10);
-  return `${prompt}\n\nCurrent date: ${today}\nCurrent working directory: ${cwd}`;
+const PI_PROMPT_BASE = `You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
+
+Available tools:
+- read: Read file contents
+
+In addition to the tools above, you may have access to other custom tools depending on the project.
+
+Guidelines:
+- Be concise in your responses
+- Show file paths clearly when working with files
+
+Pi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):
+- Main documentation: /tmp/README.md
+- Additional docs: /tmp/docs
+- Examples: /tmp/examples (extensions, custom tools, SDK)
+- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md)
+- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing
+- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)`;
+
+function buildExpectedCustomPrompt(prompt: string, cwd: string): string {
+  return composeCustomPromptWithPiSections(
+    buildPiPromptWithSuffix(cwd),
+    prompt,
+  )!;
+}
+
+function buildPiPromptWithSuffix(cwd: string): string {
+  return `${PI_PROMPT_BASE}\n\n# Project Context\n\nProject-specific instructions and guidelines:\n\n## /tmp/AGENTS.md\n\nRules\n\n<available_skills>\n- skill\n</available_skills>\nCurrent date: 2026-04-20\nCurrent working directory: ${cwd}`;
 }
 
 function createContext(toolSet: "pi" | "codex", cwd = "/tmp/project") {
@@ -62,8 +88,8 @@ test("handleCodexSystemPromptBeforeAgentStart returns no-op when Codex prompt is
   const deps: CodexSystemPromptDeps = {
     readSettings: async () => ({
       toolSet: "pi",
+      loadSkills: true,
       systemMdPrompt: true,
-      includePiPromptSection: false,
       webTools: {},
     }),
     buildPromptForModel: () => "Codex block",
@@ -86,47 +112,47 @@ test("handleCodexSystemPromptBeforeAgentStart defers to SYSTEM.md when enabled a
   const deps: CodexSystemPromptDeps = {
     readSettings: async () => ({
       toolSet: "codex",
+      loadSkills: true,
       systemMdPrompt: true,
-      includePiPromptSection: false,
       webTools: {},
     }),
     buildPromptForModel: () => "Codex block",
   };
 
   const result = await handleCodexSystemPromptBeforeAgentStart(
-    { systemPrompt: "Base" } as never,
+    { systemPrompt: PI_PROMPT_BASE } as never,
     createContext("codex", tempDir) as never,
     deps,
   );
 
-  assert.deepEqual(result, { systemPrompt: "System MD prompt" });
+  assert.equal(result, undefined);
 });
 
-test("handleCodexSystemPromptBeforeAgentStart still replaces when SYSTEM.md is enabled but missing", async () => {
+test("handleCodexSystemPromptBeforeAgentStart falls back to Codex customPrompt semantics when SYSTEM.md is enabled but missing", async () => {
   const fs = await import("node:fs/promises");
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-no-system-md-"));
   const deps: CodexSystemPromptDeps = {
     readSettings: async () => ({
       toolSet: "codex",
+      loadSkills: true,
       systemMdPrompt: true,
-      includePiPromptSection: false,
       webTools: {},
     }),
     buildPromptForModel: () => "Codex block",
   };
 
   const result = await handleCodexSystemPromptBeforeAgentStart(
-    { systemPrompt: "Base" } as never,
+    { systemPrompt: buildPiPromptWithSuffix(tempDir) } as never,
     createContext("codex", tempDir) as never,
     deps,
   );
 
   assert.deepEqual(result, {
-    systemPrompt: buildExpectedReplacement("Codex block", tempDir),
+    systemPrompt: buildExpectedCustomPrompt("Codex block", tempDir),
   });
 });
 
-test("handleCodexSystemPromptBeforeAgentStart uses the Codex prompt when SYSTEM.md injection is disabled", async () => {
+test("handleCodexSystemPromptBeforeAgentStart uses Codex customPrompt semantics when SYSTEM.md injection is disabled", async () => {
   const fs = await import("node:fs/promises");
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-system-md-disabled-"));
   await fs.writeFile(path.join(tempDir, "SYSTEM.md"), "System MD prompt\n");
@@ -134,84 +160,73 @@ test("handleCodexSystemPromptBeforeAgentStart uses the Codex prompt when SYSTEM.
   const deps: CodexSystemPromptDeps = {
     readSettings: async () => ({
       toolSet: "codex",
+      loadSkills: true,
       systemMdPrompt: false,
-      includePiPromptSection: false,
       webTools: {},
     }),
     buildPromptForModel: () => "Codex block",
   };
 
   const result = await handleCodexSystemPromptBeforeAgentStart(
-    { systemPrompt: "Base" } as never,
+    { systemPrompt: buildPiPromptWithSuffix(tempDir) } as never,
     createContext("codex", tempDir) as never,
     deps,
   );
 
   assert.deepEqual(result, {
-    systemPrompt: buildExpectedReplacement("Codex block", tempDir),
+    systemPrompt: buildExpectedCustomPrompt("Codex block", tempDir),
   });
 });
 
-test("handleCodexSystemPromptBeforeAgentStart still replaces when SYSTEM.md is not configured", async () => {
+test("handleCodexSystemPromptBeforeAgentStart applies Codex customPrompt semantics when SYSTEM.md is not configured", async () => {
   const deps: CodexSystemPromptDeps = {
     readSettings: async () => ({
       toolSet: "codex",
+      loadSkills: true,
       systemMdPrompt: false,
-      includePiPromptSection: false,
       webTools: {},
     }),
     buildPromptForModel: () => "Codex block",
   };
 
   const result = await handleCodexSystemPromptBeforeAgentStart(
-    { systemPrompt: "Base" } as never,
+    { systemPrompt: buildPiPromptWithSuffix("/tmp/project") } as never,
     createContext("codex") as never,
     deps,
   );
 
   assert.deepEqual(result, {
-    systemPrompt: buildExpectedReplacement("Codex block", "/tmp/project"),
+    systemPrompt: buildExpectedCustomPrompt("Codex block", "/tmp/project"),
   });
 });
 
-test("handleCodexSystemPromptBeforeAgentStart replaces the selected Codex prompt", async () => {
+test("handleCodexSystemPromptBeforeAgentStart applies the selected Codex prompt with Pi suffix sections", async () => {
   const deps: CodexSystemPromptDeps = {
     readSettings: async () => ({
       toolSet: "codex",
+      loadSkills: true,
       systemMdPrompt: true,
-      includePiPromptSection: false,
       webTools: {},
     }),
     buildPromptForModel: () => "Codex block",
   };
 
   const result = await handleCodexSystemPromptBeforeAgentStart(
-    { systemPrompt: "Base" } as never,
+    { systemPrompt: buildPiPromptWithSuffix("/tmp/project") } as never,
     createContext("codex") as never,
     deps,
   );
 
   assert.deepEqual(result, {
-    systemPrompt: buildExpectedReplacement("Codex block", "/tmp/project"),
+    systemPrompt: buildExpectedCustomPrompt("Codex block", "/tmp/project"),
   });
 });
 
-test("handleCodexSystemPromptBeforeAgentStart appends the Codex prompt after the Pi prompt when enabled", async () => {
-  const deps: CodexSystemPromptDeps = {
-    readSettings: async () => ({
-      toolSet: "codex",
-      systemMdPrompt: false,
-      includePiPromptSection: true,
-      webTools: {},
-    }),
-    buildPromptForModel: () => "Codex block",
-  };
+test("composeCustomPromptWithPiSections preserves Pi-added sections after swapping the prompt body", () => {
+  const basePrompt = `${PI_PROMPT_BASE}\n\n# Project Context\n\nProject-specific instructions and guidelines:\n\n## /tmp/AGENTS.md\n\nRules\n\n<available_skills>\n- skill\n</available_skills>\nCurrent date: 2026-04-20\nCurrent working directory: /tmp/project`;
 
-  const result = await handleCodexSystemPromptBeforeAgentStart(
-    { systemPrompt: "Pi base" } as never,
-    createContext("codex") as never,
-    deps,
+  assert.equal(
+    composeCustomPromptWithPiSections(basePrompt, "Custom body"),
+    `Custom body\n\n# Project Context\n\nProject-specific instructions and guidelines:\n\n## /tmp/AGENTS.md\n\nRules\n\n<available_skills>\n- skill\n</available_skills>\nCurrent date: 2026-04-20\nCurrent working directory: /tmp/project`,
   );
-
-  assert.deepEqual(result, { systemPrompt: "Pi base\n\nCodex block" });
 });

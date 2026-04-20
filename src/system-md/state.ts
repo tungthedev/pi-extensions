@@ -1,12 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import {
-  nonePromptContribution,
-  replacePromptContribution,
-  type PromptContribution,
-} from "../shared/prompt-composition.ts";
-
 const SYSTEM_MD_FILE = "SYSTEM.md";
 const GIT_DIR = ".git";
 
@@ -57,10 +51,7 @@ export function buildSystemMdPrompt(cwd: string): string | undefined {
   return readSystemMdPrompt(cwd);
 }
 
-export function resolveSystemMdPromptContribution(
-  cwd: string | undefined,
-  enabled: boolean,
-): PromptContribution {
-  if (!enabled || !cwd) return nonePromptContribution();
-  return replacePromptContribution(buildSystemMdPrompt(cwd));
+export function resolveSystemMdPrompt(cwd: string | undefined, enabled: boolean): string | undefined {
+  if (!enabled || !cwd) return undefined;
+  return buildSystemMdPrompt(cwd);
 }

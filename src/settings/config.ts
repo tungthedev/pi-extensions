@@ -13,8 +13,8 @@ export type ToolSetChangedPayload = {
 };
 
 export const DEFAULT_TOOL_SET: ToolSetPack = "pi";
+export const DEFAULT_LOAD_SKILLS = true;
 export const DEFAULT_SYSTEM_MD_PROMPT = false;
-export const DEFAULT_INCLUDE_PI_PROMPT_SECTION = false;
 export const TOOL_SET_CHANGED_EVENT = "settings:tool-set-changed";
 
 export type WebToolSettings = {
@@ -28,8 +28,8 @@ export type WebToolSettingKey = keyof WebToolSettings;
 
 export type PiModeSettings = {
   toolSet: ToolSetPack;
+  loadSkills: boolean;
   systemMdPrompt: boolean;
-  includePiPromptSection: boolean;
   webTools: WebToolSettings;
 };
 
@@ -47,12 +47,12 @@ function normalizeToolSet(value: unknown): ToolSetPack {
   return DEFAULT_TOOL_SET;
 }
 
-function normalizeSystemMdPrompt(value: unknown): boolean {
-  return typeof value === "boolean" ? value : DEFAULT_SYSTEM_MD_PROMPT;
+function normalizeLoadSkills(value: unknown): boolean {
+  return typeof value === "boolean" ? value : DEFAULT_LOAD_SKILLS;
 }
 
-function normalizeIncludePiPromptSection(value: unknown): boolean {
-  return typeof value === "boolean" ? value : DEFAULT_INCLUDE_PI_PROMPT_SECTION;
+function normalizeSystemMdPrompt(value: unknown): boolean {
+  return typeof value === "boolean" ? value : DEFAULT_SYSTEM_MD_PROMPT;
 }
 
 function normalizeOptionalString(value: unknown): string | undefined {
@@ -119,13 +119,13 @@ export function parsePiModeSettings(root: unknown): PiModeSettings {
     namespace && typeof namespace === "object" && !Array.isArray(namespace)
       ? (namespace as SettingsRoot).toolSet
       : undefined;
+  const loadSkills =
+    namespace && typeof namespace === "object" && !Array.isArray(namespace)
+      ? (namespace as SettingsRoot).loadSkills
+      : undefined;
   const systemMdPrompt =
     namespace && typeof namespace === "object" && !Array.isArray(namespace)
       ? (namespace as SettingsRoot).systemMdPrompt
-      : undefined;
-  const includePiPromptSection =
-    namespace && typeof namespace === "object" && !Array.isArray(namespace)
-      ? (namespace as SettingsRoot).includePiPromptSection
       : undefined;
   const webTools =
     namespace && typeof namespace === "object" && !Array.isArray(namespace)
@@ -134,8 +134,8 @@ export function parsePiModeSettings(root: unknown): PiModeSettings {
 
   return {
     toolSet: normalizeToolSet(toolSet),
+    loadSkills: normalizeLoadSkills(loadSkills),
     systemMdPrompt: normalizeSystemMdPrompt(systemMdPrompt),
-    includePiPromptSection: normalizeIncludePiPromptSection(includePiPromptSection),
     webTools: normalizeWebToolSettings(webTools),
   };
 }
@@ -212,14 +212,14 @@ export async function writeSystemMdPromptSetting(
   );
 }
 
-export async function writeIncludePiPromptSectionSetting(
-  includePiPromptSection: boolean,
+export async function writeLoadSkillsSetting(
+  loadSkills: boolean,
   filePath = getGlobalPiSettingsPath(),
 ): Promise<void> {
   await writeSettings(
     (namespace) => ({
       ...namespace,
-      includePiPromptSection,
+      loadSkills,
     }),
     filePath,
   );

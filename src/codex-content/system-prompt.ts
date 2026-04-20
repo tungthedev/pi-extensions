@@ -15,13 +15,10 @@ import {
   resolveConfiguredModelCatalogPath,
 } from "../shared/codex-config.ts";
 import {
-  appendPromptContribution,
-  buildPromptResult,
-  replacePromptContribution,
-  resolvePromptContribution,
-} from "../shared/prompt-composition.ts";
+  composeCustomPromptWithPiSections,
+} from "../shared/custom-prompt.ts";
 import { matchTomlString } from "../shared/toml-lite.ts";
-import { resolveSystemMdPromptContribution } from "../system-md/state.ts";
+import { resolveSystemMdPrompt } from "../system-md/state.ts";
 
 export {
   resolveCodexConfigPath,
@@ -230,16 +227,11 @@ export function buildSelectedCodexPrompt(modelId: string | undefined): string {
   );
 }
 
-export function injectCodexPrompt(_systemPrompt: string | undefined, codexPrompt: string): string {
-  return buildPromptResult(undefined, replacePromptContribution(codexPrompt))?.systemPrompt ?? "";
-}
-
-function buildRuntimeMetadata(ctx: Pick<ExtensionContext, "sessionManager">): string {
-  const today = new Date().toISOString().slice(0, 10);
-  return [
-    `Current date: ${today}`,
-    `Current working directory: ${ctx.sessionManager.getCwd()}`,
-  ].join("\n");
+export function composeCodexPromptWithPiSections(
+  basePrompt: string | undefined,
+  codexPrompt: string | undefined,
+): string | undefined {
+  return composeCustomPromptWithPiSections(basePrompt, codexPrompt);
 }
 
 export async function handleCodexSystemPromptBeforeAgentStart(
@@ -252,17 +244,15 @@ export async function handleCodexSystemPromptBeforeAgentStart(
     return undefined;
   }
 
-  return buildPromptResult(
+  if (resolveSystemMdPrompt(ctx.cwd, settings.systemMdPrompt)) {
+    return undefined;
+  }
+
+  const systemPrompt = composeCodexPromptWithPiSections(
     event.systemPrompt,
-    resolvePromptContribution([
-      resolveSystemMdPromptContribution(ctx.cwd, settings.systemMdPrompt),
-      settings.includePiPromptSection
-        ? appendPromptContribution(deps.buildPromptForModel(ctx.model?.id))
-        : replacePromptContribution(
-            `${deps.buildPromptForModel(ctx.model?.id)}\n\n${buildRuntimeMetadata(ctx)}`,
-          ),
-    ]),
+    deps.buildPromptForModel(ctx.model?.id),
   );
+  return systemPrompt ? { systemPrompt } : undefined;
 }
 
 export function registerCodexSystemPrompt(

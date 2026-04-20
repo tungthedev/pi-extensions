@@ -7,8 +7,8 @@ import type {
 import {
   TOOL_SET_CHANGED_EVENT,
   readPiModeSettings,
+  writeLoadSkillsSetting,
   writeWebToolSetting,
-  writeIncludePiPromptSectionSetting,
   writeSystemMdPromptSetting,
   writeToolSetSetting,
   type WebToolSettingKey,
@@ -22,19 +22,24 @@ import {
   writeSessionToolSetSnapshot,
 } from "./session.ts";
 import { applySessionToolSetTransition, applyToolSetTransition } from "./tool-set-transition.ts";
-import { formatSystemMdPromptLabel, openPiModeSettingsUi, parseSettingsCommand } from "./ui.ts";
+import {
+  formatLoadSkillsLabel,
+  formatSystemMdPromptLabel,
+  openPiModeSettingsUi,
+  parseSettingsCommand,
+} from "./ui.ts";
 
 export type PiModeCommandDeps = {
   readSettings: () => Promise<PiModeSettings>;
   writeToolSet: (value: ToolSetPack) => Promise<void>;
   writeSessionToolSet: (value: ToolSetPack) => Promise<void> | void;
+  writeLoadSkills: (value: boolean) => Promise<void>;
   writeSystemMdPrompt: (value: boolean) => Promise<void>;
-  writeIncludePiPromptSection: (value: boolean) => Promise<void>;
   writeWebToolSetting: (key: WebToolSettingKey, value: string | undefined) => Promise<void>;
   emitToolSetChange?: (value: ToolSetPack) => Promise<void> | void;
   openSettingsUi: (
     ctx: ExtensionCommandContext,
-    options: { focus?: "toolSet" | "systemMdPrompt" | "includePiPromptSection" },
+    options: { focus?: "toolSet" | "loadSkills" | "systemMdPrompt" },
   ) => Promise<void>;
 };
 
@@ -65,8 +70,8 @@ function createDefaultDeps(pi: ExtensionAPI): PiModeCommandDeps {
     readSettings: () => readPiModeSettings(),
     writeToolSet: (value) => writeToolSetSetting(value),
     writeSessionToolSet: (value) => writeSessionToolSetSnapshot(pi, value),
+    writeLoadSkills: (value) => writeLoadSkillsSetting(value),
     writeSystemMdPrompt: (value) => writeSystemMdPromptSetting(value),
-    writeIncludePiPromptSection: (value) => writeIncludePiPromptSectionSetting(value),
     writeWebToolSetting: (key, value) => writeWebToolSetting(key, value),
     emitToolSetChange: (value) => {
       pi.events.emit(TOOL_SET_CHANGED_EVENT, {
@@ -83,8 +88,8 @@ function createDefaultDeps(pi: ExtensionAPI): PiModeCommandDeps {
             toolSet: await resolveSessionToolSet(ctx.sessionManager),
           };
         },
+        writeLoadSkills: (value) => writeLoadSkillsSetting(value),
         writeSystemMdPrompt: (value) => writeSystemMdPromptSetting(value),
-        writeIncludePiPromptSection: (value) => writeIncludePiPromptSectionSetting(value),
         writeWebToolSetting: (key, value) => writeWebToolSetting(key, value),
         applyToolSetTransition: (ctx, value) =>
           applyToolSetTransition(
@@ -121,15 +126,15 @@ export async function handlePiModeCommand(
     return;
   }
 
-  if (action.action === "set-system-md-prompt") {
-    await deps.writeSystemMdPrompt(action.value);
-    ctx.ui.notify(`Inject SYSTEM.md: ${formatSystemMdPromptLabel(action.value)}`, "info");
+  if (action.action === "set-load-skills") {
+    await deps.writeLoadSkills(action.value);
+    ctx.ui.notify(`Load Skills: ${formatLoadSkillsLabel(action.value)}`, "info");
     return;
   }
 
-  if (action.action === "set-include-pi-prompt-section") {
-    await deps.writeIncludePiPromptSection(action.value);
-    ctx.ui.notify(`Include Pi prompt section: ${action.value ? "Enabled" : "Disabled"}`, "info");
+  if (action.action === "set-system-md-prompt") {
+    await deps.writeSystemMdPrompt(action.value);
+    ctx.ui.notify(`Inject SYSTEM.md: ${formatSystemMdPromptLabel(action.value)}`, "info");
     return;
   }
 
@@ -137,11 +142,11 @@ export async function handlePiModeCommand(
     focus:
       action.action === "open-tool-set"
         ? "toolSet"
+        : action.action === "open-load-skills"
+          ? "loadSkills"
         : action.action === "open-system-md-prompt"
           ? "systemMdPrompt"
-          : action.action === "open-include-pi-prompt-section"
-            ? "includePiPromptSection"
-            : undefined,
+          : undefined,
   });
 }
 

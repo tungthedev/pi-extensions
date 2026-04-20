@@ -5,12 +5,12 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 
 import { readSettings, type PiModeSettings } from "../settings/config.ts";
-import { buildPromptResult } from "../shared/prompt-composition.ts";
+import { composeCustomPromptWithPiSections } from "../shared/custom-prompt.ts";
 import {
   buildSystemMdPrompt,
   readSystemMdPrompt,
+  resolveSystemMdPrompt,
   resolveSystemMdPath,
-  resolveSystemMdPromptContribution,
 } from "./state.ts";
 
 export { buildSystemMdPrompt, readSystemMdPrompt, resolveSystemMdPath } from "./state.ts";
@@ -31,10 +31,9 @@ export async function handleSystemMdBeforeAgentStart(
   deps: SystemMdPromptDeps = createDefaultDeps(),
 ): Promise<{ systemPrompt: string } | undefined> {
   const settings = await deps.readSettings();
-  return buildPromptResult(
-    event.systemPrompt,
-    resolveSystemMdPromptContribution(ctx.cwd, settings.systemMdPrompt),
-  );
+  const systemMdPrompt = resolveSystemMdPrompt(ctx.cwd, settings.systemMdPrompt);
+  const systemPrompt = composeCustomPromptWithPiSections(event.systemPrompt, systemMdPrompt);
+  return systemPrompt ? { systemPrompt } : undefined;
 }
 
 export function registerSystemMdPrompt(
