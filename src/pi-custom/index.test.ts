@@ -39,6 +39,10 @@ function trimRenderedLines(lines: string[]): string[] {
   return lines.map((line) => line.trimEnd());
 }
 
+function getTextContent(result: { content?: Array<{ type?: string; text?: string }> }): string {
+  return result.content?.find((item) => item.type === "text")?.text ?? "";
+}
+
 test.afterEach(() => {
   resetSessionFffRuntimesForTests();
 });
@@ -153,6 +157,31 @@ test("read resolves relative paths from the session cwd", async () => {
     );
 
     assert.match(JSON.stringify(result), /hello from session cwd/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("read returns aligned line-numbered text for the model", async () => {
+  const tools = captureTools();
+  const tool = tools.read;
+  const root = fs.mkdtempSync(path.join(tmpdir(), "read-numbered-"));
+  const target = path.join(root, "note.txt");
+  fs.writeFileSync(target, "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\neleven\ntwelve\n", "utf8");
+
+  try {
+    const result = await tool.execute(
+      "call-numbered",
+      { path: target, offset: 9, limit: 3 },
+      undefined,
+      () => undefined,
+      { cwd: root },
+    );
+
+    assert.equal(
+      getTextContent(result),
+      "L 9: nine\nL10: ten\nL11: eleven\n\n[2 more lines in file. Use offset=12 to continue.]",
+    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

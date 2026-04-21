@@ -41,6 +41,66 @@ type ReadRenderState = {
   emptySlot?: Container;
 };
 
+type ToolTextPart = {
+  type?: string;
+  text?: string;
+};
+
+type ToolResultWithContent = {
+  content?: ToolTextPart[];
+};
+
+const READ_CONTINUATION_FOOTER_PATTERN =
+  /\n\n\[\d+ more lines in file\. Use offset=\d+ to continue\.\]$/;
+
+function splitReadContinuationFooter(text: string): { body: string; footer: string } {
+  const match = text.match(READ_CONTINUATION_FOOTER_PATTERN);
+  if (!match || match.index === undefined) {
+    return { body: text, footer: "" };
+  }
+
+  return {
+    body: text.slice(0, match.index),
+    footer: text.slice(match.index),
+  };
+}
+
+function addLineNumbersToReadText(text: string, startLine: number): string {
+  if (text.length === 0) return text;
+
+  const { body, footer } = splitReadContinuationFooter(text);
+  const lines = body.split("\n");
+  const width = String(startLine + lines.length - 1).length;
+  const numberedBody = lines
+    .map((line, index) => `L${String(startLine + index).padStart(width)}: ${line}`)
+    .join("\n");
+
+  return `${numberedBody}${footer}`;
+}
+
+function decorateReadResultWithLineNumbers<T extends ToolResultWithContent>(
+  result: T,
+  startLine: number,
+): T {
+  if (!Array.isArray(result.content) || result.content.length === 0) {
+    return result;
+  }
+
+  return {
+    ...result,
+    content: result.content.map((item) => {
+      if (item?.type !== "text" || typeof item.text !== "string") {
+        return item;
+      }
+
+      return {
+        ...item,
+        text: addLineNumbersToReadText(item.text, startLine),
+      };
+    }),
+  };
+}
+
 function getReadRenderState(context: { state?: Record<string, unknown> }): ReadRenderState {
   const state = (context.state ??= {});
   const existing = state.readRenderState;
@@ -151,7 +211,8 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
       // automatically applies in Pi, Codex, and Droid modes through toolset resolution.
       const resolvedParams = await resolveReadToolInput(params as ReadToolInput, ctx);
       const nativeRead = createReadTool(ctx.cwd);
-      return await nativeRead.execute(toolCallId, resolvedParams, signal, onUpdate);
+      const result = await nativeRead.execute(toolCallId, resolvedParams, signal, onUpdate);
+      return decorateReadResultWithLineNumbers(result, resolvedParams.offset ?? 1);
     },
     renderCall(args, theme, context) {
       const state = getReadRenderState(context as { state?: Record<string, unknown> });
