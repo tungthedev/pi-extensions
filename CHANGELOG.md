@@ -4,6 +4,16 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed the Cloudflare-backed `FetchUrl` tool so it no longer sends an invalid crawl `depth: 0` option that caused Browser Rendering requests to fail validation.
+
+## [2.0.3] - 2026-04-21
+
+### Changed
+
+- Added aligned line-numbered `read` output to agent-facing text responses across the shared Pi, Codex, and Droid read surface.
+
 ## [2.0.2] - 2026-04-20
 
 ### Added

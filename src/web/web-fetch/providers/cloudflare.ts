@@ -81,7 +81,6 @@ export async function runCloudflareFetch(
     method: "POST",
     body: JSON.stringify({
       url,
-      depth: 0,
       limit: 1,
       formats: ["markdown"],
       render: true,
