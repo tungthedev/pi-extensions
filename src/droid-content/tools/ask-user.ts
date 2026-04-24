@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 
 import { executeAskUserRequest, RequestQuestionSchema } from "../../ask-user/index.ts";
 import { renderFallbackResult, renderToolCall } from "../../shared/renderers/common.ts";

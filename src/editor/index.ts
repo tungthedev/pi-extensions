@@ -8,6 +8,7 @@ export {
   shouldTriggerDollarSkillAutocomplete,
   wrapAutocompleteProviderWithDollarSkillSupport,
 } from "./autocomplete-dollar-skill.ts";
+export { createSubagentRoleAutocompleteProvider } from "./autocomplete-subagent-roles.ts";
 export {
   EDITOR_REMOVE_STATUS_SEGMENT_EVENT,
   EDITOR_SET_STATUS_SEGMENT_EVENT,

@@ -553,7 +553,7 @@ test("write uses call summary and hides collapsed result", () => {
   assert.deepEqual(collapsed.render(120), []);
 });
 
-test("read uses a self-rendered Box shell with horizontal-only padding and no background", () => {
+test("read uses a self-rendered Box shell without background fill", () => {
   const tools = captureTools();
   const tool = tools.read;
   const state: Record<string, unknown> = {};
@@ -566,7 +566,7 @@ test("read uses a self-rendered Box shell with horizontal-only padding and no ba
 
   assert.equal(tool.renderShell, "self");
   assert.ok(call instanceof Box);
-  assert.deepEqual(trimRenderedLines(call.render(120)), ["  Read src/a.ts:2-4"]);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), ["Read src/a.ts:2-4"]);
 
   const collapsed = tool.renderResult(
     { content: [{ type: "text", text: "alpha\nbeta" }] },

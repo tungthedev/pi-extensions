@@ -4,6 +4,16 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-04-24
+
+### Added
+
+- Added stacked editor autocomplete support for Pi `0.70`, including subagent role suggestions alongside the existing skill and `@path` completions.
+
+### Changed
+
+- Updated prompt customization flows to use Pi `0.70` structured system-prompt metadata, improving how `SYSTEM.md`, Codex, Droid, and Load Skills behavior follow the active session context.
+
 ### Fixed
 
 - Fixed the Cloudflare-backed `FetchUrl` tool so it no longer sends an invalid crawl `depth: 0` option that caused Browser Rendering requests to fail validation.

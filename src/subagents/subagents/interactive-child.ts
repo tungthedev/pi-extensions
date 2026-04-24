@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { appendFileSync, writeFileSync } from "node:fs";
 
 export function shouldMarkUserTookOver(agentStarted: boolean): boolean {

@@ -6,7 +6,7 @@ import {
   formatSize,
   truncateTail,
 } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import { createWriteStream, type WriteStream } from "node:fs";

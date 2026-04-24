@@ -3,8 +3,10 @@
  */
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
+import { createSubagentRoleAutocompleteProvider } from "../editor/index.ts";
 import { applyResolvedToolset } from "../shared/toolset-resolver.ts";
 import { registerSubagentsCommand } from "./commands.ts";
+import { resolveAgentProfileNames } from "./subagents/profiles.ts";
 import { SUBAGENT_CHILD_ENV, registerSubagentTools } from "./subagents/index.ts";
 
 export {
@@ -29,6 +31,12 @@ export default function subagentsExtension(pi: ExtensionAPI) {
     registerSubagentsCommand(pi);
 
     pi.on("session_start", async (_event, ctx) => {
+      ctx.ui.addAutocompleteProvider(
+        createSubagentRoleAutocompleteProvider({
+          cwd: ctx.cwd,
+          resolveRoleNames: ({ cwd }) => resolveAgentProfileNames({ cwd }),
+        }),
+      );
       subagentTools.refreshRoleDescriptions(ctx.cwd);
       await syncSubagentToolSet(pi, ctx);
     });

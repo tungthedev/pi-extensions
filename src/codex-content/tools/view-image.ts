@@ -1,6 +1,6 @@
 import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import fs from "node:fs/promises";
 
 import {

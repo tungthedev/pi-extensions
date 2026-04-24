@@ -6,6 +6,7 @@ import type {
 
 import { readSettings, type PiModeSettings } from "../settings/config.ts";
 import { composeCustomPromptWithPiSections } from "../shared/custom-prompt.ts";
+import { resolvePromptOptionsCwd } from "../shared/system-prompt-options.ts";
 import {
   buildSystemMdPrompt,
   readSystemMdPrompt,
@@ -31,7 +32,10 @@ export async function handleSystemMdBeforeAgentStart(
   deps: SystemMdPromptDeps = createDefaultDeps(),
 ): Promise<{ systemPrompt: string } | undefined> {
   const settings = await deps.readSettings();
-  const systemMdPrompt = resolveSystemMdPrompt(ctx.cwd, settings.systemMdPrompt);
+  const systemMdPrompt = resolveSystemMdPrompt(
+    resolvePromptOptionsCwd(event, ctx),
+    settings.systemMdPrompt,
+  );
   const systemPrompt = composeCustomPromptWithPiSections(event.systemPrompt, systemMdPrompt);
   return systemPrompt ? { systemPrompt } : undefined;
 }

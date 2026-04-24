@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { Dirent } from "node:fs";
 
 import { createLsToolDefinition } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
 

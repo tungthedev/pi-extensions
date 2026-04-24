@@ -3,6 +3,7 @@ import type {
   ExtensionContext,
   KeybindingsManager,
   Theme,
+  ThemeColor,
 } from "@mariozechner/pi-coding-agent";
 import type { AutocompleteProvider, EditorTheme, TUI } from "@mariozechner/pi-tui";
 
@@ -68,6 +69,7 @@ class CodexBoxedEditor extends CustomEditor {
     private readonly getTopBorderLegend: () => string | undefined,
     private readonly getToolSetLabel: () => string | undefined,
     private readonly getLoadSkillsEnabled: () => boolean | undefined,
+    private readonly useLegacyAutocompleteComposition: boolean,
     private readonly pathAutocompleteRuntime?: ReturnType<typeof ensureSessionFffRuntime>,
   ) {
     super(tui, editorTheme, keybindings);
@@ -75,10 +77,16 @@ class CodexBoxedEditor extends CustomEditor {
   }
 
   override setAutocompleteProvider(provider: AutocompleteProvider): void {
+    if (!this.useLegacyAutocompleteComposition) {
+      super.setAutocompleteProvider(provider);
+      return;
+    }
+
     const wrappers = [wrapAutocompleteProviderWithDollarSkillSupport];
-    if (this.pathAutocompleteRuntime) {
+    const pathAutocompleteRuntime = this.pathAutocompleteRuntime;
+    if (pathAutocompleteRuntime) {
       wrappers.push((baseProvider) =>
-        wrapAutocompleteProviderWithAtPathSupport(baseProvider, this.pathAutocompleteRuntime!),
+        wrapAutocompleteProviderWithAtPathSupport(baseProvider, pathAutocompleteRuntime),
       );
     }
 
@@ -177,17 +185,17 @@ class CodexBoxedEditor extends CustomEditor {
     }
 
     const segments = [
-      { text: " ", color: "muted" as const },
-      { text: toolSetLabel, color: "accent" as const },
+      { text: " ", color: "muted" as ThemeColor },
+      { text: toolSetLabel, color: "accent" as ThemeColor },
     ];
 
     const loadSkillsEnabled = this.getLoadSkillsEnabled();
     if (loadSkillsEnabled !== undefined) {
       segments.push(
-        { text: " ", color: "muted" as const },
+        { text: " ", color: "muted" },
         {
           text: loadSkillsEnabled ? "w. Skills" : "wo. Skills",
-          color: loadSkillsEnabled ? ("accent" as const) : ("muted" as const),
+          color: "text",
         },
       );
     }
@@ -272,6 +280,13 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
   const applyUi = (ctx: ExtensionContext) => {
     getStatusTheme = () => ctx.ui.theme;
     const fffRuntime = ensureSessionFffRuntime(resolveSessionFffRuntimeKey(ctx), ctx.cwd);
+    const useProviderStack = typeof ctx.ui.addAutocompleteProvider === "function";
+    if (useProviderStack) {
+      ctx.ui.addAutocompleteProvider(wrapAutocompleteProviderWithDollarSkillSupport);
+      ctx.ui.addAutocompleteProvider((provider: AutocompleteProvider) =>
+        wrapAutocompleteProviderWithAtPathSupport(provider, fffRuntime),
+      );
+    }
     ctx.ui.setEditorComponent(
       (tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager) => {
         return new CodexBoxedEditor(
@@ -282,6 +297,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
           () => formatEditorBorderLegend(state.toolSetLabel, state.loadSkillsEnabled),
           () => state.toolSetLabel,
           () => state.loadSkillsEnabled,
+          !useProviderStack,
           fffRuntime,
         );
       },

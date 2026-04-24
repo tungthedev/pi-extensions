@@ -1,6 +1,6 @@
 import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 
 import { applyPatch as runNativeApplyPatch } from "../apply-patch.ts";
 import { renderEmptySlot, renderFallbackResult } from "../renderers/common.ts";

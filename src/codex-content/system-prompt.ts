@@ -17,6 +17,7 @@ import {
 import {
   composeCustomPromptWithPiSections,
 } from "../shared/custom-prompt.ts";
+import { resolvePromptOptionsCwd } from "../shared/system-prompt-options.ts";
 import { matchTomlString } from "../shared/toml-lite.ts";
 import { resolveSystemMdPrompt } from "../system-md/state.ts";
 
@@ -244,7 +245,7 @@ export async function handleCodexSystemPromptBeforeAgentStart(
     return undefined;
   }
 
-  if (resolveSystemMdPrompt(ctx.cwd, settings.systemMdPrompt)) {
+  if (resolveSystemMdPrompt(resolvePromptOptionsCwd(event, ctx), settings.systemMdPrompt)) {
     return undefined;
   }
 

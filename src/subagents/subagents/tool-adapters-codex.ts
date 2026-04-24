@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { Container, Text } from "@mariozechner/pi-tui";
 
 import type { PublicAgentSnapshot } from "./types.ts";
@@ -33,6 +33,8 @@ import {
   renderAgentCompletionResult,
   renderWaitAgentResult,
 } from "./renderers.ts";
+
+type SchemaWithDescription = { description?: string };
 
 export type CodexToolAdapterDeps = {
   lifecycle: ReturnType<typeof createSubagentLifecycleService>;
@@ -275,7 +277,8 @@ export function registerCodexToolAdapters(
   const refreshRoleDescriptions = (cwd = process.cwd()) => {
     const agentTypeDescription = buildSpawnAgentTypeDescription(resolveAgentProfiles({ cwd }));
     spawnAgentTool.description = buildSpawnAgentToolDescription(agentTypeDescription);
-    ((spawnAgentParameters).properties.agent_type).description = agentTypeDescription;
+    ((spawnAgentParameters).properties.agent_type as SchemaWithDescription).description =
+      agentTypeDescription;
   };
 
   refreshRoleDescriptions();

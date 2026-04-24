@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 
 export const CUSTOM_INPUT_OPTION = "Other (type a custom answer)";
 

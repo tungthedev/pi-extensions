@@ -48,6 +48,12 @@ export function buildSpawnAgentTypeDescription(resolvedProfiles: ResolvedAgentPr
   ].join("\n");
 }
 
+export function resolveAgentProfileNames(options: { cwd?: string } = {}): string[] {
+  return [...resolveAgentProfiles({ cwd: options.cwd }).profiles.keys()].sort((left, right) =>
+    left.localeCompare(right),
+  );
+}
+
 export function clearResolvedAgentProfilesCache(): void {
   // Resolution is intentionally uncached so external filesystem edits are reflected immediately.
 }

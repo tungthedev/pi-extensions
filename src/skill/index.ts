@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 import { Container } from "@mariozechner/pi-tui";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 
 import { renderToolCall } from "../shared/renderers/common.ts";
 import { applyResolvedToolset } from "../shared/toolset-resolver.ts";
@@ -51,7 +51,7 @@ export default function registerSkillExtension(pi: ExtensionAPI): void {
     },
     renderCall(args, theme) {
       const skillName = typeof args.name === "string" && args.name.trim().length > 0 ? args.name.trim() : "skill";
-      return renderToolCall(theme, "Loaded Skill", theme.fg("accent", skillName));
+      return renderToolCall(theme, "[skill]", theme.fg("accent", skillName));
     },
     renderResult() {
       return new Container();

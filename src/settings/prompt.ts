@@ -4,6 +4,7 @@ import type {
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 
+import { hasStructuredSkills } from "../shared/system-prompt-options.ts";
 import { resolveSessionLoadSkills } from "./session.ts";
 
 const SKILLS_SECTION_START =
@@ -40,6 +41,7 @@ export async function handleLoadSkillsBeforeAgentStart(
   deps: LoadSkillsPromptDeps = createDefaultDeps(),
 ): Promise<{ systemPrompt: string } | undefined> {
   if (await deps.resolveLoadSkills(ctx)) return undefined;
+  if (event.systemPromptOptions && !hasStructuredSkills(event)) return undefined;
 
   const systemPrompt = stripSkillListFromPrompt(event.systemPrompt);
   if (!systemPrompt || systemPrompt === event.systemPrompt) return undefined;

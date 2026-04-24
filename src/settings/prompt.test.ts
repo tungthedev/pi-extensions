@@ -76,3 +76,23 @@ test("handleLoadSkillsBeforeAgentStart honors the session-scoped load-skills ove
 Current working directory: /tmp/project`,
   });
 });
+
+test("handleLoadSkillsBeforeAgentStart trusts structured skill metadata when Pi reports no loaded skills", async () => {
+  const deps: LoadSkillsPromptDeps = {
+    resolveLoadSkills: async () => false,
+  };
+
+  const result = await handleLoadSkillsBeforeAgentStart(
+    {
+      systemPrompt: PROMPT_WITH_SKILLS,
+      systemPromptOptions: {
+        cwd: "/tmp/project",
+        skills: [],
+      },
+    } as never,
+    {} as never,
+    deps,
+  );
+
+  assert.equal(result, undefined);
+});

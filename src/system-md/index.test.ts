@@ -88,3 +88,35 @@ test("handleSystemMdBeforeAgentStart returns no-op when system-md prompt is disa
 
   assert.equal(result, undefined);
 });
+
+test("handleSystemMdBeforeAgentStart prefers structured prompt cwd over context cwd", async () => {
+  const structuredRoot = await mkdtemp(path.join(os.tmpdir(), "pi-system-md-"));
+  const unrelatedRoot = await mkdtemp(path.join(os.tmpdir(), "pi-system-md-"));
+  await writeFile(path.join(structuredRoot, "SYSTEM.md"), "Structured prompt\n");
+
+  const deps: SystemMdPromptDeps = {
+    readSettings: async () => ({
+      toolSet: "codex",
+      loadSkills: true,
+      systemMdPrompt: true,
+      webTools: {},
+    }),
+  };
+
+  const result = await handleSystemMdBeforeAgentStart(
+    {
+      systemPrompt:
+        "You are an expert coding assistant operating inside pi, a coding agent harness.\n\n# Project Context\n\nProject-specific instructions and guidelines:\n\n## /tmp/AGENTS.md\n\nRules\n\nCurrent date: 2026-04-20\nCurrent working directory: /tmp/project",
+      systemPromptOptions: {
+        cwd: structuredRoot,
+      },
+    } as never,
+    { cwd: unrelatedRoot } as never,
+    deps,
+  );
+
+  assert.deepEqual(result, {
+    systemPrompt:
+      "Structured prompt\n\n# Project Context\n\nProject-specific instructions and guidelines:\n\n## /tmp/AGENTS.md\n\nRules\n\nCurrent date: 2026-04-20\nCurrent working directory: /tmp/project",
+  });
+});

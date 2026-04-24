@@ -9,6 +9,7 @@ import {
   buildSpawnAgentTypeDescription,
   clearResolvedAgentProfilesCache,
   resolveAgentProfiles,
+  resolveAgentProfileNames,
   resolveBuiltInAgentProfiles,
 } from "./profiles.ts";
 
@@ -95,6 +96,31 @@ test("resolveAgentProfiles uses cwd-aware markdown project shadowing", async () 
     assert.equal(reviewer?.reasoningEffort, "high");
     assert.match(description, /Project reviewer/);
     assert.doesNotMatch(description, /User reviewer/);
+  });
+});
+
+test("resolveAgentProfileNames returns stable cwd-aware role names for autocomplete", async () => {
+  await withTempHome((homeRoot) => {
+    const cwd = path.join(homeRoot, "workspace", "project", "nested");
+    mkdirSync(cwd, { recursive: true });
+
+    writeRole(
+      path.join(homeRoot, ".agents", "reviewer.md"),
+      `---\nname: reviewer\ndescription: User reviewer\n---\n\nUser prompt\n`,
+    );
+    writeRole(
+      path.join(homeRoot, "workspace", "project", ".agents", "delegate.md"),
+      `---\nname: delegate\ndescription: Project delegate\n---\n\nProject prompt\n`,
+    );
+
+    assert.deepEqual(resolveAgentProfileNames({ cwd }), [
+      "default",
+      "delegate",
+      "planner",
+      "researcher",
+      "reviewer",
+      "scout",
+    ]);
   });
 });
 

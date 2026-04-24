@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 
 import registerCodexContentExtension from "../codex-content/index.ts";
 import registerDroidContentExtension from "../droid-content/index.ts";

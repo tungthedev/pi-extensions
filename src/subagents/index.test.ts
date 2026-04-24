@@ -294,6 +294,38 @@ test("subagents public entrypoint registers tools and sync hooks for parent sess
   assert.equal(events.includes("before_agent_start"), true);
 });
 
+test("subagents public entrypoint registers role autocomplete on session start", async () => {
+  const handlers = new Map<string, Function>();
+  const autocompleteProviders: Array<(provider: unknown) => unknown> = [];
+
+  subagentsExtension({
+    registerTool() {},
+    on(event: string, handler: Function) {
+      handlers.set(event, handler);
+    },
+    registerCommand() {},
+    registerMessageRenderer() {},
+    sendMessage() {},
+    appendEntry() {},
+    getAllTools: () => [],
+    setActiveTools() {},
+  } as never);
+
+  await handlers.get("session_start")?.(undefined, {
+    cwd: "/tmp/project",
+    sessionManager: {
+      getBranch: () => [],
+    },
+    ui: {
+      addAutocompleteProvider(factory: (provider: unknown) => unknown) {
+        autocompleteProviders.push(factory);
+      },
+    },
+  });
+
+  assert.equal(autocompleteProviders.length, 1);
+});
+
 function captureEntryRegistration(register: (pi: never) => void) {
   const tools: string[] = [];
   const events: string[] = [];

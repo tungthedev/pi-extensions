@@ -102,6 +102,38 @@ test("handleDroidSystemPromptBeforeAgentStart defers to SYSTEM.md when enabled a
   assert.equal(result, undefined);
 });
 
+test("handleDroidSystemPromptBeforeAgentStart uses structured prompt cwd for SYSTEM.md precedence", async () => {
+  const fs = await import("node:fs/promises");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const structuredDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-droid-structured-system-md-"));
+  const unrelatedDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-droid-unrelated-system-md-"));
+  await fs.writeFile(path.join(structuredDir, "SYSTEM.md"), "System MD prompt\n");
+
+  const deps: DroidSystemPromptDeps = {
+    readSettings: async () => ({
+      toolSet: "droid",
+      loadSkills: true,
+      systemMdPrompt: true,
+      webTools: {},
+    }),
+    buildPromptForModel: () => "Droid block",
+  };
+
+  const result = await handleDroidSystemPromptBeforeAgentStart(
+    {
+      systemPrompt: PI_PROMPT_BASE,
+      systemPromptOptions: {
+        cwd: structuredDir,
+      },
+    } as never,
+    createContext("droid", "gpt-5.4", unrelatedDir) as never,
+    deps,
+  );
+
+  assert.equal(result, undefined);
+});
+
 test("handleDroidSystemPromptBeforeAgentStart falls back to Droid customPrompt semantics when SYSTEM.md is enabled but missing", async () => {
   const fs = await import("node:fs/promises");
   const os = await import("node:os");

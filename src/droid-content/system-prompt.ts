@@ -11,6 +11,7 @@ import { resolveSessionToolSet } from "../settings/session.ts";
 import {
   composeCustomPromptWithPiSections,
 } from "../shared/custom-prompt.ts";
+import { resolvePromptOptionsCwd } from "../shared/system-prompt-options.ts";
 import { resolveSystemMdPrompt } from "../system-md/state.ts";
 
 const DROID_IDENTITY_PATH = new URL("./assets/identity.txt", import.meta.url);
@@ -128,7 +129,7 @@ export async function handleDroidSystemPromptBeforeAgentStart(
     return undefined;
   }
 
-  if (resolveSystemMdPrompt(ctx.cwd, settings.systemMdPrompt)) {
+  if (resolveSystemMdPrompt(resolvePromptOptionsCwd(_event, ctx), settings.systemMdPrompt)) {
     return undefined;
   }
 

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { hasStructuredSkills, resolvePromptOptionsCwd } from "../shared/system-prompt-options.ts";
 import { composeCustomPromptWithPiSections } from "../shared/custom-prompt.ts";
 import {
   buildCodexPrompt,
@@ -84,6 +85,37 @@ test("buildCodexPrompt rewrites short-label file reference guidance for Pi rende
   assert.ok(!prompt.includes("Labels may be short"));
 });
 
+test("system prompt option helpers prefer structured cwd and expose structured skills", () => {
+  assert.equal(
+    resolvePromptOptionsCwd(
+      { systemPromptOptions: { cwd: "/tmp/from-options", skills: [] } } as never,
+      { cwd: "/tmp/from-context" } as never,
+    ),
+    "/tmp/from-options",
+  );
+  assert.equal(
+    resolvePromptOptionsCwd({ systemPromptOptions: undefined } as never, { cwd: "/tmp/from-context" } as never),
+    "/tmp/from-context",
+  );
+  assert.equal(hasStructuredSkills({ systemPromptOptions: { cwd: "/tmp/project", skills: [] } } as never), false);
+  assert.equal(
+    hasStructuredSkills({
+      systemPromptOptions: {
+        cwd: "/tmp/project",
+        skills: [{
+          name: "demo",
+          description: "Demo skill",
+          filePath: "/tmp/demo/SKILL.md",
+          baseDir: "/tmp/demo",
+          sourceInfo: { type: "file", path: "/tmp/demo/SKILL.md" },
+          disableModelInvocation: false,
+        }],
+      },
+    } as never),
+    true,
+  );
+});
+
 test("handleCodexSystemPromptBeforeAgentStart returns no-op when Codex prompt is not selected", async () => {
   const deps: CodexSystemPromptDeps = {
     readSettings: async () => ({
@@ -122,6 +154,36 @@ test("handleCodexSystemPromptBeforeAgentStart defers to SYSTEM.md when enabled a
   const result = await handleCodexSystemPromptBeforeAgentStart(
     { systemPrompt: PI_PROMPT_BASE } as never,
     createContext("codex", tempDir) as never,
+    deps,
+  );
+
+  assert.equal(result, undefined);
+});
+
+test("handleCodexSystemPromptBeforeAgentStart uses structured prompt cwd for SYSTEM.md precedence", async () => {
+  const fs = await import("node:fs/promises");
+  const structuredDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-structured-system-md-"));
+  const unrelatedDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-codex-unrelated-system-md-"));
+  await fs.writeFile(path.join(structuredDir, "SYSTEM.md"), "System MD prompt\n");
+
+  const deps: CodexSystemPromptDeps = {
+    readSettings: async () => ({
+      toolSet: "codex",
+      loadSkills: true,
+      systemMdPrompt: true,
+      webTools: {},
+    }),
+    buildPromptForModel: () => "Codex block",
+  };
+
+  const result = await handleCodexSystemPromptBeforeAgentStart(
+    {
+      systemPrompt: PI_PROMPT_BASE,
+      systemPromptOptions: {
+        cwd: structuredDir,
+      },
+    } as never,
+    createContext("codex", unrelatedDir) as never,
     deps,
   );
 

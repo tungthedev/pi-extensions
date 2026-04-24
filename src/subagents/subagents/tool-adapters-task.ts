@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { Container, Text } from "@mariozechner/pi-tui";
 
 import type { PublicAgentSnapshot } from "./types.ts";
@@ -22,6 +22,8 @@ import {
 } from "./renderers.ts";
 import { buildSpawnAgentTypeDescription, resolveAgentProfiles } from "./profiles.ts";
 import type { createSubagentLifecycleService } from "./lifecycle-service.ts";
+
+type SchemaWithDescription = { description?: string };
 
 export type TaskToolAdapterDeps = {
   lifecycle: ReturnType<typeof createSubagentLifecycleService>;
@@ -240,7 +242,8 @@ export function registerTaskToolAdapters(
 
   const refreshRoleDescriptions = (cwd = process.cwd()) => {
     const agentTypeDescription = buildSpawnAgentTypeDescription(resolveAgentProfiles({ cwd }));
-    ((taskParameters).properties.subagent_type).description = agentTypeDescription;
+    ((taskParameters).properties.subagent_type as SchemaWithDescription).description =
+      agentTypeDescription;
   };
 
   refreshRoleDescriptions();

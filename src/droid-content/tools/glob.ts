@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { createFindToolDefinition } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import path from "node:path";
 
 import { executeDroidGlobWithFff } from "../../shared/fff/adapters/droid-glob.ts";
