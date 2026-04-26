@@ -9,9 +9,9 @@ import {
   type ListDirectoryEntry,
 } from "../../shared/file-tools/list-dir.ts";
 import {
-  buildSummaryRenderer,
+  buildHiddenCollapsedRenderer,
+  buildSelfShellRenderer,
   formatListCallDetail,
-  summarizeListCount,
 } from "../../shared/renderers/tool-renderers.ts";
 import { resolveAbsolutePathWithVariants } from "../../shared/runtime-paths.ts";
 
@@ -66,19 +66,24 @@ function filterIgnoredEntries(
 
 export function registerDroidListDirectoryTool(pi: ExtensionAPI): void {
   const nativeLsDefinition = createLsToolDefinition(process.cwd());
-  const renderer = buildSummaryRenderer({
+  const baseRenderer = buildHiddenCollapsedRenderer({
     title: "List",
     getDetail: (args) =>
       formatListCallDetail({ path: args.directory_path as string | undefined }),
-    summarize: summarizeListCount,
     nativeRenderResult: (result, options, theme, context) =>
       nativeLsDefinition.renderResult!(result as never, options, theme, context as never),
+  });
+  const renderer = buildSelfShellRenderer({
+    stateKey: "droidListRenderState",
+    renderCall: baseRenderer.renderCall,
+    renderResult: baseRenderer.renderResult,
   });
 
   pi.registerTool({
     name: "LS",
     label: "List",
     description: DROID_LIST_DIRECTORY_DESCRIPTION,
+    renderShell: "self",
     parameters: DROID_LIST_DIRECTORY_PARAMETERS,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const absolutePath = resolveAbsolutePathWithVariants(ctx.cwd, params.directory_path ?? ".");
@@ -101,8 +106,8 @@ export function registerDroidListDirectoryTool(pi: ExtensionAPI): void {
         },
       };
     },
-    renderCall(args, theme) {
-      return renderer.renderCall(args as Record<string, unknown>, theme);
+    renderCall(args, theme, context) {
+      return renderer.renderCall(args as Record<string, unknown>, theme, context as never);
     },
     renderResult(result, options, theme, context) {
       return renderer.renderResult(result, options, theme, context);

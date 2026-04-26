@@ -7,9 +7,9 @@ import path from "node:path";
 
 import { executeCodexFindFilesWithFff } from "../../shared/fff/adapters/codex-find-files.ts";
 import {
-  buildSummaryRenderer,
+  buildHiddenCollapsedRenderer,
+  buildSelfShellRenderer,
   formatPatternInPathDetail,
-  summarizeFindCount,
 } from "../../shared/renderers/tool-renderers.ts";
 import {
   normalizeCommandOutputPaths,
@@ -119,20 +119,25 @@ function validateFindFilesOffset(matchCount: number, offset: number): void {
 
 export function registerFindFilesTool(pi: ExtensionAPI): void {
   const nativeFindDefinition = createFindToolDefinition(process.cwd());
-  const renderer = buildSummaryRenderer({
+  const baseRenderer = buildHiddenCollapsedRenderer({
     title: "Search",
     getDetail: (args) =>
       formatPatternInPathDetail(
         args as { pattern?: string; path?: string; fallbackPattern?: string },
       ),
-    summarize: summarizeFindCount,
     nativeRenderResult: (result, options, theme, context) =>
       nativeFindDefinition.renderResult!(result as never, options, theme, context as never),
+  });
+  const renderer = buildSelfShellRenderer({
+    stateKey: "findFilesRenderState",
+    renderCall: baseRenderer.renderCall,
+    renderResult: baseRenderer.renderResult,
   });
 
   pi.registerTool({
     name: "find_files",
     label: "find_files",
+    renderShell: "self",
     description:
       "Find files by glob pattern and return absolute paths sorted by modification time.",
     parameters: Type.Object({
@@ -165,10 +170,11 @@ export function registerFindFilesTool(pi: ExtensionAPI): void {
         };
       });
     },
-    renderCall(args, theme, _context) {
+    renderCall(args, theme, context) {
       return renderer.renderCall(
         { ...(args as Record<string, unknown>), fallbackPattern: "*" },
         theme,
+        context as never,
       );
     },
     renderResult(result, options, theme, context) {

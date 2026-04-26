@@ -6,6 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { Box } from "@mariozechner/pi-tui";
+
 import {
   resetSessionFffRuntimesForTests,
   setSessionFffRuntimeForTests,
@@ -319,45 +321,82 @@ test("grep_files keeps file-list output semantics while using FFF-backed matchin
   });
 });
 
-test("find_files shows a collapsed file-count summary", () => {
+test("find_files uses a self-rendered shell and hides collapsed result", () => {
   const tool = getRegisteredTool(registerFindFilesTool, "find_files");
+  const state: Record<string, unknown> = {};
+
+  const call = tool.renderCall({ pattern: "*.ts", path: "src" }, theme, {
+    state,
+    lastComponent: undefined,
+  } as never);
+
+  assert.equal(tool.renderShell, "self");
+  assert.ok(call instanceof Box);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), [
+    "Search *.ts in src",
+  ]);
 
   const collapsed = tool.renderResult(
-    { details: { count: 2 }, content: [{ type: "text", text: "..." }] },
+    { details: { count: 2 }, content: [{ type: "text", text: "2 matching files\nsrc/a.ts\nsrc/b.ts" }] },
     { expanded: false, isPartial: false },
     theme,
-    { isError: false, lastComponent: undefined } as never,
+    { state, isError: false, lastComponent: undefined } as never,
   );
 
-  assert.deepEqual(trimRenderedLines(collapsed.render(120)), ["Found 2 files (ctrl+o to expand)"]);
-});
-
-test("list_dir shows a collapsed entry-count summary", () => {
-  const tool = getRegisteredTool(registerListDirTool, "list_dir");
-
-  const collapsed = tool.renderResult(
-    { details: { count: 5 }, content: [{ type: "text", text: "..." }] },
-    { expanded: false, isPartial: false },
-    theme,
-    { isError: false, lastComponent: undefined } as never,
-  );
-
-  assert.deepEqual(trimRenderedLines(collapsed.render(120)), [
-    "Found 5 entries (ctrl+o to expand)",
+  assert.deepEqual(collapsed.render(120), []);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), [
+    "Search *.ts in src",
   ]);
 });
 
-test("grep_files uses matching-file wording in collapsed summaries", () => {
-  const tool = getRegisteredTool(registerGrepFilesTool, "grep_files");
+test("list_dir uses a self-rendered shell and hides collapsed result", () => {
+  const tool = getRegisteredTool(registerListDirTool, "list_dir");
+  const state: Record<string, unknown> = {};
+
+  const call = tool.renderCall({ dir_path: "src" }, theme, {
+    state,
+    lastComponent: undefined,
+  } as never);
+
+  assert.equal(tool.renderShell, "self");
+  assert.ok(call instanceof Box);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), ["List src"]);
 
   const collapsed = tool.renderResult(
-    { details: { count: 3 }, content: [{ type: "text", text: "..." }] },
+    { details: { count: 5 }, content: [{ type: "text", text: "Absolute path: src\n1. [file] a.ts" }] },
     { expanded: false, isPartial: false },
     theme,
-    { isError: false, lastComponent: undefined } as never,
+    { state, isError: false, lastComponent: undefined } as never,
   );
 
-  assert.deepEqual(trimRenderedLines(collapsed.render(120)), [
-    "Found 3 matching files (ctrl+o to expand)",
+  assert.deepEqual(collapsed.render(120), []);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), ["List src"]);
+});
+
+test("grep_files uses a self-rendered shell and hides collapsed result", () => {
+  const tool = getRegisteredTool(registerGrepFilesTool, "grep_files");
+  const state: Record<string, unknown> = {};
+
+  const call = tool.renderCall({ pattern: "needle", path: "src" }, theme, {
+    state,
+    lastComponent: undefined,
+  } as never);
+
+  assert.equal(tool.renderShell, "self");
+  assert.ok(call instanceof Box);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), [
+    "Grep needle in src",
+  ]);
+
+  const collapsed = tool.renderResult(
+    { details: { count: 3 }, content: [{ type: "text", text: "3 matching files\nsrc/a.ts" }] },
+    { expanded: false, isPartial: false },
+    theme,
+    { state, isError: false, lastComponent: undefined } as never,
+  );
+
+  assert.deepEqual(collapsed.render(120), []);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), [
+    "Grep needle in src",
   ]);
 });

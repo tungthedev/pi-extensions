@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { Text } from "@mariozechner/pi-tui";
+import { Container, Text } from "@mariozechner/pi-tui";
 
 import {
   buildHiddenCollapsedRenderer,
+  buildSelfShellRenderer,
   buildSummaryRenderer,
   decorateGrepResultWithStats,
   summarizeFindCount,
@@ -126,4 +127,32 @@ test("buildSummaryRenderer shows collapsed summaries and defers expanded and err
     { isError: true },
   );
   assert.deepEqual(trimRenderedLines(errored.render(120)), ["native result"]);
+});
+
+test("buildSelfShellRenderer passes the inner result component as lastComponent on rerender", () => {
+  let lastComponentSeen: unknown;
+  const renderer = buildSelfShellRenderer({
+    stateKey: "testSelfShellState",
+    renderCall: () => new Text("Call", 0, 0),
+    renderResult: (_result, _options, _theme, context) => {
+      lastComponentSeen = context.lastComponent;
+      return new Text("Result", 0, 0);
+    },
+  });
+  const state: Record<string, unknown> = {};
+
+  const call = renderer.renderCall({}, theme, { state });
+  const emptySlot = renderer.renderResult({}, { expanded: true, isPartial: false }, theme, {
+    state,
+    lastComponent: undefined,
+  });
+  assert.ok(emptySlot instanceof Container);
+
+  renderer.renderResult({}, { expanded: true, isPartial: false }, theme, {
+    state,
+    lastComponent: emptySlot,
+  });
+
+  assert.ok(lastComponentSeen instanceof Text);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), ["Call", "Result"]);
 });

@@ -7,9 +7,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import {
-  buildSummaryRenderer,
+  buildHiddenCollapsedRenderer,
+  buildSelfShellRenderer,
   formatListCallDetail,
-  summarizeListCount,
 } from "../../shared/renderers/tool-renderers.ts";
 import { MAX_LIST_DIR_SCAN_ENTRIES, resolveAbsolutePathWithVariants } from "./runtime.ts";
 
@@ -215,17 +215,22 @@ export function formatListDirectoryOutput(
 
 export function registerListDirTool(pi: ExtensionAPI): void {
   const nativeLsDefinition = createLsToolDefinition(process.cwd());
-  const renderer = buildSummaryRenderer({
+  const baseRenderer = buildHiddenCollapsedRenderer({
     title: "List",
     getDetail: (args) => formatListCallDetail({ path: args.dir_path as string | undefined }),
-    summarize: summarizeListCount,
     nativeRenderResult: (result, options, theme, context) =>
       nativeLsDefinition.renderResult!(result as never, options, theme, context as never),
+  });
+  const renderer = buildSelfShellRenderer({
+    stateKey: "listDirRenderState",
+    renderCall: baseRenderer.renderCall,
+    renderResult: baseRenderer.renderResult,
   });
 
   pi.registerTool({
     name: "list_dir",
     label: "list_dir",
+    renderShell: "self",
     description:
       "Lists entries in a local directory with 1-indexed entry numbers and simple type labels.",
     parameters: Type.Object({
@@ -255,8 +260,8 @@ export function registerListDirTool(pi: ExtensionAPI): void {
 
       return buildListDirResult(absolutePath, scan.entries, scan.skippedCount, { offset, limit });
     },
-    renderCall(args, theme, _context) {
-      return renderer.renderCall(args as Record<string, unknown>, theme);
+    renderCall(args, theme, context) {
+      return renderer.renderCall(args as Record<string, unknown>, theme, context as never);
     },
     renderResult(result, options, theme, context) {
       return renderer.renderResult(result, options, theme, context);

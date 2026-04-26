@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { Box } from "@mariozechner/pi-tui";
+
 import { registerDroidGlobTool } from "./tools/glob.ts";
 import { registerDroidGrepTool } from "./tools/grep.ts";
 import { registerDroidListDirectoryTool } from "./tools/list-directory.ts";
@@ -41,46 +43,83 @@ async function withTempDir(run: (dir: string) => Promise<void>) {
   }
 }
 
-test("Glob shows a collapsed file-count summary", () => {
+test("Glob uses a self-rendered shell and hides collapsed result", () => {
   const tool = getRegisteredTool(registerDroidGlobTool, "Glob");
+  const state: Record<string, unknown> = {};
+
+  const call = tool.renderCall({ folder: "src" }, theme, {
+    state,
+    lastComponent: undefined,
+  } as never);
+
+  assert.equal(tool.renderShell, "self");
+  assert.ok(call instanceof Box);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), ["Glob src"]);
 
   const collapsed = tool.renderResult(
-    { details: { count: 4 }, content: [{ type: "text", text: "..." }] },
+    { details: { count: 4 }, content: [{ type: "text", text: "4 matching files\nsrc/a.ts" }] },
     { expanded: false, isPartial: false },
     theme,
-    { isError: false, lastComponent: undefined } as never,
+    { state, isError: false, lastComponent: undefined } as never,
   );
 
-  assert.deepEqual(trimRenderedLines(collapsed.render(120)), ["Found 4 files (ctrl+o to expand)"]);
+  assert.deepEqual(collapsed.render(120), []);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), ["Glob src"]);
 });
 
-test("LS shows a collapsed entry-count summary", () => {
+test("LS uses a self-rendered shell and hides collapsed result", () => {
   const tool = getRegisteredTool(registerDroidListDirectoryTool, "LS");
+  const state: Record<string, unknown> = {};
+
+  const call = tool.renderCall({ directory_path: "src" }, theme, {
+    state,
+    lastComponent: undefined,
+  } as never);
+
+  assert.equal(tool.renderShell, "self");
+  assert.ok(call instanceof Box);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), ["List src"]);
 
   const collapsed = tool.renderResult(
-    { details: { count: 6 }, content: [{ type: "text", text: "..." }] },
+    { details: { count: 6 }, content: [{ type: "text", text: "Absolute path: src\n1. [file] a.ts" }] },
     { expanded: false, isPartial: false },
     theme,
-    { isError: false, lastComponent: undefined } as never,
+    { state, isError: false, lastComponent: undefined } as never,
   );
 
-  assert.deepEqual(trimRenderedLines(collapsed.render(120)), ["Found 6 entries (ctrl+o to expand)"]);
+  assert.deepEqual(collapsed.render(120), []);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), ["List src"]);
 });
 
-test("Grep uses matching-file summary wording for file_paths mode", () => {
+test("Grep file_paths mode uses a self-rendered shell and hides collapsed result", () => {
   const tool = getRegisteredTool(registerDroidGrepTool, "Grep");
+  const state: Record<string, unknown> = {};
+
+  const call = tool.renderCall({ pattern: "needle", path: "src" }, theme, {
+    state,
+    lastComponent: undefined,
+  } as never);
+
+  assert.equal(tool.renderShell, "self");
+  assert.ok(call instanceof Box);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), [
+    "Grep needle in src",
+  ]);
 
   const collapsed = tool.renderResult(
-    { details: { outputMode: "file_paths", count: 3 }, content: [{ type: "text", text: "..." }] },
+    { details: { outputMode: "file_paths", count: 3 }, content: [{ type: "text", text: "src/a.ts" }] },
     { expanded: false, isPartial: false },
     theme,
-    { isError: false, lastComponent: undefined } as never,
+    { state, isError: false, lastComponent: undefined } as never,
   );
 
-  assert.deepEqual(trimRenderedLines(collapsed.render(120)), ["Found 3 matching files"]);
+  assert.deepEqual(collapsed.render(120), []);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), [
+    "Grep needle in src",
+  ]);
 });
 
-test("Grep content mode decorates grep stats and renders grep-style summary", async () => {
+test("Grep content mode decorates grep stats and hides collapsed result", async () => {
   const tool = getRegisteredTool(registerDroidGrepTool, "Grep");
 
   await withTempDir(async (dir) => {
@@ -97,14 +136,24 @@ test("Grep content mode decorates grep stats and renders grep-style summary", as
 
     assert.equal(result.details.matchCount, 3);
     assert.equal(result.details.fileCount, 2);
+    const state: Record<string, unknown> = {};
+    const call = tool.renderCall({ pattern: "match", path: dir }, theme, {
+      state,
+      lastComponent: undefined,
+    } as never);
 
     const collapsed = tool.renderResult(
       result,
       { expanded: false, isPartial: false },
       theme,
-      { isError: false, lastComponent: undefined } as never,
+      { state, isError: false, lastComponent: undefined } as never,
     );
 
-    assert.deepEqual(trimRenderedLines(collapsed.render(120)), ["Matched 3 lines in 2 files"]);
+    assert.equal(tool.renderShell, "self");
+    assert.ok(call instanceof Box);
+    assert.deepEqual(collapsed.render(120), []);
+    assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), [
+      `Grep match in ${dir}`,
+    ]);
   });
 });

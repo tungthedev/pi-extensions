@@ -18,6 +18,7 @@ import { executePiGrepWithFff } from "../shared/fff/adapters/pi-grep.ts";
 import { resolveReadToolInput } from "../shared/fff/adapters/read.ts";
 import {
   buildHiddenCollapsedRenderer,
+  buildSelfShellRenderer,
   buildSummaryRenderer,
   decorateGrepResultWithStats,
   formatEditCallDetail,
@@ -25,9 +26,6 @@ import {
   formatPatternInPathDetail,
   formatReadCallDetail,
   formatWriteCallDetail,
-  summarizeFindCount,
-  summarizeGrepResult,
-  summarizeListCount,
 } from "../shared/renderers/tool-renderers.ts";
 import { applyResolvedToolset } from "../shared/toolset-resolver.ts";
 
@@ -129,6 +127,14 @@ function syncReadRenderBox(box: Box, state: ReadRenderState): void {
   }
 }
 
+function isHiddenReadResult(
+  component: Component,
+  options: { expanded: boolean },
+  context: { isError?: boolean },
+): boolean {
+  return !options.expanded && !context.isError && component instanceof Container;
+}
+
 async function syncReadToolSet(
   pi: ExtensionAPI,
   ctx: Pick<ExtensionContext, "sessionManager">,
@@ -163,33 +169,44 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
     nativeRenderResult: (result, options, theme, context) =>
       nativeEditDefinition.renderResult!(result as never, options, theme, context as never),
   });
-  const findRenderer = buildSummaryRenderer({
+  const findBaseRenderer = buildHiddenCollapsedRenderer({
     title: "Find",
     getDetail: (args) =>
       formatPatternInPathDetail(
         args as { pattern?: string; path?: string; fallbackPattern?: string },
       ),
-    summarize: summarizeFindCount,
     nativeRenderResult: (result, options, theme, context) =>
       nativeFindDefinition.renderResult!(result as never, options, theme, context as never),
   });
-  const grepRenderer = buildSummaryRenderer({
+  const findRenderer = buildSelfShellRenderer({
+    stateKey: "findRenderState",
+    renderCall: findBaseRenderer.renderCall,
+    renderResult: findBaseRenderer.renderResult,
+  });
+  const grepBaseRenderer = buildHiddenCollapsedRenderer({
     title: "Grep",
     getDetail: (args) =>
       formatPatternInPathDetail(
         args as { pattern?: string; path?: string; fallbackPattern?: string },
       ),
-    summarize: summarizeGrepResult,
     nativeRenderResult: (result, options, theme, context) =>
       nativeGrepDefinition.renderResult!(result as never, options, theme, context as never),
-    expandable: false,
   });
-  const listRenderer = buildSummaryRenderer({
+  const grepRenderer = buildSelfShellRenderer({
+    stateKey: "grepRenderState",
+    renderCall: grepBaseRenderer.renderCall,
+    renderResult: grepBaseRenderer.renderResult,
+  });
+  const listBaseRenderer = buildHiddenCollapsedRenderer({
     title: "List",
     getDetail: (args) => formatListCallDetail(args as { path?: string }),
-    summarize: summarizeListCount,
     nativeRenderResult: (result, options, theme, context) =>
       nativeLsDefinition.renderResult!(result as never, options, theme, context as never),
+  });
+  const listRenderer = buildSelfShellRenderer({
+    stateKey: "listRenderState",
+    renderCall: listBaseRenderer.renderCall,
+    renderResult: listBaseRenderer.renderResult,
   });
 
   pi.on("session_start", async (_event, ctx) => {
@@ -224,7 +241,13 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
     renderResult(result, options, theme, context) {
       const state = getReadRenderState(context as { state?: Record<string, unknown> });
       const box = getReadRenderBox(context as { state?: Record<string, unknown> });
-      state.resultComponent = readRenderer.renderResult(result, options, theme, context);
+      const resultComponent = readRenderer.renderResult(result, options, theme, {
+        ...context,
+        lastComponent: state.resultComponent,
+      });
+      state.resultComponent = isHiddenReadResult(resultComponent, options, context)
+        ? undefined
+        : resultComponent;
       syncReadRenderBox(box, state);
       state.emptySlot ??= new Container();
       return state.emptySlot;
@@ -262,6 +285,7 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
     ...nativeFindDefinition,
     name: "find",
     label: "find",
+    renderShell: "self",
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       return await executePiFindWithFff(
         params as never,
@@ -270,10 +294,11 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
           await nativeFindDefinition.execute!(toolCallId, params, signal, onUpdate, ctx as never),
       );
     },
-    renderCall(args, theme) {
+    renderCall(args, theme, context) {
       return findRenderer.renderCall(
         { ...(args as Record<string, unknown>), fallbackPattern: "*" },
         theme,
+        context as never,
       );
     },
     renderResult(result, options, theme, context) {
@@ -285,6 +310,7 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
     ...nativeGrepDefinition,
     name: "grep",
     label: "grep",
+    renderShell: "self",
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const result = await executePiGrepWithFff(
         params as never,
@@ -294,8 +320,8 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
       );
       return decorateGrepResultWithStats(result as never);
     },
-    renderCall(args, theme) {
-      return grepRenderer.renderCall(args as Record<string, unknown>, theme);
+    renderCall(args, theme, context) {
+      return grepRenderer.renderCall(args as Record<string, unknown>, theme, context as never);
     },
     renderResult(result, options, theme, context) {
       return grepRenderer.renderResult(result, options, theme, context);
@@ -306,8 +332,9 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
     ...nativeLsDefinition,
     name: "ls",
     label: "ls",
-    renderCall(args, theme) {
-      return listRenderer.renderCall(args as Record<string, unknown>, theme);
+    renderShell: "self",
+    renderCall(args, theme, context) {
+      return listRenderer.renderCall(args as Record<string, unknown>, theme, context as never);
     },
     renderResult(result, options, theme, context) {
       return listRenderer.renderResult(result, options, theme, context);

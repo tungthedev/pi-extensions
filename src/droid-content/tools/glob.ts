@@ -7,9 +7,9 @@ import path from "node:path";
 import { executeDroidGlobWithFff } from "../../shared/fff/adapters/droid-glob.ts";
 import { findMatchingFiles, formatFindFilesOutput } from "../../shared/file-tools/find-files.ts";
 import {
-  buildSummaryRenderer,
+  buildHiddenCollapsedRenderer,
+  buildSelfShellRenderer,
   formatListCallDetail,
-  summarizeFindCount,
 } from "../../shared/renderers/tool-renderers.ts";
 import { resolveAbsolutePath } from "../../shared/runtime-paths.ts";
 
@@ -72,18 +72,23 @@ function globToRegExp(pattern: string): RegExp {
 
 export function registerDroidGlobTool(pi: ExtensionAPI): void {
   const nativeFindDefinition = createFindToolDefinition(process.cwd());
-  const renderer = buildSummaryRenderer({
+  const baseRenderer = buildHiddenCollapsedRenderer({
     title: "Glob",
     getDetail: (args) => formatListCallDetail({ path: args.folder as string | undefined }),
-    summarize: summarizeFindCount,
     nativeRenderResult: (result, options, theme, context) =>
       nativeFindDefinition.renderResult!(result as never, options, theme, context as never),
+  });
+  const renderer = buildSelfShellRenderer({
+    stateKey: "droidGlobRenderState",
+    renderCall: baseRenderer.renderCall,
+    renderResult: baseRenderer.renderResult,
   });
 
   pi.registerTool({
     name: "Glob",
     label: "Glob",
     description: DROID_GLOB_DESCRIPTION,
+    renderShell: "self",
     parameters: DROID_GLOB_PARAMETERS,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       return await executeDroidGlobWithFff(params, ctx, async () => {
@@ -115,8 +120,8 @@ export function registerDroidGlobTool(pi: ExtensionAPI): void {
         };
       });
     },
-    renderCall(args, theme) {
-      return renderer.renderCall(args as Record<string, unknown>, theme);
+    renderCall(args, theme, context) {
+      return renderer.renderCall(args as Record<string, unknown>, theme, context as never);
     },
     renderResult(result, options, theme, context) {
       return renderer.renderResult(result, options, theme, context);

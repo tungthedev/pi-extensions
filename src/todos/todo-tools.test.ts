@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { Box } from "@mariozechner/pi-tui";
+
 import { registerTodoTools } from "./todo-tools.ts";
 
 type RegisteredTool = {
   name: string;
+  renderShell?: string;
   execute: (...args: any[]) => Promise<any>;
   renderCall: (...args: any[]) => { render: (width: number) => string[] };
   renderResult: (...args: any[]) => { render: (width: number) => string[] };
@@ -16,6 +19,10 @@ function createTheme() {
     bold: (text: string) => text,
     strikethrough: (text: string) => `~~${text}~~`,
   };
+}
+
+function trimRenderedLines(lines: string[]): string[] {
+  return lines.map((line) => line.trimEnd());
 }
 
 function createHarness(config?: Partial<Parameters<typeof registerTodoTools>[1]>) {
@@ -244,5 +251,47 @@ test("shared todo write returns updatedItems for id-targeted duplicate updates",
 
   assert.deepEqual(result.details.updatedItems, [
     { id: "2", content: "Duplicate", status: "completed" },
+  ]);
+});
+
+test("shared todo write uses a self-rendered shell while always preserving body", () => {
+  const { tools, theme } = createHarness();
+  const todoWrite = tools.get("custom_write");
+  assert.ok(todoWrite);
+
+  const state: Record<string, unknown> = {};
+  const call = todoWrite.renderCall({}, theme, { state, lastComponent: undefined });
+
+  assert.equal(todoWrite.renderShell, "self");
+  assert.ok(call instanceof Box);
+  assert.deepEqual(trimRenderedLines(call.render(80)).map((line) => line.trim()), ["Update todo"]);
+
+  const result = {
+    details: {
+      action: "todos_write",
+      updatedItems: [{ id: "1", content: "Task A", status: "in_progress" }],
+    },
+  };
+  const collapsed = todoWrite.renderResult(result, { expanded: false }, theme, {
+    state,
+    isError: false,
+    lastComponent: undefined,
+  });
+
+  assert.deepEqual(collapsed.render(80), []);
+  assert.deepEqual(trimRenderedLines(call.render(80)).map((line) => line.trim()), [
+    "Update todo",
+    "▣ #1 Task A",
+  ]);
+
+  todoWrite.renderResult(result, { expanded: true }, theme, {
+    state,
+    isError: false,
+    lastComponent: undefined,
+  });
+
+  assert.deepEqual(trimRenderedLines(call.render(80)).map((line) => line.trim()), [
+    "Update todo",
+    "▣ #1 Task A",
   ]);
 });

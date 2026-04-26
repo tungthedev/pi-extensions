@@ -1,9 +1,9 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { Container } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 
-import { renderToolCall } from "../shared/renderers/common.ts";
+import { renderFallbackResult } from "../shared/renderers/common.ts";
+import { buildHiddenCollapsedRenderer, buildSelfShellRenderer } from "../shared/renderers/tool-renderers.ts";
 import { applyResolvedToolset } from "../shared/toolset-resolver.ts";
 import { resolveSkillContent } from "./resolve.ts";
 
@@ -19,6 +19,18 @@ async function syncSkillToolSet(
 }
 
 export default function registerSkillExtension(pi: ExtensionAPI): void {
+  const skillBaseRenderer = buildHiddenCollapsedRenderer({
+    title: "Skill",
+    getDetail: (args) =>
+      typeof args.name === "string" && args.name.trim().length > 0 ? args.name.trim() : "skill",
+    nativeRenderResult: (result) => renderFallbackResult(result as never),
+  });
+  const skillRenderer = buildSelfShellRenderer({
+    stateKey: "skillRenderState",
+    renderCall: skillBaseRenderer.renderCall,
+    renderResult: skillBaseRenderer.renderResult,
+  });
+
   pi.on("session_start", async (_event, ctx) => {
     await syncSkillToolSet(pi, ctx);
   });
@@ -31,6 +43,7 @@ export default function registerSkillExtension(pi: ExtensionAPI): void {
     name: "skill",
     label: "skill",
     description: SKILL_DESCRIPTION,
+    renderShell: "self",
     parameters: Type.Object({
       name: Type.String({
         description: "The name of the skill to load and apply.",
@@ -49,12 +62,11 @@ export default function registerSkillExtension(pi: ExtensionAPI): void {
         },
       };
     },
-    renderCall(args, theme) {
-      const skillName = typeof args.name === "string" && args.name.trim().length > 0 ? args.name.trim() : "skill";
-      return renderToolCall(theme, "[skill]", theme.fg("accent", skillName));
+    renderCall(args, theme, context) {
+      return skillRenderer.renderCall(args as Record<string, unknown>, theme, context as never);
     },
-    renderResult() {
-      return new Container();
+    renderResult(result, options, theme, context) {
+      return skillRenderer.renderResult(result, options, theme, context as never);
     },
   });
 }

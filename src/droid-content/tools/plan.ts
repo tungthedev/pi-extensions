@@ -3,6 +3,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 
+import { buildSelfShellRenderer } from "../../shared/renderers/tool-renderers.ts";
 import {
   applyTodoUpdates,
   createEmptyTodoSnapshot,
@@ -107,6 +108,19 @@ function updatedTodoItems(
 
 export function registerDroidPlanTool(pi: ExtensionAPI): void {
   const state: WorkflowState = { snapshot: createEmptyTodoSnapshot(), previousParsedRows: [] };
+  const planRenderer = buildSelfShellRenderer({
+    stateKey: "droidPlanRenderState",
+    renderCall: (_args, theme) => new Text(theme.fg("toolTitle", theme.bold("Update plan")), 0, 0),
+    renderResult: (result, _renderOptions, theme) => {
+      const details = (result as { details?: DroidPlanWriteDetails }).details;
+      const items = details?.updatedItems ?? [];
+      if (items.length === 0) {
+        return new Text(theme.fg("muted", "All todos completed"), 0, 0);
+      }
+
+      return new Text(renderTodoLines(items, theme), 0, 0);
+    },
+  });
 
   pi.on("session_start", async (_event, ctx) => {
     const restoredState = reconstructState(ctx);
@@ -126,6 +140,7 @@ export function registerDroidPlanTool(pi: ExtensionAPI): void {
     name: "TodoWrite",
     label: "Plan",
     description: DROID_PLAN_DESCRIPTION,
+    renderShell: "self",
     parameters: Type.Object({
       todos: Type.Union([
         Type.String({ description: "A string containing todo items, one item per each new line" }),
@@ -157,17 +172,11 @@ export function registerDroidPlanTool(pi: ExtensionAPI): void {
         details,
       };
     },
-    renderCall(_args, theme) {
-      return new Text(theme.fg("toolTitle", theme.bold("Update plan")), 0, 0);
+    renderCall(args, theme, context) {
+      return planRenderer.renderCall(args as Record<string, unknown>, theme, context as never);
     },
-    renderResult(result, _options, theme) {
-      const details = result.details as DroidPlanWriteDetails | undefined;
-      const items = details?.updatedItems ?? [];
-      if (items.length === 0) {
-        return new Text(theme.fg("muted", "All todos completed"), 0, 0);
-      }
-
-      return new Text(renderTodoLines(items, theme), 0, 0);
+    renderResult(result, renderOptions, theme, context) {
+      return planRenderer.renderResult(result, renderOptions, theme, context as never);
     },
   });
 }

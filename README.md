@@ -10,6 +10,7 @@ The package currently ships these extensions:
 - `skill` for loading local Pi skills with the `skill` tool
 - `pi-modes` for Codex/Droid tool-set switching, prompts, and subagents
 - `ext-manager` for managing extensions from inside Pi
+- `openai-responses-image-patch` for preserving OpenAI Responses generated images
 
 ## Install
 
@@ -95,6 +96,12 @@ Commands and shortcuts:
 The `ext-manager` extension provides an in-app extension manager UI.
 
 - Command: `/extmgr`
+
+### OpenAI Responses Image Patch
+
+This package includes a global `openai-responses` API override that preserves generated images returned as OpenAI Responses `image_generation_call` items.
+
+Generated PNG files are saved under `~/.pi/generated-images/YYYY-MM-DD/`.
 
 ### Themes
 

@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 
+import { buildSelfShellRenderer } from "../shared/renderers/tool-renderers.ts";
 import {
   applyTodoUpdates,
   createEmptyTodoSnapshot,
@@ -107,6 +108,23 @@ export function registerTodoTools(pi: ExtensionAPI, options: RegisterTodoToolsOp
   const state: WorkflowState = {
     snapshot: createEmptyTodoSnapshot(),
   };
+  const writeRenderer = buildSelfShellRenderer({
+    stateKey: `${options.writeToolName}RenderState`,
+    renderCall: (_args, theme) => new Text(theme.fg("toolTitle", theme.bold(options.writeCallLabel)), 0, 0),
+    renderResult: (result, _renderOptions, theme) => {
+      const details = (result as { details?: TodoWriteDetails }).details;
+      if (!details) {
+        return new Text(theme.fg("muted", "todos updated"), 0, 0);
+      }
+
+      const items = details.updatedItems ?? [];
+      return new Text(
+        items.length > 0 ? renderTodoLines(items, theme) : theme.fg("muted", "All todos completed"),
+        0,
+        0,
+      );
+    },
+  });
 
   pi.on("session_start", async (_event, ctx) => {
     resetWorkflowState(ctx, state, options);
@@ -122,6 +140,7 @@ export function registerTodoTools(pi: ExtensionAPI, options: RegisterTodoToolsOp
     description: options.writeDescription,
     promptSnippet: options.writePromptSnippet,
     promptGuidelines: options.writePromptGuidelines,
+    renderShell: "self",
     parameters: Type.Object({
       todos: Type.Array(TodoWriteItemSchema, {
         description: "Todo items to create or update. Items with status cancelled are removed.",
@@ -147,21 +166,11 @@ export function registerTodoTools(pi: ExtensionAPI, options: RegisterTodoToolsOp
         details,
       };
     },
-    renderCall(_args, theme) {
-      return new Text(theme.fg("toolTitle", theme.bold(options.writeCallLabel)), 0, 0);
+    renderCall(args, theme, context) {
+      return writeRenderer.renderCall(args as Record<string, unknown>, theme, context as never);
     },
-    renderResult(result, _options, theme) {
-      const details = result.details as TodoWriteDetails | undefined;
-      if (!details) {
-        return new Text(theme.fg("muted", "todos updated"), 0, 0);
-      }
-
-      const items = details.updatedItems ?? [];
-      return new Text(
-        items.length > 0 ? renderTodoLines(items, theme) : theme.fg("muted", "All todos completed"),
-        0,
-        0,
-      );
+    renderResult(result, renderOptions, theme, context) {
+      return writeRenderer.renderResult(result, renderOptions, theme, context as never);
     },
   });
 

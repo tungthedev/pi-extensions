@@ -1,6 +1,6 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
 
-import { type Component, Text } from "@mariozechner/pi-tui";
+import { Box, Container, type Component, Text } from "@mariozechner/pi-tui";
 
 import { renderEmptySlot } from "./common.ts";
 import { shortenPath } from "../text.ts";
@@ -24,6 +24,14 @@ export type ToolRenderContext = {
   isError?: boolean;
   args?: Record<string, unknown>;
   lastComponent?: unknown;
+  state?: Record<string, unknown>;
+};
+
+type SelfShellRenderState = {
+  box?: Box;
+  callComponent?: Component;
+  resultComponent?: Component;
+  emptySlot?: Container;
 };
 
 export type NativeRenderResult = (
@@ -32,6 +40,38 @@ export type NativeRenderResult = (
   theme: Theme,
   context: ToolRenderContext,
 ) => Component;
+
+function getSelfShellState(context: ToolRenderContext, stateKey: string): SelfShellRenderState {
+  const state = (context.state ??= {});
+  const existing = state[stateKey];
+  if (existing && typeof existing === "object") {
+    return existing as SelfShellRenderState;
+  }
+
+  const nextState: SelfShellRenderState = {};
+  state[stateKey] = nextState;
+  return nextState;
+}
+
+function getSelfShellBox(context: ToolRenderContext, stateKey: string): Box {
+  const state = getSelfShellState(context, stateKey);
+  state.box ??= new Box(1, 0);
+  return state.box;
+}
+
+function syncSelfShellBox(box: Box, state: SelfShellRenderState): void {
+  box.clear();
+  if (state.callComponent) {
+    box.addChild(state.callComponent);
+  }
+  if (state.resultComponent) {
+    box.addChild(state.resultComponent);
+  }
+}
+
+function isHiddenCollapsedResult(component: Component, renderOptions: ToolRenderOptions, context: ToolRenderContext): boolean {
+  return !renderOptions.expanded && !context.isError && component instanceof Container;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -222,6 +262,49 @@ export function buildHiddenCollapsedRenderer(options: {
 
       const renderExpanded = options.renderExpanded ?? options.nativeRenderResult;
       return renderExpanded(result, renderOptions, theme, context);
+    },
+  };
+}
+
+export function buildSelfShellRenderer(options: {
+  stateKey: string;
+  renderCall(args: Record<string, unknown>, theme: Theme): Component;
+  renderResult(
+    result: unknown,
+    renderOptions: ToolRenderOptions,
+    theme: Theme,
+    context: ToolRenderContext,
+  ): Component;
+}): {
+  renderCall(args: Record<string, unknown>, theme: Theme, context: ToolRenderContext): Box;
+  renderResult(
+    result: unknown,
+    renderOptions: ToolRenderOptions,
+    theme: Theme,
+    context: ToolRenderContext,
+  ): Container;
+} {
+  return {
+    renderCall(args, theme, context) {
+      const state = getSelfShellState(context, options.stateKey);
+      const box = getSelfShellBox(context, options.stateKey);
+      state.callComponent = options.renderCall(args, theme);
+      syncSelfShellBox(box, state);
+      return box;
+    },
+    renderResult(result, renderOptions, theme, context) {
+      const state = getSelfShellState(context, options.stateKey);
+      const box = getSelfShellBox(context, options.stateKey);
+      const resultComponent = options.renderResult(result, renderOptions, theme, {
+        ...context,
+        lastComponent: state.resultComponent,
+      });
+      state.resultComponent = isHiddenCollapsedResult(resultComponent, renderOptions, context)
+        ? undefined
+        : resultComponent;
+      syncSelfShellBox(box, state);
+      state.emptySlot ??= new Container();
+      return state.emptySlot;
     },
   };
 }

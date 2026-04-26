@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
+import { Box } from "@mariozechner/pi-tui";
+
 import registerSkillExtension from "./index.ts";
 
 const AVAILABLE_TOOLS = [
@@ -21,6 +23,16 @@ const AVAILABLE_TOOLS = [
   { name: "skill", description: "skill" },
   { name: "Task", description: "task" },
 ];
+
+const theme = {
+  fg: (_color: string, text: string) => text,
+  bg: (_color: string, text: string) => `[bg]${text}[/bg]`,
+  bold: (text: string) => text,
+} as any;
+
+function trimRenderedLines(lines: string[]): string[] {
+  return lines.map((line) => line.trimEnd());
+}
 
 test("skill extension registers the global skill tool and shared mode handlers", async () => {
   const handlers = new Map<string, Function[]>();
@@ -122,4 +134,59 @@ test("skill tool resolves from Pi's loaded skill commands", async () => {
     name: "brainstorming",
     skill_dir: skillDir,
   });
+});
+
+test("skill uses a self-rendered shell and hides collapsed result", () => {
+  let toolDefinition: any;
+
+  registerSkillExtension({
+    on() {},
+    registerTool(definition: any) {
+      toolDefinition = definition;
+    },
+    getAllTools() {
+      return AVAILABLE_TOOLS;
+    },
+    getCommands() {
+      return [];
+    },
+    setActiveTools() {},
+  } as never);
+
+  const state: Record<string, unknown> = {};
+  const call = toolDefinition.renderCall({ name: "brainstorming" }, theme, {
+    state,
+    lastComponent: undefined,
+  });
+
+  assert.equal(toolDefinition.renderShell, "self");
+  assert.ok(call instanceof Box);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), [
+    "Skill brainstorming",
+  ]);
+
+  const collapsed = toolDefinition.renderResult(
+    { content: [{ type: "text", text: "# Brainstorming\nUse this skill." }] },
+    { expanded: false, isPartial: false },
+    theme,
+    { state, isError: false, lastComponent: undefined },
+  );
+
+  assert.deepEqual(collapsed.render(120), []);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), [
+    "Skill brainstorming",
+  ]);
+
+  toolDefinition.renderResult(
+    { content: [{ type: "text", text: "# Brainstorming\nUse this skill." }] },
+    { expanded: true, isPartial: false },
+    theme,
+    { state, isError: false, lastComponent: undefined },
+  );
+
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), [
+    "Skill brainstorming",
+    "# Brainstorming",
+    "Use this skill.",
+  ]);
 });

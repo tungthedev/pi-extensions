@@ -5,7 +5,7 @@ This repo contains a set of extensions for Pi coding agent under `extensions`
 ## Testing Guidelines
 
 - Keep tests that protect real behavior: user-visible flows, integration boundaries, security checks, runtime contracts, regressions, and failure handling.
-- Remove tests that mostly restate static values, default config, env-to-object mapping, string templates, help text, or tiny parsing/trim helpers.
+- Remove tests that mostly restate static values, default config, env-to-object mapping, string templates, help text, dev tools only, or tiny parsing/trim helpers.
 - Do not add tests for behavior already enforced well by `typecheck` or `build`.
 - When a test file mixes high-value and low-value coverage, trim the weak cases instead of deleting the whole file.
 - Prefer a small number of representative contract or integration tests over many repetitive endpoint or option assertions.

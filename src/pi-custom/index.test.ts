@@ -584,23 +584,89 @@ test("read uses a self-rendered Box shell without background fill", () => {
   assert.notEqual(rendered.at(-1)?.trim().length, 0);
 });
 
-test("find shows a one-line collapsed summary", () => {
+test("read reuses the native result component instead of the self-shell empty slot", () => {
   const tools = captureTools();
-  const tool = tools.find;
+  const tool = tools.read;
+  const state: Record<string, unknown> = {};
+  const result = {
+    content: [{ type: "text", text: "Offset 216 is beyond end of file (112 lines total)" }],
+  };
 
-  const collapsed = tool.renderResult(
-    { details: { count: 14 }, content: [{ type: "text", text: "..." }] },
-    { expanded: false, isPartial: false },
+  const call = tool.renderCall(
+    { path: "src/droid-content/tools/list-directory.ts", offset: 216, limit: 90 },
     theme,
-    { isError: false, lastComponent: undefined } as never,
+    { state, lastComponent: undefined } as never,
   );
 
-  assert.deepEqual(trimRenderedLines(collapsed.render(120)), ["Found 14 files (ctrl+o to expand)"]);
+  const emptySlot = tool.renderResult(result, { expanded: true, isPartial: false }, theme, {
+    state,
+    args: { path: "src/droid-content/tools/list-directory.ts", offset: 216, limit: 90 },
+    isError: true,
+    lastComponent: undefined,
+  } as never);
+
+  assert.deepEqual(emptySlot.render(120), []);
+  assert.equal(
+    trimRenderedLines(call.render(120))
+      .map((line) => line.trim())
+      .filter((line) => line.includes("Offset 216"))
+      .length,
+    1,
+  );
+
+  assert.doesNotThrow(() =>
+    tool.renderResult(result, { expanded: true, isPartial: false }, theme, {
+      state,
+      args: { path: "src/droid-content/tools/list-directory.ts", offset: 216, limit: 90 },
+      isError: true,
+      lastComponent: emptySlot,
+    } as never),
+  );
 });
 
-test("grep shows a one-line collapsed summary", async () => {
+test("find uses a self-rendered shell and hides collapsed result", () => {
+  const tools = captureTools();
+  const tool = tools.find;
+  const state: Record<string, unknown> = {};
+
+  const call = tool.renderCall({ pattern: "*.ts", path: "src" }, theme, {
+    state,
+    lastComponent: undefined,
+  } as never);
+
+  assert.equal(tool.renderShell, "self");
+  assert.ok(call instanceof Box);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), ["Find *.ts in src"]);
+
+  const collapsed = tool.renderResult(
+    { details: { count: 14 }, content: [{ type: "text", text: "src/a.ts\nsrc/b.ts" }] },
+    { expanded: false, isPartial: false },
+    theme,
+    { state, isError: false, lastComponent: undefined } as never,
+  );
+
+  assert.deepEqual(collapsed.render(120), []);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), ["Find *.ts in src"]);
+
+  tool.renderResult(
+    { details: { count: 14 }, content: [{ type: "text", text: "src/a.ts\nsrc/b.ts" }] },
+    { expanded: true, isPartial: false },
+    theme,
+    { state, isError: false, lastComponent: undefined } as never,
+  );
+
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), [
+    "Find *.ts in src",
+    "",
+    "src/a.ts",
+    "src/b.ts",
+  ]);
+});
+
+test("grep uses a self-rendered shell and hides collapsed result", async () => {
   const tools = captureTools();
   const tool = tools.grep;
+  const state: Record<string, unknown> = {};
   const root = fs.mkdtempSync(path.join(tmpdir(), "grep-summary-"));
   const fileA = path.join(root, "a.ts");
   const fileB = path.join(root, "b.ts");
@@ -617,12 +683,61 @@ test("grep shows a one-line collapsed summary", async () => {
     );
 
     const collapsed = tool.renderResult(result, { expanded: false, isPartial: false }, theme, {
+      state,
       isError: false,
       lastComponent: undefined,
     } as never);
 
-    assert.deepEqual(trimRenderedLines(collapsed.render(120)), ["Matched 3 lines in 2 files"]);
+    const call = tool.renderCall({ pattern: "match", path: root }, theme, {
+      state,
+      lastComponent: undefined,
+    } as never);
+
+    assert.equal(tool.renderShell, "self");
+    assert.ok(call instanceof Box);
+    assert.deepEqual(collapsed.render(120), []);
+    assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), [
+      `Grep match in ${root}`,
+    ]);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("ls uses a self-rendered shell and hides collapsed result", () => {
+  const tools = captureTools();
+  const tool = tools.ls;
+  const state: Record<string, unknown> = {};
+
+  const call = tool.renderCall({ path: "src" }, theme, {
+    state,
+    lastComponent: undefined,
+  } as never);
+
+  assert.equal(tool.renderShell, "self");
+  assert.ok(call instanceof Box);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), ["List src"]);
+
+  const result = { details: { count: 2 }, content: [{ type: "text", text: "a.ts\nb.ts" }] };
+  const collapsed = tool.renderResult(result, { expanded: false, isPartial: false }, theme, {
+    state,
+    isError: false,
+    lastComponent: undefined,
+  } as never);
+
+  assert.deepEqual(collapsed.render(120), []);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), ["List src"]);
+
+  tool.renderResult(result, { expanded: true, isPartial: false }, theme, {
+    state,
+    isError: false,
+    lastComponent: undefined,
+  } as never);
+
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), [
+    "List src",
+    "",
+    "a.ts",
+    "b.ts",
+  ]);
 });

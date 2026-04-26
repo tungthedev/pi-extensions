@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { Box } from "@mariozechner/pi-tui";
+
 import { parseDroidPlanRows } from "./tools/plan-parser.ts";
 import { registerDroidPlanTool } from "./tools/plan.ts";
 
@@ -36,7 +38,11 @@ test("registerDroidPlanTool registers TodoWrite with shared update_plan renderin
     strikethrough: (text: string) => `~~${text}~~`,
   };
 
-  assert.deepEqual(trimRenderedLines(tool.renderCall({}, theme).render(80)), ["Update plan"]);
+  const state: Record<string, unknown> = {};
+  const call = tool.renderCall({}, theme, { state, lastComponent: undefined });
+  assert.equal(tool.renderShell, "self");
+  assert.ok(call instanceof Box);
+  assert.deepEqual(trimRenderedLines(call.render(80)).map((line) => line.trim()), ["Update plan"]);
 
   const ui = {
     theme,
@@ -60,7 +66,24 @@ test("registerDroidPlanTool registers TodoWrite with shared update_plan renderin
   assert.match(result.content[0]?.text ?? "", /\[completed\] #1 First task that is done/);
   assert.match(result.content[0]?.text ?? "", /\[in_progress\] #2 Currently working on this/);
   assert.match(result.content[0]?.text ?? "", /\[pending\] #3 Not started yet/);
-  assert.deepEqual(trimRenderedLines(tool.renderResult(result, { expanded: false }, theme).render(120)), [
+  const collapsed = tool.renderResult(result, { expanded: false }, theme, {
+    state,
+    isError: false,
+    lastComponent: undefined,
+  });
+  assert.deepEqual(collapsed.render(120), []);
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), [
+    "Update plan",
+    "All todos completed",
+  ]);
+
+  tool.renderResult(result, { expanded: true }, theme, {
+    state,
+    isError: false,
+    lastComponent: undefined,
+  });
+  assert.deepEqual(trimRenderedLines(call.render(120)).map((line) => line.trim()), [
+    "Update plan",
     "All todos completed",
   ]);
 });

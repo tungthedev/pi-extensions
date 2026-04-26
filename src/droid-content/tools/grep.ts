@@ -5,11 +5,10 @@ import { Type } from "typebox";
 
 import { executeDroidGrepWithFff } from "../../shared/fff/adapters/droid-grep.ts";
 import {
-  buildSummaryRenderer,
+  buildHiddenCollapsedRenderer,
+  buildSelfShellRenderer,
   decorateGrepResultWithStats,
   formatPatternInPathDetail,
-  summarizeGrepResult,
-  summarizeMatchingFileCount,
 } from "../../shared/renderers/tool-renderers.ts";
 import {
   execCommand,
@@ -171,31 +170,26 @@ function countReturnedFiles(text: string): number {
 
 export function registerDroidGrepTool(pi: ExtensionAPI): void {
   const nativeGrepDefinition = createGrepToolDefinition(process.cwd());
-  const renderer = buildSummaryRenderer({
+  const baseRenderer = buildHiddenCollapsedRenderer({
     title: "Grep",
     getDetail: (args) =>
       formatPatternInPathDetail(
         args as { pattern?: string; path?: string; fallbackPattern?: string },
       ),
-    summarize: (result) => {
-      const outputMode =
-        typeof result.details === "object" && result.details !== null
-          ? (result.details as Record<string, unknown>).outputMode
-          : undefined;
-
-      return outputMode === "content"
-        ? summarizeGrepResult(result)
-        : summarizeMatchingFileCount(result);
-    },
     nativeRenderResult: (result, options, theme, context) =>
       nativeGrepDefinition.renderResult!(result as never, options, theme, context as never),
-    expandable: false,
+  });
+  const renderer = buildSelfShellRenderer({
+    stateKey: "droidGrepRenderState",
+    renderCall: baseRenderer.renderCall,
+    renderResult: baseRenderer.renderResult,
   });
 
   pi.registerTool({
     name: "Grep",
     label: "Grep",
     description: DROID_GREP_DESCRIPTION,
+    renderShell: "self",
     parameters: DROID_GREP_PARAMETERS,
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       return await executeDroidGrepWithFff(params, ctx, async () => {
@@ -250,8 +244,8 @@ export function registerDroidGrepTool(pi: ExtensionAPI): void {
           : renderedResult;
       });
     },
-    renderCall(args, theme) {
-      return renderer.renderCall(args as Record<string, unknown>, theme);
+    renderCall(args, theme, context) {
+      return renderer.renderCall(args as Record<string, unknown>, theme, context as never);
     },
     renderResult(result, options, theme, context) {
       return renderer.renderResult(result, options, theme, context);
