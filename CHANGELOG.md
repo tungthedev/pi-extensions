@@ -4,6 +4,16 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-04-27
+
+### Added
+
+- Added OpenAI Responses image-generation support for Codex, including response parsing, streaming handling, image rendering, and the bundled `openai-responses-image-patch` extension.
+
+### Changed
+
+- Updated shared file-search, directory-listing, todo-plan, skill, and tool-renderer behavior to support the new image-generation response flow.
+
 ## [2.1.0] - 2026-04-24
 
 ### Added
