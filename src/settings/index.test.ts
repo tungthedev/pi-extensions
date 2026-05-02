@@ -255,7 +255,7 @@ test("registerPiModeShortcut cycles pi -> codex -> droid -> pi without saving gl
     },
   );
 
-  assert.notEqual(shortcutHandlers.get("ctrl+alt+m"), undefined);
+  assert.notEqual(shortcutHandlers.get("ctrl+space"), undefined);
   assert.notEqual(shortcutHandlers.get("ctrl+alt+k"), undefined);
 
   const makeCtx = (toolSet: "pi" | "codex" | "droid") => ({
@@ -272,9 +272,9 @@ test("registerPiModeShortcut cycles pi -> codex -> droid -> pi without saving gl
     },
   });
 
-  await shortcutHandlers.get("ctrl+alt+m")!(makeCtx("pi"));
-  await shortcutHandlers.get("ctrl+alt+m")!(makeCtx("codex"));
-  await shortcutHandlers.get("ctrl+alt+m")!(makeCtx("droid"));
+  await shortcutHandlers.get("ctrl+space")!(makeCtx("pi"));
+  await shortcutHandlers.get("ctrl+space")!(makeCtx("codex"));
+  await shortcutHandlers.get("ctrl+space")!(makeCtx("droid"));
 
   assert.deepEqual(writes, []);
   assert.deepEqual(sessionWrites, ["codex", "droid", "pi"]);
@@ -503,7 +503,7 @@ test("handlePiModeCommand writes the selected load-skills setting directly", asy
   assert.deepEqual(emitted, [false]);
 });
 
-test("buildPiModeSettingItems includes the Load Skills setting", () => {
+test("buildPiModeSettingItems groups prompt injection settings under System Prompt", () => {
   const items = buildPiModeSettingItems({
     toolSet: "pi",
     loadSkills: true,
@@ -511,8 +511,71 @@ test("buildPiModeSettingItems includes the Load Skills setting", () => {
     webTools: {},
   });
 
-  const item = items.find((entry) => entry.id === "loadSkills");
-  assert.notEqual(item, undefined);
-  assert.equal(item?.label, "Load Skills");
-  assert.equal(item?.currentValue, "Enabled");
+  assert.deepEqual(
+    items.map((item) => item.id),
+    ["toolSet", "systemPrompt", "webTools"],
+  );
+
+  const item = items.find((entry) => entry.id === "systemPrompt");
+  assert.equal(item?.label, "System Prompt");
+  assert.equal(item?.currentValue, "Skills only");
+});
+
+test("openPiModeSettingsUi opens prompt injection settings from System Prompt", async () => {
+  let rendered = "";
+
+  await openPiModeSettingsUi(
+    {
+      hasUI: true,
+      ui: {
+        notify() {},
+        async custom(
+          render: (
+            tui: unknown,
+            theme: { fg: (_color: string, text: string) => string; bold: (text: string) => string },
+            kb: unknown,
+            done: (value: unknown) => void,
+          ) => { handleInput?: (data: string) => void; render(width: number): string[] },
+        ) {
+          const component = render(
+            undefined,
+            {
+              fg: (_color: string, text: string) => text,
+              bold: (text: string) => text,
+            },
+            undefined,
+            () => undefined,
+          );
+
+          component.handleInput?.("\x1b[B");
+          component.handleInput?.("\r");
+          rendered = component.render(100).join("\n");
+        },
+      },
+    } as never,
+    {
+      readSettings: async () => ({
+        toolSet: "pi",
+        loadSkills: true,
+        systemMdPrompt: false,
+        webTools: {},
+      }),
+      applyToolSetTransition: async () => {
+        throw new Error("applyToolSetTransition should not run");
+      },
+      applyLoadSkillsTransition: async () => {
+        throw new Error("applyLoadSkillsTransition should not run");
+      },
+      writeSystemMdPrompt: async () => {
+        throw new Error("writeSystemMdPrompt should not run");
+      },
+      writeWebToolSetting: async () => {
+        throw new Error("writeWebToolSetting should not run");
+      },
+    },
+  );
+
+  assert.match(rendered, /Pi Mode > System Prompt/);
+  assert.match(rendered, /Inject Skills/);
+  assert.match(rendered, /Inject SYSTEM\.md/);
 });

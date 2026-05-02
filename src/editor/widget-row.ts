@@ -172,7 +172,8 @@ export class HorizontalLineWidget {
       return this.cachedLines;
     }
 
-    const lines = [layoutLine(this.getSegments(), width, this.gap)];
+    const segments = this.getSegments();
+    const lines = segments.length === 0 ? [] : [layoutLine(segments, width, this.gap)];
     this.cachedWidth = width;
     this.cachedLines = lines;
     this.cachedVersion = version;

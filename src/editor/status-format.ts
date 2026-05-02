@@ -5,6 +5,7 @@ import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import type { EditorStatusState } from "./status-state.ts";
 
 const HORIZONTAL = "─";
+const STATUS_SEPARATOR = "╶╴";
 
 export function formatLoadSkillsLegend(loadSkillsEnabled?: boolean): string | undefined {
   if (loadSkillsEnabled === undefined) return undefined;
@@ -13,13 +14,16 @@ export function formatLoadSkillsLegend(loadSkillsEnabled?: boolean): string | un
 
 export function formatEditorBorderLegend(
   toolSetLabel?: string,
-  loadSkillsEnabled?: boolean,
+  _loadSkillsEnabled?: boolean,
 ): string | undefined {
   if (!toolSetLabel) return undefined;
 
-  const loadSkillsLegend = formatLoadSkillsLegend(loadSkillsEnabled);
-  const baseLegend = loadSkillsLegend ? `${toolSetLabel} ${loadSkillsLegend}` : toolSetLabel;
-  return `${baseLegend} (ctrl+alt+m)`;
+  return `${toolSetLabel} (ctrl+space)`;
+}
+
+export function formatSkillCountLabel(skillCount?: number): string | undefined {
+  if (skillCount === undefined) return undefined;
+  return `${Math.max(0, skillCount)} skills`;
 }
 
 export function formatTopBorderLine(width: number, legend?: string): string {
@@ -270,29 +274,72 @@ export function formatRightStatus(
   return `${truncatePathFromLeft(cwd, cwdBudget)}${branchSuffix}`;
 }
 
+export function formatBottomLeftStatus(state: EditorStatusState, theme?: Theme): string {
+  const modelPart = state.modelId
+    ? [
+        state.modelId,
+        state.thinkingLevel && state.thinkingLevel !== "off" ? state.thinkingLevel : undefined,
+      ]
+        .filter((part): part is string => Boolean(part))
+        .join(" ")
+    : undefined;
+  const usagePart = formatUsageSummary(state.usage, theme);
+  const separator = theme ? colorBorder(theme, STATUS_SEPARATOR) : STATUS_SEPARATOR;
+  return [modelPart, usagePart].filter((part): part is string => Boolean(part)).join(separator);
+}
+
+export function formatBottomRightStatus(
+  state: EditorStatusState,
+  maxWidth = Number.POSITIVE_INFINITY,
+): string {
+  const branch = state.gitBranch?.trim();
+  const cwd = state.cwd;
+  if (!cwd && !branch) return "";
+  if (!branch) return truncatePathFromLeft(cwd ?? "", maxWidth);
+
+  const branchSuffix = ` (${branch})`;
+  if (!cwd) return truncateSuffix("", branchSuffix.trim(), maxWidth);
+
+  const full = `${cwd}${branchSuffix}`;
+  if (visibleWidth(full) <= maxWidth) return full;
+
+  const cwdBudget = Math.max(0, maxWidth - visibleWidth(branchSuffix));
+  if (cwdBudget <= 0) return truncateSuffix("", branchSuffix.trim(), maxWidth);
+
+  return `${truncatePathFromLeft(cwd, cwdBudget)}${branchSuffix}`;
+}
+
 export function buildTopBorderLine(
   theme: Theme,
   width: number,
   legend: string | undefined,
   styleLegend: (legendText: string) => string,
+  rightLabel?: string,
+  styleRightLabel: (labelText: string) => string = (labelText) => colorBorder(theme, labelText),
 ): string {
   const innerWidth = Math.max(0, width - 2);
-  if (!legend) {
+  const rightText = rightLabel ? truncateToWidth(rightLabel, Math.max(0, innerWidth - 1)) : "";
+
+  if (!legend && !rightText) {
     return colorBorder(theme, `╭${HORIZONTAL.repeat(innerWidth)}╮`);
   }
 
-  const legendText = truncateToWidth(` ${legend} `, Math.max(0, innerWidth - 1));
-  if (!legendText) {
+  const legendBudget = Math.max(0, innerWidth - visibleWidth(rightText) - 2);
+  const legendText = legend ? truncateToWidth(` ${legend} `, legendBudget) : "";
+  if (!legendText && !rightText) {
     return colorBorder(theme, `╭${HORIZONTAL.repeat(innerWidth)}╮`);
   }
 
-  const remaining = innerWidth - visibleWidth(legendText);
-  const leftFill = remaining > 0 ? 1 : 0;
-  const rightFill = Math.max(0, remaining - leftFill);
+  const leftFill = legendText ? 1 : 0;
+  const rightFill = rightText ? 1 : 0;
+  const used = leftFill + visibleWidth(legendText) + visibleWidth(rightText) + rightFill;
+  const middleFill = Math.max(0, innerWidth - used);
 
   return (
     colorBorder(theme, `╭${HORIZONTAL.repeat(leftFill)}`) +
-    styleLegend(legendText) +
+    (legendText ? styleLegend(legendText) : "") +
+    colorBorder(theme, HORIZONTAL.repeat(middleFill)) +
+    (rightText ? styleRightLabel(rightText) : "") +
     colorBorder(theme, `${HORIZONTAL.repeat(rightFill)}╮`)
   );
 }
@@ -300,18 +347,29 @@ export function buildTopBorderLine(
 export function buildBottomBorderLine(
   theme: Theme,
   width: number,
-  indicator: string,
+  leftText: string,
+  rightText: string,
   corners: { left: string; right: string },
 ): string {
   const innerWidth = Math.max(0, width - 2);
-  if (indicator.length === 0) {
+  if (!leftText && !rightText) {
     return colorBorder(theme, `${corners.left}${HORIZONTAL.repeat(innerWidth)}${corners.right}`);
   }
 
-  const fill = Math.max(0, innerWidth - 2 - visibleWidth(indicator));
+  const leftBudget = Math.max(0, Math.floor((innerWidth - 2) / 2));
+  const renderedLeft = truncateToWidth(leftText, leftBudget);
+  const rightBudget = Math.max(0, innerWidth - visibleWidth(renderedLeft) - 2);
+  const renderedRight = truncateToWidth(rightText, rightBudget, "");
+  const fill = Math.max(
+    0,
+    innerWidth - visibleWidth(renderedLeft) - visibleWidth(renderedRight) - 2,
+  );
+
   return (
-    colorBorder(theme, `${corners.left}${HORIZONTAL}${HORIZONTAL.repeat(fill)}`) +
-    indicator +
+    colorBorder(theme, `${corners.left}${HORIZONTAL}`) +
+    renderedLeft +
+    colorBorder(theme, HORIZONTAL.repeat(fill)) +
+    renderedRight +
     colorBorder(theme, `${HORIZONTAL}${corners.right}`)
   );
 }

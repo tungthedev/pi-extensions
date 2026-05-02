@@ -19,6 +19,10 @@ import {
   type PiModeSettings,
 } from "./config.ts";
 import {
+  applyLoadSkillsTransition,
+  applySessionLoadSkillsTransition,
+} from "./load-skills-transition.ts";
+import {
   ensureSessionLoadSkillsSnapshot,
   ensureSessionToolSetSnapshot,
   resolveSessionLoadSkills,
@@ -26,16 +30,8 @@ import {
   writeSessionLoadSkillsSnapshot,
   writeSessionToolSetSnapshot,
 } from "./session.ts";
-import {
-  applyLoadSkillsTransition,
-  applySessionLoadSkillsTransition,
-} from "./load-skills-transition.ts";
 import { applySessionToolSetTransition, applyToolSetTransition } from "./tool-set-transition.ts";
-import {
-  formatSystemMdPromptLabel,
-  openPiModeSettingsUi,
-  parseSettingsCommand,
-} from "./ui.ts";
+import { formatSystemMdPromptLabel, openPiModeSettingsUi, parseSettingsCommand } from "./ui.ts";
 
 export type PiModeCommandDeps = {
   readSettings: () => Promise<PiModeSettings>;
@@ -129,7 +125,8 @@ function createDefaultDeps(pi: ExtensionAPI): PiModeCommandDeps {
             transitionCtx,
             {
               writeLoadSkills: (loadSkills) => writeLoadSkillsSetting(loadSkills),
-              writeSessionLoadSkills: (loadSkills) => writeSessionLoadSkillsSnapshot(pi, loadSkills),
+              writeSessionLoadSkills: (loadSkills) =>
+                writeSessionLoadSkillsSnapshot(pi, loadSkills),
               emitLoadSkillsChange: (loadSkills) => {
                 pi.events.emit(LOAD_SKILLS_CHANGED_EVENT, {
                   loadSkills,
@@ -192,9 +189,9 @@ export async function handlePiModeCommand(
         ? "toolSet"
         : action.action === "open-load-skills"
           ? "loadSkills"
-        : action.action === "open-system-md-prompt"
-          ? "systemMdPrompt"
-          : undefined,
+          : action.action === "open-system-md-prompt"
+            ? "systemMdPrompt"
+            : undefined,
   });
 }
 
@@ -216,7 +213,7 @@ export function registerPiModeShortcut(
 ): void {
   if (typeof pi.registerShortcut !== "function") return;
 
-  pi.registerShortcut("ctrl+alt+m", {
+  pi.registerShortcut("ctrl+space", {
     description: "Cycle tool set",
     handler: async (ctx) => {
       await cycleToolSet(ctx, deps);
@@ -224,7 +221,7 @@ export function registerPiModeShortcut(
   });
 
   pi.registerShortcut("ctrl+alt+k", {
-    description: "Toggle Load Skills for this session",
+    description: "Toggle Inject Skills for this session",
     handler: async (ctx) => {
       await toggleLoadSkills(ctx, deps);
     },

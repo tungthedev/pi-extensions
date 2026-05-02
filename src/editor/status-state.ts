@@ -19,8 +19,18 @@ export type EditorStatusState = {
   thinkingLevel?: string;
   toolSetLabel?: string;
   loadSkillsEnabled?: boolean;
+  skillCount?: number;
   usage?: ContextUsage;
 };
+
+function countLoadedSkills(pi: ExtensionAPI): number {
+  const getCommands = (pi as { getCommands?: ExtensionAPI["getCommands"] }).getCommands;
+  if (!getCommands) return 0;
+
+  return getCommands
+    .call(pi)
+    .filter((command) => command.source === "skill" && command.name.startsWith("skill:")).length;
+}
 
 export function baseSegments(
   state: EditorStatusState,
@@ -54,9 +64,9 @@ export function syncStatusRow(
 ): void {
   if (!statusRow) return;
 
-  for (const { key, segment } of baseSegments(state, getTheme)) {
-    statusRow.set(key, segment);
-  }
+  void state;
+  void getTheme;
+  statusRow.clear();
 
   for (const [key, segment] of externalSegments) {
     statusRow.set(key, segment);
@@ -71,6 +81,7 @@ export function syncStateFromContext(
   state.cwd = ctx.cwd;
   state.modelId = ctx.model?.id;
   state.thinkingLevel = pi.getThinkingLevel();
+  state.skillCount = countLoadedSkills(pi);
   state.usage = ctx.getContextUsage();
 }
 

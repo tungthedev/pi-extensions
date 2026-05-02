@@ -1,7 +1,6 @@
 import type { AutocompleteProvider } from "@mariozechner/pi-tui";
 
 import { visibleWidth } from "@mariozechner/pi-tui";
-
 import { Result } from "better-result";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -12,37 +11,120 @@ import {
   createSubagentRoleAutocompleteProvider,
   EDITOR_REMOVE_STATUS_SEGMENT_EVENT,
   EDITOR_SET_STATUS_SEGMENT_EVENT,
-  formatEditorBorderLegend,
-  formatRightStatus,
   installCodexEditorUi,
   normalizeCodexEditorInput,
   wrapAutocompleteProviderWithDollarSkillSupport,
 } from "./index.ts";
-import { HorizontalLineWidget } from "./widget-row.ts";
+import { formatBottomLeftStatus } from "./status-format.ts";
 
-test("HorizontalLineWidget re-renders the right status with the tighter budget", () => {
-  const widget = new HorizontalLineWidget(() => [
+test("formatBottomLeftStatus separates model and usage with half-dashes", () => {
+  const status = formatBottomLeftStatus(
     {
-      align: "left",
-      renderInline: () => "gpt-5.4-mini · 87.7%/272k",
+      cwd: "/tmp/project",
+      modelId: "gpt-5.5",
+      thinkingLevel: "medium",
+      usage: { tokens: 122400, percent: 45, contextWindow: 272000 },
     },
     {
-      align: "right",
-      renderInline: (maxWidth) =>
-        formatRightStatus(
-          {
-            cwd: "/Volumes/Data/Projects/exp/pi-extensions",
-            gitBranch: "main",
-          },
-          maxWidth,
-        ),
-    },
-  ]);
+      bg: (_color: string, text: string) => text,
+      fg: (color: string, text: string) => (color === "muted" ? `<muted>${text}</muted>` : text),
+      getBgAnsi: () => "\u001b[48;5;8m",
+      getFgAnsi: () => "\u001b[38;5;15m",
+      getColorMode: () => "256color",
+    } as never,
+  );
 
-  const line = widget.render(50)[0] ?? "";
-  assert.ok(line.includes(".../"));
-  assert.ok(line.endsWith(" · main"));
-  assert.ok(!line.includes("/Volumes/Data/Projects"));
+  assert.ok(status.startsWith("gpt-5.5 medium<muted>╶╴</muted>"));
+  assert.ok(status.includes("\u001b[48;"));
+});
+
+async function renderEditorTopLine(loadSkills: boolean): Promise<string> {
+  const lifecycleHandlers = new Map<string, Function[]>();
+  let editorFactory:
+    | ((
+        tui: { requestRender(): void; terminal: { rows: number } },
+        editorTheme: unknown,
+        keybindings: unknown,
+      ) => { render(width: number): string[] })
+    | undefined;
+
+  installCodexEditorUi({
+    getThinkingLevel() {
+      return "low";
+    },
+    getCommands() {
+      return [
+        { source: "skill", name: "skill:one" },
+        { source: "skill", name: "skill:two" },
+      ];
+    },
+    on(event: string, handler: Function) {
+      lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
+    },
+    events: {
+      on() {},
+    },
+  } as never);
+
+  const ctx = {
+    cwd: "/tmp/project",
+    model: { id: "gpt-5.4-mini" },
+    getContextUsage() {
+      return undefined;
+    },
+    sessionManager: {
+      getBranch() {
+        return [
+          { type: "custom", customType: "pi-mode:tool-set", data: { toolSet: "codex" } },
+          { type: "custom", customType: "pi-mode:load-skills", data: { loadSkills } },
+        ];
+      },
+    },
+    ui: {
+      theme: {
+        fg: (color: string, text: string) =>
+          color === "text"
+            ? `\u001b[31m${text}\u001b[39m`
+            : color === "dim"
+              ? `\u001b[2m${text}\u001b[22m`
+              : text,
+        bg: (_color: string, text: string) => text,
+        bold: (text: string) => text,
+        strikethrough: (text: string) => text,
+        getFgAnsi: () => "",
+        getBgAnsi: () => "",
+        getColorMode: () => "truecolor",
+      },
+      setEditorComponent(factory: typeof editorFactory) {
+        editorFactory = factory;
+      },
+      setFooter(factory: Function) {
+        factory(undefined, undefined, {
+          getGitBranch: () => "main",
+          onBranchChange: () => () => undefined,
+        });
+      },
+      setWidget() {},
+    },
+  };
+
+  for (const handler of lifecycleHandlers.get("session_start") ?? []) {
+    await handler(undefined, ctx as never);
+  }
+
+  assert.ok(editorFactory);
+  const editor = editorFactory!(
+    { requestRender() {}, terminal: { rows: 40 } },
+    { borderColor: (text: string) => text, selectList: {} },
+    { matches: () => false },
+  );
+
+  return editor.render(80)[0] ?? "";
+}
+
+test("installCodexEditorUi colors skill count by inject-skills state", async () => {
+  assert.ok((await renderEditorTopLine(true)).includes("\u001b[31m2 skills\u001b[39m"));
+  assert.ok((await renderEditorTopLine(false)).includes("\u001b[2m2 skills\u001b[22m"));
 });
 
 test("normalizeCodexEditorInput maps extra Shift+Enter sequences to canonical shift-enter", () => {
@@ -50,11 +132,6 @@ test("normalizeCodexEditorInput maps extra Shift+Enter sequences to canonical sh
   assert.equal(normalizeCodexEditorInput("\u001b[13;2u"), "\u001b[13;2u");
   assert.equal(normalizeCodexEditorInput("\u001b[27;2;13~"), "\u001b[13;2u");
   assert.equal(normalizeCodexEditorInput("\r"), "\r");
-});
-
-test("formatEditorBorderLegend uses the new skills state labels", () => {
-  assert.equal(formatEditorBorderLegend("Codex", true), "Codex w. Skills (ctrl+alt+m)");
-  assert.equal(formatEditorBorderLegend("Droid", false), "Droid wo. Skills (ctrl+alt+m)");
 });
 
 test("wrapped autocomplete provider maps $ skill tokens to /skill queries", async () => {
@@ -202,7 +279,7 @@ test("installCodexEditorUi applies and removes external status segments through 
     cwd: "/tmp/project",
     model: { id: "gpt-5.4-mini" },
     getContextUsage() {
-      return undefined;
+      return { percent: 45, contextWindow: 272000 };
     },
     sessionManager: {
       getBranch() {
@@ -258,7 +335,7 @@ test("installCodexEditorUi applies and removes external status segments through 
   assert.ok(!afterRemove.includes("syncing"));
 });
 
-test("installCodexEditorUi renders the tool-set label in bold without changing border width", async () => {
+test("installCodexEditorUi keeps at least two input rows in the boxed editor", async () => {
   const lifecycleHandlers = new Map<string, Function[]>();
   let editorFactory:
     | ((
@@ -270,7 +347,10 @@ test("installCodexEditorUi renders the tool-set label in bold without changing b
 
   installCodexEditorUi({
     getThinkingLevel() {
-      return "medium";
+      return "low";
+    },
+    getCommands() {
+      return [];
     },
     on(event: string, handler: Function) {
       lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
@@ -284,7 +364,7 @@ test("installCodexEditorUi renders the tool-set label in bold without changing b
     cwd: "/tmp/project",
     model: { id: "gpt-5.4-mini" },
     getContextUsage() {
-      return undefined;
+      return { percent: 45, contextWindow: 272000 };
     },
     sessionManager: {
       getBranch() {
@@ -296,15 +376,12 @@ test("installCodexEditorUi renders the tool-set label in bold without changing b
     },
     ui: {
       theme: {
-        fg: (color: string, text: string) => {
-          const ansi = color === "accent" ? "\u001b[35m" : "\u001b[90m";
-          return `${ansi}${text}\u001b[39m`;
-        },
+        fg: (_color: string, text: string) => text,
         bg: (_color: string, text: string) => text,
-        bold: (text: string) => `\u001b[1m${text}\u001b[22m`,
-        strikethrough: (text: string) => `\u001b[9m${text}\u001b[29m`,
-        getFgAnsi: () => "",
-        getBgAnsi: () => "",
+        bold: (text: string) => text,
+        strikethrough: (text: string) => text,
+        getFgAnsi: () => "\u001b[38;5;15m",
+        getBgAnsi: () => "\u001b[48;5;8m",
         getColorMode: () => "truecolor",
       },
       setEditorComponent(factory: typeof editorFactory) {
@@ -325,25 +402,18 @@ test("installCodexEditorUi renders the tool-set label in bold without changing b
   }
 
   assert.ok(editorFactory);
-
   const editor = editorFactory!(
-    {
-      requestRender() {},
-      terminal: { rows: 40 },
-    },
-    {
-      borderColor: (text: string) => text,
-      selectList: {},
-    },
-    {
-      matches: () => false,
-    },
+    { requestRender() {}, terminal: { rows: 40 } },
+    { borderColor: (text: string) => text, selectList: {} },
+    { matches: () => false },
   );
 
-  const topLine = editor.render(48)[0] ?? "";
-  assert.equal(visibleWidth(topLine), 48);
-  assert.ok(topLine.includes("Codex"));
-  assert.ok(topLine.includes("\u001b[1m"));
+  const rows = editor.render(80).filter((line) => line.startsWith("│"));
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every((line) => visibleWidth(line) === 80));
+
+  const bottom = editor.render(80).find((line) => line.startsWith("╰")) ?? "";
+  assert.ok(bottom.includes("\u001b[48;"), bottom);
 });
 
 test("installCodexEditorUi registers stacked autocomplete providers for $skill and @path", async () => {
@@ -474,11 +544,19 @@ test("subagent role autocomplete suggests cwd-visible roles only in agent type v
   );
 
   assert.equal(suggestions?.prefix, "rev");
-  assert.deepEqual(suggestions?.items.map((item) => item.value), ["reviewer"]);
+  assert.deepEqual(
+    suggestions?.items.map((item) => item.value),
+    ["reviewer"],
+  );
 
-  const fallback = await provider.getSuggestions(["delegate reviewer"], 0, "delegate reviewer".length, {
-    signal: new AbortController().signal,
-  });
+  const fallback = await provider.getSuggestions(
+    ["delegate reviewer"],
+    0,
+    "delegate reviewer".length,
+    {
+      signal: new AbortController().signal,
+    },
+  );
   assert.equal(fallback?.prefix, "delegate reviewer");
   assert.equal(baseCalls, 1);
 });

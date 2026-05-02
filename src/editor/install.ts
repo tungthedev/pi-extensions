@@ -7,9 +7,8 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import type { AutocompleteProvider, EditorTheme, TUI } from "@mariozechner/pi-tui";
 
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-
 import { CustomEditor } from "@mariozechner/pi-coding-agent";
+import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 import { ensureSessionFffRuntime, resolveSessionFffRuntimeKey } from "../fff/session-runtime.ts";
 import {
@@ -31,7 +30,10 @@ import {
 } from "./autocomplete-dollar-skill.ts";
 import { EDITOR_REMOVE_STATUS_SEGMENT_EVENT, EDITOR_SET_STATUS_SEGMENT_EVENT } from "./events.ts";
 import {
+  formatBottomLeftStatus,
+  formatBottomRightStatus,
   formatEditorBorderLegend,
+  formatSkillCountLabel,
   buildBottomBorderLine,
   buildTopBorderLine,
 } from "./status-format.ts";
@@ -55,6 +57,7 @@ const RESERVED_SEGMENT_KEYS = new Set([
   EDITOR_BASE_RIGHT_SEGMENT_KEY,
 ]);
 const HORIZONTAL = "─";
+const MIN_INPUT_ROWS = 2;
 
 type AutocompleteKeybindings = Pick<KeybindingsManager, "matches">;
 
@@ -69,6 +72,9 @@ class CodexBoxedEditor extends CustomEditor {
     private readonly getTopBorderLegend: () => string | undefined,
     private readonly getToolSetLabel: () => string | undefined,
     private readonly getLoadSkillsEnabled: () => boolean | undefined,
+    private readonly getSkillCount: () => number | undefined,
+    private readonly getBottomLeftStatus: () => string,
+    private readonly getBottomRightStatus: (maxWidth: number) => string,
     private readonly useLegacyAutocompleteComposition: boolean,
     private readonly pathAutocompleteRuntime?: ReturnType<typeof ensureSessionFffRuntime>,
   ) {
@@ -153,12 +159,6 @@ class CodexBoxedEditor extends CustomEditor {
     return result;
   }
 
-  private extractScrollIndicator(originalLine: string): string {
-    const stripped = this.stripAnsiSequences(originalLine);
-    const match = stripped.match(/[↑↓]\s+\d+\s+more/);
-    return match?.[0] ?? "";
-  }
-
   private findBottomBorderIndex(lines: string[]): number {
     for (let index = lines.length - 1; index >= 1; index -= 1) {
       const stripped = this.stripAnsiSequences(lines[index] ?? "");
@@ -167,9 +167,10 @@ class CodexBoxedEditor extends CustomEditor {
     return Math.max(0, lines.length - 1);
   }
 
-  private wrapRow(inner: string): string {
+  private wrapRow(inner: string, width: number): string {
     const theme = this.getAppTheme();
-    return `${theme.fg("muted", "│")}${inner}${theme.fg("muted", "│")}`;
+    const paddedInner = `${inner}${" ".repeat(Math.max(0, width - 2 - visibleWidth(inner)))}`;
+    return `${theme.fg("muted", "│")}${paddedInner}${theme.fg("muted", "│")}`;
   }
 
   private normalizeRenderedWidth(line: string, width: number): string {
@@ -189,20 +190,9 @@ class CodexBoxedEditor extends CustomEditor {
       { text: toolSetLabel, color: "accent" as ThemeColor },
     ];
 
-    const loadSkillsEnabled = this.getLoadSkillsEnabled();
-    if (loadSkillsEnabled !== undefined) {
-      segments.push(
-        { text: " ", color: "muted" },
-        {
-          text: loadSkillsEnabled ? "w. Skills" : "wo. Skills",
-          color: "text",
-        },
-      );
-    }
-
     segments.push(
       { text: " ", color: "muted" as const },
-      { text: "(ctrl+alt+m)", color: "muted" as const },
+      { text: "(ctrl+space)", color: "muted" as const },
     );
 
     segments.push({ text: " ", color: "muted" as const });
@@ -216,7 +206,8 @@ class CodexBoxedEditor extends CustomEditor {
       const isToolSetLabel = segment.text === toolSetLabel;
       const baseSlice = isToolSetLabel ? theme.bold(slice) : slice;
       const coloredSlice = theme.fg(segment.color, baseSlice);
-      const renderedSlice = segment.text === "wo. Skills" ? theme.strikethrough(coloredSlice) : coloredSlice;
+      const renderedSlice =
+        segment.text === "wo. Skills" ? theme.strikethrough(coloredSlice) : coloredSlice;
       styled += renderedSlice;
       remaining = remaining.slice(slice.length);
     }
@@ -226,6 +217,11 @@ class CodexBoxedEditor extends CustomEditor {
     }
 
     return styled;
+  }
+
+  private styleRightLegend(labelText: string): string {
+    const loadSkillsEnabled = this.getLoadSkillsEnabled();
+    return this.getAppTheme().fg(loadSkillsEnabled ? "text" : "dim", labelText);
   }
 
   override render(width: number): string[] {
@@ -240,22 +236,35 @@ class CodexBoxedEditor extends CustomEditor {
 
     rendered.push(
       this.normalizeRenderedWidth(
-        buildTopBorderLine(this.getAppTheme(), width, this.getTopBorderLegend(), (legendText) =>
-          this.styleLegend(legendText),
+        buildTopBorderLine(
+          this.getAppTheme(),
+          width,
+          this.getTopBorderLegend(),
+          (legendText) => this.styleLegend(legendText),
+          formatSkillCountLabel(this.getSkillCount()),
+          (labelText) => this.styleRightLegend(labelText),
         ),
         width,
       ),
     );
 
+    let inputRowCount = 0;
     for (let index = 1; index < bottomIndex; index += 1) {
-      rendered.push(this.wrapRow(lines[index] ?? ""));
+      rendered.push(this.wrapRow(lines[index] ?? "", width));
+      inputRowCount += 1;
+    }
+
+    while (inputRowCount < MIN_INPUT_ROWS) {
+      rendered.push(this.wrapRow("", width));
+      inputRowCount += 1;
     }
 
     rendered.push(
       buildBottomBorderLine(
         this.getAppTheme(),
         width,
-        this.extractScrollIndicator(lines[bottomIndex] ?? ""),
+        this.getBottomLeftStatus(),
+        this.getBottomRightStatus(Math.max(0, Math.floor((width - 4) / 2))),
         {
           left: "╰",
           right: "╯",
@@ -297,6 +306,9 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
           () => formatEditorBorderLegend(state.toolSetLabel, state.loadSkillsEnabled),
           () => state.toolSetLabel,
           () => state.loadSkillsEnabled,
+          () => state.skillCount,
+          () => formatBottomLeftStatus(state, ctx.ui.theme),
+          (maxWidth) => formatBottomRightStatus(state, maxWidth),
           !useProviderStack,
           fffRuntime,
         );

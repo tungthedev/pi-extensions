@@ -63,6 +63,15 @@ export function formatLoadSkillsLabel(value: boolean): "Enabled" | "Disabled" {
   return value ? "Enabled" : "Disabled";
 }
 
+function buildSystemPromptSummary(
+  settings: Pick<PiModeSettings, "loadSkills" | "systemMdPrompt">,
+): string {
+  if (settings.loadSkills && settings.systemMdPrompt) return "Skills + SYSTEM.md";
+  if (settings.loadSkills) return "Skills only";
+  if (settings.systemMdPrompt) return "SYSTEM.md only";
+  return "Default";
+}
+
 export function buildPiModeSettingItems(settings: PiModeSettings): SettingItem[] {
   return [
     {
@@ -74,8 +83,36 @@ export function buildPiModeSettingItems(settings: PiModeSettings): SettingItem[]
       values: ["Pi", "Codex", "Droid"],
     },
     {
+      id: "systemPrompt",
+      label: "System Prompt",
+      description:
+        "Configure prompt injections such as installed skills and repo SYSTEM.md content.",
+      currentValue: buildSystemPromptSummary(settings),
+    },
+    {
+      id: "webTools",
+      label: "Web Tools",
+      description:
+        "Store Gemini, Cloudflare, and Firecrawl credentials for web tools. Shell ENV values still take precedence over stored settings.",
+      currentValue: buildWebToolsSummary(settings),
+    },
+  ];
+}
+
+function createSystemPromptSubmenu(
+  ctx: Pick<ExtensionContext, "hasUI" | "ui">,
+  options: Pick<OpenSettingsUiOptions, "applyLoadSkillsTransition" | "writeSystemMdPrompt">,
+  settings: PiModeSettings,
+  stylers: {
+    mutedText: (text: string) => string;
+    breadcrumbText: (parent: string, current: string) => string;
+  },
+  done: (selectedValue?: string) => void,
+): Component {
+  const items: SettingItem[] = [
+    {
       id: "loadSkills",
-      label: "Load Skills",
+      label: "Inject Skills",
       description:
         "Includes Pi's available skill list in the system prompt when enabled. Disabling this keeps skills installed, but hides the list from the prompt.",
       currentValue: formatLoadSkillsLabel(settings.loadSkills),
@@ -89,14 +126,54 @@ export function buildPiModeSettingItems(settings: PiModeSettings): SettingItem[]
       currentValue: formatSystemMdPromptLabel(settings.systemMdPrompt),
       values: ["Enabled", "Disabled"],
     },
-    {
-      id: "webTools",
-      label: "Web Tools",
-      description:
-        "Store Gemini, Cloudflare, and Firecrawl credentials for web tools. Shell ENV values still take precedence over stored settings.",
-      currentValue: buildWebToolsSummary(settings),
-    },
   ];
+
+  const settingsList = new SettingsList(
+    items,
+    6,
+    getSettingsListTheme(),
+    async (id, newValue) => {
+      if (id === "loadSkills") {
+        const nextValue = LOAD_SKILLS_LABELS[newValue as keyof typeof LOAD_SKILLS_LABELS];
+        if (nextValue === undefined) return;
+
+        await options.applyLoadSkillsTransition(ctx, nextValue);
+        settings.loadSkills = nextValue;
+        settingsList.updateValue(id, formatLoadSkillsLabel(nextValue));
+        done(buildSystemPromptSummary(settings));
+        return;
+      }
+
+      if (id === "systemMdPrompt") {
+        const nextValue = SYSTEM_MD_PROMPT_LABELS[newValue as keyof typeof SYSTEM_MD_PROMPT_LABELS];
+        if (nextValue === undefined) return;
+
+        await options.writeSystemMdPrompt(nextValue);
+        settings.systemMdPrompt = nextValue;
+        settingsList.updateValue(id, formatSystemMdPromptLabel(nextValue));
+        ctx.ui.notify(`Inject SYSTEM.md: ${formatSystemMdPromptLabel(nextValue)}`, "info");
+        done(buildSystemPromptSummary(settings));
+      }
+    },
+    () => done(buildSystemPromptSummary(settings)),
+    { enableSearch: false },
+  );
+
+  return {
+    render(width: number) {
+      return [
+        stylers.breadcrumbText("Pi Mode", "System Prompt"),
+        "",
+        ...renderSettingsListWithFooter(settingsList, width, stylers.mutedText),
+      ];
+    },
+    invalidate() {
+      settingsList.invalidate();
+    },
+    handleInput(data: string) {
+      settingsList.handleInput(data);
+    },
+  };
 }
 
 function getGeminiEnvValue(): string | undefined {
@@ -408,31 +485,56 @@ export async function openPiModeSettingsUi(
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     let showRootHeader = true;
 
-    const items = buildPiModeSettingItems(settings).map((item) =>
-      item.id === "webTools"
-        ? {
-            ...item,
-            submenu: (_currentValue: string, done: (selectedValue?: string) => void) => {
-              showRootHeader = false;
-              return createWebToolsSubmenu(
-                ctx,
-                options,
-                settings,
-                {
-                  dimText: (text) => theme.fg("dim", text),
-                  mutedText: (text) => theme.fg("muted", text),
-                  breadcrumbText: (parent, current) =>
-                    `${theme.fg("muted", parent)} ${theme.fg("muted", ">")} ${theme.fg("accent", theme.bold(current))}`,
-                },
-                (selectedValue) => {
-                  showRootHeader = true;
-                  done(selectedValue);
-                },
-              );
-            },
-          }
-        : item,
-    );
+    const breadcrumbText = (parent: string, current: string) =>
+      `${theme.fg("muted", parent)} ${theme.fg("muted", ">")} ${theme.fg("accent", theme.bold(current))}`;
+    const items = buildPiModeSettingItems(settings).map((item) => {
+      if (item.id === "systemPrompt") {
+        return {
+          ...item,
+          submenu: (_currentValue: string, done: (selectedValue?: string) => void) => {
+            showRootHeader = false;
+            return createSystemPromptSubmenu(
+              ctx,
+              options,
+              settings,
+              {
+                mutedText: (text) => theme.fg("muted", text),
+                breadcrumbText,
+              },
+              (selectedValue) => {
+                showRootHeader = true;
+                done(selectedValue);
+              },
+            );
+          },
+        };
+      }
+
+      if (item.id === "webTools") {
+        return {
+          ...item,
+          submenu: (_currentValue: string, done: (selectedValue?: string) => void) => {
+            showRootHeader = false;
+            return createWebToolsSubmenu(
+              ctx,
+              options,
+              settings,
+              {
+                dimText: (text) => theme.fg("dim", text),
+                mutedText: (text) => theme.fg("muted", text),
+                breadcrumbText,
+              },
+              (selectedValue) => {
+                showRootHeader = true;
+                done(selectedValue);
+              },
+            );
+          },
+        };
+      }
+
+      return item;
+    });
 
     const settingsList = new SettingsList(
       items,
@@ -453,37 +555,7 @@ export async function openPiModeSettingsUi(
           return;
         }
 
-        if (id === "systemMdPrompt") {
-          const nextValue =
-            SYSTEM_MD_PROMPT_LABELS[newValue as keyof typeof SYSTEM_MD_PROMPT_LABELS];
-          if (nextValue === undefined) return;
-
-          await options.writeSystemMdPrompt(nextValue);
-          settings.systemMdPrompt = nextValue;
-          const itemIndex = items.findIndex((item) => item.id === id);
-          items[itemIndex] = {
-            ...items[itemIndex],
-            currentValue: formatSystemMdPromptLabel(nextValue),
-          };
-          ctx.ui.notify(`Inject SYSTEM.md: ${formatSystemMdPromptLabel(nextValue)}`, "info");
-          return;
-        }
-
-        if (id === "loadSkills") {
-          const nextValue = LOAD_SKILLS_LABELS[newValue as keyof typeof LOAD_SKILLS_LABELS];
-          if (nextValue === undefined) return;
-
-          await options.applyLoadSkillsTransition(ctx, nextValue);
-          settings.loadSkills = nextValue;
-          const itemIndex = items.findIndex((item) => item.id === id);
-          items[itemIndex] = {
-            ...items[itemIndex],
-            currentValue: formatLoadSkillsLabel(nextValue),
-          };
-          return;
-        }
-
-        if (id === "webTools") {
+        if (id === "systemPrompt" || id === "webTools") {
           const itemIndex = items.findIndex((item) => item.id === id);
           items[itemIndex] = {
             ...items[itemIndex],

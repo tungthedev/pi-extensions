@@ -1,7 +1,5 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { formatLoadSkillsLabel } from "./ui.ts";
-
 export type LoadSkillsTransitionDeps = {
   writeLoadSkills: (value: boolean) => Promise<void>;
   writeSessionLoadSkills?: (value: boolean) => Promise<void> | void;
