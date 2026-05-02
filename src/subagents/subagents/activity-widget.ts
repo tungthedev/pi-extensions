@@ -1,6 +1,6 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
 
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth } from "@mariozechner/pi-tui";
 
 import type { ChildTransport } from "./types.ts";
 
@@ -10,8 +10,6 @@ export const SUBAGENT_ACTIVITY_WIDGET_KEY = "subagents:activity-widget";
 
 const MAX_COLUMNS = 3;
 const MAX_VISIBLE_ROWS = 3;
-const MIN_COLUMN_WIDTH = 64;
-const COLUMN_GAP = "  ";
 const INPUT_SUMMARY_MAX_CHARS = 52;
 const TIMER_TICK_MS = 1_000;
 
@@ -269,17 +267,16 @@ export function renderSubagentActivityCell(
 ): string {
   if (activity.transport === "interactive") {
     const text = [
-      `${theme.fg("text", "•")} ${theme.fg("accent", activity.displayName)}`,
+      theme.fg("accent", activity.displayName),
       theme.fg("muted", formatSubagentActivityElapsed(now - activity.startedAt)),
       theme.fg("toolOutput", "interactive session"),
     ].join(theme.fg("dim", " · "));
     return truncateToWidth(text, width);
   }
 
-  const bulletColor = activity.activeToolCalls > 0 ? "accent" : "text";
   const detailColor = activity.activeToolCalls > 0 ? "accent" : "toolOutput";
   const text = [
-    `${theme.fg(bulletColor, "•")} ${theme.fg("accent", activity.displayName)}`,
+    theme.fg("accent", activity.displayName),
     theme.fg("muted", formatSubagentActivityElapsed(now - activity.startedAt)),
     theme.fg("muted", formatCallCount(activity.toolCallsTotal)),
     theme.fg(detailColor, detailText(activity)),
@@ -287,89 +284,26 @@ export function renderSubagentActivityCell(
   return truncateToWidth(text, width);
 }
 
-export function chooseSubagentActivityColumnCount(count: number, innerWidth: number): number {
-  const maxColumns = Math.min(MAX_COLUMNS, Math.max(1, count));
-  const gapWidth = visibleWidth(COLUMN_GAP);
-  for (let columns = maxColumns; columns >= 1; columns -= 1) {
-    const cellWidth = Math.floor((innerWidth - gapWidth * (columns - 1)) / columns);
-    if (columns === 1 || cellWidth >= MIN_COLUMN_WIDTH) {
-      return columns;
-    }
-  }
-
-  return 1;
-}
-
-function padLine(text: string, width: number): string {
-  const truncated = truncateToWidth(text, width);
-  const padding = Math.max(0, width - visibleWidth(truncated));
-  return `${truncated}${" ".repeat(padding)}`;
-}
-
-function layoutActivityRows(
+function layoutActivityTreeRows(
   theme: Theme,
   activities: SubagentActivityView[],
-  innerWidth: number,
+  width: number,
   now: number,
+  hiddenCount: number,
 ): string[] {
   if (activities.length === 0) {
     return [];
   }
 
-  const columns = chooseSubagentActivityColumnCount(activities.length, innerWidth);
-  const gapWidth = visibleWidth(COLUMN_GAP);
-  const cellWidth = Math.max(1, Math.floor((innerWidth - gapWidth * (columns - 1)) / columns));
-  const rows: string[] = [];
-
-  for (let start = 0; start < activities.length; start += columns) {
-    const chunk = activities.slice(start, start + columns);
-    const rendered = chunk.map((activity) =>
-      padLine(renderSubagentActivityCell(theme, activity, cellWidth, now), cellWidth),
+  return activities.map((activity, index) => {
+    const hasMoreLine = hiddenCount > 0;
+    const isLast = index === activities.length - 1 && !hasMoreLine;
+    const prefix = theme.fg("dim", isLast ? "└ " : "├ ");
+    return truncateToWidth(
+      `${prefix}${renderSubagentActivityCell(theme, activity, Math.max(1, width - 2), now)}`,
+      width,
     );
-    rows.push(rendered.join(COLUMN_GAP).trimEnd());
-  }
-
-  return rows;
-}
-
-function borderLabel(theme: Theme, label: string, maxWidth: number): string {
-  return truncateToWidth(theme.fg("accent", label), maxWidth);
-}
-
-function topBorder(theme: Theme, innerWidth: number, title?: string): string {
-  const borderColor = (text: string) => theme.fg("dim", text);
-  if (!title) {
-    return borderColor(`╭${"─".repeat(innerWidth)}╮`);
-  }
-
-  const renderedTitle = borderLabel(theme, title, Math.max(1, innerWidth - 3));
-  const titleWidth = visibleWidth(renderedTitle);
-  const fill = Math.max(0, innerWidth - titleWidth - 3);
-  return borderColor("╭─ ") + renderedTitle + borderColor(` ${"─".repeat(fill)}╮`);
-}
-
-function renderBox(
-  theme: Theme,
-  width: number,
-  title: string | undefined,
-  lines: string[],
-): string[] {
-  if (!title && lines.length === 0) {
-    return [];
-  }
-
-  if (width < 4) {
-    const rawLines = title ? [title, ...lines] : lines;
-    return rawLines.map((line) => truncateToWidth(line, width));
-  }
-
-  const innerWidth = Math.max(1, width - 2);
-  const borderColor = (text: string) => theme.fg("dim", text);
-  return [
-    topBorder(theme, innerWidth, title),
-    ...lines.map((line) => `${borderColor("│")}${padLine(line, innerWidth)}${borderColor("│")}`),
-    borderColor(`╰${"─".repeat(innerWidth)}╯`),
-  ];
+  });
 }
 
 export function buildSubagentActivityWidgetLines(
@@ -383,21 +317,17 @@ export function buildSubagentActivityWidgetLines(
   }
 
   const sorted = sortSubagentActivityViews(activities);
-  const innerWidth = Math.max(1, width - 2);
-  const columns = chooseSubagentActivityColumnCount(sorted.length, innerWidth);
-  const visibleActivities = sorted.slice(0, columns * MAX_VISIBLE_ROWS);
+  const visibleLimit = MAX_COLUMNS * MAX_VISIBLE_ROWS;
+  const hiddenAfterLimit = sorted.length - visibleLimit;
+  const visibleCount = hiddenAfterLimit === 1 ? visibleLimit + 1 : visibleLimit;
+  const visibleActivities = sorted.slice(0, visibleCount);
   const hiddenCount = sorted.length - visibleActivities.length;
-  const totalCalls = sorted.reduce((sum, activity) => sum + activity.toolCallsTotal, 0);
-  const title =
-    totalCalls > 0
-      ? `Agents active: ${sorted.length} · ${formatCallCount(totalCalls)} total`
-      : `Agents active: ${sorted.length}`;
-  const lines = layoutActivityRows(theme, visibleActivities, innerWidth, now);
+  const lines = layoutActivityTreeRows(theme, visibleActivities, width, now, hiddenCount);
   if (hiddenCount > 0) {
-    lines.push(theme.fg("muted", `+${hiddenCount} more`));
+    lines.push(theme.fg("muted", `└ +${hiddenCount} more`));
   }
 
-  return renderBox(theme, width, title, lines);
+  return [truncateToWidth(theme.fg("accent", "Agents"), width), ...lines, theme.fg("dim", " ")];
 }
 
 export class SubagentActivityWidget {

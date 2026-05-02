@@ -1,7 +1,6 @@
+import { Box } from "@mariozechner/pi-tui";
 import assert from "node:assert/strict";
 import test from "node:test";
-
-import { Box } from "@mariozechner/pi-tui";
 
 import { registerTodoTools } from "./todo-tools.ts";
 
@@ -15,7 +14,7 @@ type RegisteredTool = {
 
 function createTheme() {
   return {
-    fg: (_color: string, text: string) => text,
+    fg: (color: string, text: string) => (color === "dim" && text === " " ? "<dim> </dim>" : text),
     bold: (text: string) => text,
     strikethrough: (text: string) => `~~${text}~~`,
   };
@@ -101,7 +100,7 @@ test("shared todo write adds reminder content and hides widget when nothing is i
   assert.deepEqual(statuses.at(-1), { key: "shared:todos", value: undefined });
   assert.deepEqual(widgets.at(-1), {
     key: "shared:todos",
-    lines: ["▣ Task A", "□ Task B"],
+    lines: ["▣ Task A", "□ Task B", "<dim> </dim>"],
     placement: "aboveEditor",
   });
 
@@ -157,7 +156,12 @@ test("shared todo widget previews active task, next tasks, and overflow count", 
   assert.deepEqual(statuses.at(-1), { key: "shared:todos", value: undefined });
   assert.deepEqual(widgets.at(-1), {
     key: "shared:todos",
-    lines: ["▣ Build widget preview", "□ Share icon renderer", "□ Add widget tests (+2 more)"],
+    lines: [
+      "▣ Build widget preview",
+      "□ Share icon renderer",
+      "□ Add widget tests (+2 more)",
+      "<dim> </dim>",
+    ],
     placement: "aboveEditor",
   });
 });
@@ -264,7 +268,10 @@ test("shared todo write uses a self-rendered shell while always preserving body"
 
   assert.equal(todoWrite.renderShell, "self");
   assert.ok(call instanceof Box);
-  assert.deepEqual(trimRenderedLines(call.render(80)).map((line) => line.trim()), ["Update todo"]);
+  assert.deepEqual(
+    trimRenderedLines(call.render(80)).map((line) => line.trim()),
+    ["Update todo"],
+  );
 
   const result = {
     details: {
@@ -279,10 +286,10 @@ test("shared todo write uses a self-rendered shell while always preserving body"
   });
 
   assert.deepEqual(collapsed.render(80), []);
-  assert.deepEqual(trimRenderedLines(call.render(80)).map((line) => line.trim()), [
-    "Update todo",
-    "▣ #1 Task A",
-  ]);
+  assert.deepEqual(
+    trimRenderedLines(call.render(80)).map((line) => line.trim()),
+    ["Update todo", "▣ #1 Task A"],
+  );
 
   todoWrite.renderResult(result, { expanded: true }, theme, {
     state,
@@ -290,8 +297,8 @@ test("shared todo write uses a self-rendered shell while always preserving body"
     lastComponent: undefined,
   });
 
-  assert.deepEqual(trimRenderedLines(call.render(80)).map((line) => line.trim()), [
-    "Update todo",
-    "▣ #1 Task A",
-  ]);
+  assert.deepEqual(
+    trimRenderedLines(call.render(80)).map((line) => line.trim()),
+    ["Update todo", "▣ #1 Task A"],
+  );
 });

@@ -10,7 +10,7 @@ import {
 } from "./activity-widget.ts";
 
 const theme = {
-  fg: (_color: string, text: string) => text,
+  fg: (color: string, text: string) => (color === "dim" && text === " " ? "<dim> </dim>" : text),
   bold: (text: string) => text,
 } as unknown as Theme;
 
@@ -58,7 +58,7 @@ test("sortSubagentActivityViews prioritizes active tools and latest tool activit
   );
 });
 
-test("buildSubagentActivityWidgetLines uses multiple columns when width allows", () => {
+test("buildSubagentActivityWidgetLines renders an unboxed activity tree", () => {
   const activities = [
     activity({
       agent_id: "a",
@@ -83,13 +83,14 @@ test("buildSubagentActivityWidgetLines uses multiple columns when width allows",
   const wide = buildSubagentActivityWidgetLines(theme, activities, 170, 61_000);
   const narrow = buildSubagentActivityWidgetLines(theme, activities, 46, 61_000);
 
-  assert.equal(wide.length, 4);
+  assert.equal(wide.length, 5);
   assert.equal(narrow.length, 5);
-  assert.match(wide[0] ?? "", /Agents active: 3 · 13 calls total/);
-  assert.equal((wide[0] ?? "").length, 170);
+  assert.equal(wide[0], "Agents");
+  assert.equal(wide.at(-1), "<dim> </dim>");
+  assert.doesNotMatch(wide.join("\n"), /Agents active|calls total|[╭╮╰╯│]/);
 });
 
-test("buildSubagentActivityWidgetLines shows up to six agents in two columns before hiding the rest", () => {
+test("buildSubagentActivityWidgetLines renders a single hidden agent instead of plus one more", () => {
   const lines = buildSubagentActivityWidgetLines(
     theme,
     [
@@ -154,11 +155,11 @@ test("buildSubagentActivityWidgetLines shows up to six agents in two columns bef
   assert.match(rendered, /reed \[worker\]/);
   assert.match(rendered, /spruce \[explorer\]/);
   assert.match(rendered, /moss \[worker\]/);
-  assert.doesNotMatch(rendered, /pine \[reviewer\]/);
-  assert.match(rendered, /\+1 more/);
+  assert.match(rendered, /pine \[reviewer\]/);
+  assert.doesNotMatch(rendered, /\+1 more/);
 });
 
-test("buildSubagentActivityWidgetLines shows up to nine agents in three columns before hiding the rest", () => {
+test("buildSubagentActivityWidgetLines renders the tenth agent instead of plus one more", () => {
   const activities = Array.from({ length: 10 }, (_, index) =>
     activity({
       agent_id: `agent-${index + 1}`,
@@ -174,8 +175,8 @@ test("buildSubagentActivityWidgetLines shows up to nine agents in three columns 
 
   assert.match(rendered, /agent-1/);
   assert.match(rendered, /agent-9/);
-  assert.doesNotMatch(rendered, /agent-10/);
-  assert.match(rendered, /\+1 more/);
+  assert.match(rendered, /agent-10/);
+  assert.doesNotMatch(rendered, /\+1 more/);
 });
 
 test("buildSubagentActivityWidgetLines renders interactive agents without tool telemetry", () => {
@@ -194,7 +195,7 @@ test("buildSubagentActivityWidgetLines renders interactive agents without tool t
   );
 
   const rendered = lines.join("\n");
-  assert.match(rendered, /Agents active: 1/);
+  assert.match(rendered, /^Agents$/m);
   assert.doesNotMatch(rendered, /calls total/);
   assert.match(rendered, /interactive session/);
   assert.doesNotMatch(rendered, /thinking/);

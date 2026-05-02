@@ -1,7 +1,8 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { renderTodoPreviewLine } from "./todo-render.ts";
 import type { TodoItem } from "./todo-state.ts";
+
+import { renderTodoPreviewLine } from "./todo-render.ts";
 
 export function syncTodoUi(
   ctx: ExtensionContext,
@@ -20,18 +21,20 @@ export function syncTodoUi(
   }
 
   const inProgressItem = items[inProgressIndex];
-  const upcomingPendingItems = items.slice(inProgressIndex + 1).filter((item) => item.status === "pending");
+  const upcomingPendingItems = items
+    .slice(inProgressIndex + 1)
+    .filter((item) => item.status === "pending");
   const visiblePendingItems = upcomingPendingItems.slice(0, 2);
   const hiddenPendingCount = upcomingPendingItems.length - visiblePendingItems.length;
   const previewItems = [inProgressItem, ...visiblePendingItems];
 
-  ctx.ui.setWidget(
-    options.widgetKey,
-    previewItems.map((item, index) =>
-      renderTodoPreviewLine(item, ctx.ui.theme, {
-        moreCount: index === previewItems.length - 1 ? hiddenPendingCount : undefined,
-      }),
-    ),
-    { placement: "aboveEditor" },
+  const lines = previewItems.map((item, index) =>
+    renderTodoPreviewLine(item, ctx.ui.theme, {
+      moreCount: index === previewItems.length - 1 ? hiddenPendingCount : undefined,
+    }),
   );
+
+  ctx.ui.setWidget(options.widgetKey, [...lines, ctx.ui.theme.fg("dim", " ")], {
+    placement: "aboveEditor",
+  });
 }
