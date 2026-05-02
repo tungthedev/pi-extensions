@@ -1,5 +1,6 @@
-import { expect, test } from "bun:test";
 import type { Context, Model } from "@mariozechner/pi-ai";
+
+import { expect, test } from "bun:test";
 
 import {
   buildOpenAIResponsesSimpleOptions,
@@ -45,11 +46,19 @@ test("streamSimple queues custom image message for idle display when parser save
       response: { status: 200, headers: new Headers() },
       data: [
         { type: "response.created", response: { id: "resp_1" } },
-        { type: "response.output_item.done", item: { type: "image_generation_call", id: "ig_1", result: PNG_BASE64 } },
+        {
+          type: "response.output_item.done",
+          item: { type: "image_generation_call", id: "ig_1", result: PNG_BASE64 },
+        },
         { type: "response.completed", response: { id: "resp_1", status: "completed" } },
       ],
     }),
-    persistImage: async (input) => ({ imageBase64: input.base64, path: "/tmp/generated.png", mimeType: "image/png", bytes: 1 }),
+    persistImage: async (input) => ({
+      imageBase64: input.base64,
+      path: "/tmp/generated.png",
+      mimeType: "image/png",
+      bytes: 1,
+    }),
   })(model(), { messages: [] } as Context, { apiKey: "key" } as any, pi);
 
   await collect(stream);
@@ -58,7 +67,9 @@ test("streamSimple queues custom image message for idle display when parser save
 
   flushGeneratedImageMessages(pi);
   expect(sent[0].message.customType).toBe("openai-generated-image");
-  expect(sent[0].message.content).toEqual([{ type: "text", text: "Generated image: /tmp/generated.png" }]);
+  expect(sent[0].message.content).toEqual([
+    { type: "text", text: "Generated image: /tmp/generated.png" },
+  ]);
   expect(sent[0].message.details).toEqual({
     path: "/tmp/generated.png",
     mimeType: "image/png",
@@ -81,16 +92,28 @@ test("deferred custom image message failures do not escape after stream completi
         createResponsesStream: async () => ({
           response: { status: 200, headers: new Headers() },
           data: [
-            { type: "response.output_item.done", item: { type: "image_generation_call", id: "ig_1", result: PNG_BASE64 } },
+            {
+              type: "response.output_item.done",
+              item: { type: "image_generation_call", id: "ig_1", result: PNG_BASE64 },
+            },
             { type: "response.completed", response: { id: "resp_1", status: "completed" } },
           ],
         }),
-        persistImage: async (input) => ({ imageBase64: input.base64, path: "/tmp/generated.png", mimeType: "image/png" }),
-      })(model(), { messages: [] } as Context, { apiKey: "key" } as any, {
-        sendMessage() {
-          throw new Error("send failed");
-        },
-      } as never),
+        persistImage: async (input) => ({
+          imageBase64: input.base64,
+          path: "/tmp/generated.png",
+          mimeType: "image/png",
+        }),
+      })(
+        model(),
+        { messages: [] } as Context,
+        { apiKey: "key" } as any,
+        {
+          sendMessage() {
+            throw new Error("send failed");
+          },
+        } as never,
+      ),
     );
 
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -106,7 +129,12 @@ test("streamSimple throws synchronously when API key is missing", () => {
   delete process.env.OPENAI_API_KEY;
   try {
     expect(() =>
-      streamSimpleOpenAIResponsesWithImages(model({ provider: "missing-provider" }), { messages: [] } as Context, undefined, {} as never),
+      streamSimpleOpenAIResponsesWithImages(
+        model({ provider: "missing-provider" }),
+        { messages: [] } as Context,
+        undefined,
+        {} as never,
+      ),
     ).toThrow("No API key for provider: missing-provider");
   } finally {
     if (oldKey === undefined) delete process.env.OPENAI_API_KEY;
@@ -125,11 +153,24 @@ test("streamSimple wrapper forwards service tier and reasoning summary", async (
   expect(options.reasoningSummary).toBe("detailed");
 });
 
+test("streamSimple wrapper clamps unsupported xhigh reasoning", async () => {
+  const options = buildOpenAIResponsesSimpleOptions(
+    model({ thinkingLevelMap: { xhigh: null } }),
+    { apiKey: "key", reasoning: "xhigh" } as any,
+    "key",
+  );
+
+  expect(options.reasoningEffort).toBe("high");
+});
+
 test("stream wrapper preserves start event when onResponse aborts", async () => {
   const controller = new AbortController();
   const events = await collect(
     createOpenAIResponsesImageStream({
-      createResponsesStream: async () => ({ response: { status: 200, headers: new Headers() }, data: [] }),
+      createResponsesStream: async () => ({
+        response: { status: 200, headers: new Headers() },
+        data: [],
+      }),
     })(
       model(),
       { messages: [] } as Context,
@@ -153,10 +194,20 @@ test("stream wrapper emits start before content and done with final assistant me
       createResponsesStream: async () => ({
         response: { status: 200, headers: new Headers() },
         data: [
-          { type: "response.output_item.added", item: { type: "message", id: "msg_1", content: [] } },
+          {
+            type: "response.output_item.added",
+            item: { type: "message", id: "msg_1", content: [] },
+          },
           { type: "response.content_part.added", part: { type: "output_text", text: "" } },
           { type: "response.output_text.delta", delta: "hello" },
-          { type: "response.output_item.done", item: { type: "message", id: "msg_1", content: [{ type: "output_text", text: "hello" }] } },
+          {
+            type: "response.output_item.done",
+            item: {
+              type: "message",
+              id: "msg_1",
+              content: [{ type: "output_text", text: "hello" }],
+            },
+          },
           { type: "response.completed", response: { id: "resp_1", status: "completed" } },
         ],
       }),
@@ -188,8 +239,16 @@ test("stream wrapper maps aborted signal to aborted stop reason", async () => {
   controller.abort();
   const events = await collect(
     createOpenAIResponsesImageStream({
-      createResponsesStream: async () => ({ response: { status: 200, headers: new Headers() }, data: [] }),
-    })(model(), { messages: [] } as Context, { apiKey: "key", signal: controller.signal } as any, {} as never),
+      createResponsesStream: async () => ({
+        response: { status: 200, headers: new Headers() },
+        data: [],
+      }),
+    })(
+      model(),
+      { messages: [] } as Context,
+      { apiKey: "key", signal: controller.signal } as any,
+      {} as never,
+    ),
   );
 
   expect(events[0].type).toBe("start");

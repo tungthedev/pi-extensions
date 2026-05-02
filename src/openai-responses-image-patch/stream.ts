@@ -1,6 +1,18 @@
-import { createAssistantMessageEventStream, getEnvApiKey, supportsXhigh, type AssistantMessage, type AssistantMessageEventStream, type Context, type Model, type SimpleStreamOptions } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
+import {
+  clampThinkingLevel,
+  createAssistantMessageEventStream,
+  getEnvApiKey,
+  type AssistantMessage,
+  type AssistantMessageEventStream,
+  type Context,
+  type Model,
+  type SimpleStreamOptions,
+} from "@mariozechner/pi-ai";
 import OpenAI from "openai";
+
+import type { GeneratedImageDetails, GeneratedImageParserInput } from "./types.ts";
 
 import { persistGeneratedPng } from "./images.ts";
 import {
@@ -8,11 +20,13 @@ import {
   buildOpenAIResponsesClientConfig,
   buildOpenAIResponsesParams,
 } from "./openai.ts";
-import { processResponsesStreamWithImages } from "./responses-parser.ts";
 import { GENERATED_IMAGE_CUSTOM_TYPE } from "./render.ts";
-import type { GeneratedImageDetails, GeneratedImageParserInput } from "./types.ts";
+import { processResponsesStreamWithImages } from "./responses-parser.ts";
 
-type ResponsesStreamResult = { response: { status: number; headers: Headers }; data: AsyncIterable<any> | Iterable<any> };
+type ResponsesStreamResult = {
+  response: { status: number; headers: Headers };
+  data: AsyncIterable<any> | Iterable<any>;
+};
 
 const pendingGeneratedImageMessages: GeneratedImageDetails[] = [];
 
@@ -94,7 +108,9 @@ async function defaultCreateResponsesStream(input: {
     dangerouslyAllowBrowser: true,
     defaultHeaders: input.clientConfig.defaultHeaders,
   });
-  return client.responses.create(input.params, input.options?.signal ? { signal: input.options.signal } : undefined).withResponse() as any;
+  return client.responses
+    .create(input.params, input.options?.signal ? { signal: input.options.signal } : undefined)
+    .withResponse() as any;
 }
 
 export function createOpenAIResponsesImageStream(deps: OpenAIResponsesImageStreamDeps = {}) {
@@ -119,13 +135,23 @@ export function createOpenAIResponsesImageStream(deps: OpenAIResponsesImageStrea
         const nextParams = await options?.onPayload?.(params, model);
         if (nextParams !== undefined) params = nextParams;
 
-        const { data, response } = await createResponsesStream({ model, context, options, params, clientConfig });
-        await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
+        const { data, response } = await createResponsesStream({
+          model,
+          context,
+          options,
+          params,
+          clientConfig,
+        });
+        await options?.onResponse?.(
+          { status: response.status, headers: headersToRecord(response.headers) },
+          model,
+        );
 
         stream.push({ type: "start", partial: output });
         await processResponsesStreamWithImages(data as AsyncIterable<any>, output, stream, model, {
           serviceTier: options?.serviceTier,
-          applyServiceTierPricing: (usage, serviceTier) => applyOpenAIServiceTierPricing(usage, serviceTier, model),
+          applyServiceTierPricing: (usage, serviceTier) =>
+            applyOpenAIServiceTierPricing(usage, serviceTier, model),
           onImage: async (image) => {
             const details = await persistImage(image);
             const mergedDetails = { ...details, provider: model.provider, model: model.id };
@@ -135,7 +161,8 @@ export function createOpenAIResponsesImageStream(deps: OpenAIResponsesImageStrea
         });
 
         if (options?.signal?.aborted) throw new Error("Request was aborted");
-        if (output.stopReason === "aborted" || output.stopReason === "error") throw new Error("An unknown error occurred");
+        if (output.stopReason === "aborted" || output.stopReason === "error")
+          throw new Error("An unknown error occurred");
         cleanupStreamingScratch(output);
         stream.push({ type: "done", reason: output.stopReason, message: output });
         stream.end();
@@ -152,14 +179,15 @@ export function createOpenAIResponsesImageStream(deps: OpenAIResponsesImageStrea
   };
 }
 
-function clampReasoning(effort: string | undefined): string | undefined {
-  return effort === "xhigh" ? "high" : effort;
-}
-
-export function buildOpenAIResponsesSimpleOptions(model: Model<"openai-responses">, options: (SimpleStreamOptions & any) | undefined, apiKey: string): any {
+export function buildOpenAIResponsesSimpleOptions(
+  model: Model<"openai-responses">,
+  options: (SimpleStreamOptions & any) | undefined,
+  apiKey: string,
+): any {
   return {
     temperature: options?.temperature,
-    maxTokens: options?.maxTokens ?? (model.maxTokens > 0 ? Math.min(model.maxTokens, 32000) : undefined),
+    maxTokens:
+      options?.maxTokens ?? (model.maxTokens > 0 ? Math.min(model.maxTokens, 32000) : undefined),
     signal: options?.signal,
     apiKey: apiKey || options?.apiKey,
     cacheRetention: options?.cacheRetention,
@@ -168,6 +196,7 @@ export function buildOpenAIResponsesSimpleOptions(model: Model<"openai-responses
     onPayload: options?.onPayload,
     onResponse: options?.onResponse,
     reasoningSummary: options?.reasoningSummary,
+    reasoningEffort: options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined,
     serviceTier: options?.serviceTier,
     maxRetryDelayMs: (options as any)?.maxRetryDelayMs,
     metadata: (options as any)?.metadata,
@@ -185,6 +214,5 @@ export function streamSimpleOpenAIResponsesWithImages(
     throw new Error(`No API key for provider: ${model.provider}`);
   }
   const base = buildOpenAIResponsesSimpleOptions(model, options, apiKey);
-  const reasoningEffort = supportsXhigh(model) ? options?.reasoning : clampReasoning(options?.reasoning);
-  return createOpenAIResponsesImageStream()(model, context, { ...base, reasoningEffort }, pi);
+  return createOpenAIResponsesImageStream()(model, context, base, pi);
 }

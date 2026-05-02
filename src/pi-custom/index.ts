@@ -1,6 +1,5 @@
 import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
 import type { ReadToolInput } from "@mariozechner/pi-coding-agent";
-import { Box, Container, type Component } from "@mariozechner/pi-tui";
 
 import {
   createEditToolDefinition,
@@ -12,6 +11,7 @@ import {
   createWriteTool,
   createWriteToolDefinition,
 } from "@mariozechner/pi-coding-agent";
+import { Box, Container, Text, type Component } from "@mariozechner/pi-tui";
 
 import { executePiFindWithFff } from "../shared/fff/adapters/pi-find.ts";
 import { executePiGrepWithFff } from "../shared/fff/adapters/pi-grep.ts";
@@ -19,7 +19,6 @@ import { resolveReadToolInput } from "../shared/fff/adapters/read.ts";
 import {
   buildHiddenCollapsedRenderer,
   buildSelfShellRenderer,
-  buildSummaryRenderer,
   decorateGrepResultWithStats,
   formatEditCallDetail,
   formatListCallDetail,
@@ -97,6 +96,13 @@ function decorateReadResultWithLineNumbers<T extends ToolResultWithContent>(
       };
     }),
   };
+}
+
+function getReadErrorText(result: unknown): string | undefined {
+  const text = (result as ToolResultWithContent).content?.find(
+    (item) => item?.type === "text" && typeof item.text === "string",
+  )?.text;
+  return text && text.trim().length > 0 ? text : undefined;
 }
 
 function getReadRenderState(context: { state?: Record<string, unknown> }): ReadRenderState {
@@ -234,17 +240,24 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
     renderCall(args, theme, context) {
       const state = getReadRenderState(context as { state?: Record<string, unknown> });
       const box = getReadRenderBox(context as { state?: Record<string, unknown> });
-      state.callComponent = readRenderer.renderCall(args as Record<string, unknown>, theme as Theme);
+      state.callComponent = readRenderer.renderCall(
+        args as Record<string, unknown>,
+        theme as Theme,
+      );
       syncReadRenderBox(box, state);
       return box;
     },
     renderResult(result, options, theme, context) {
       const state = getReadRenderState(context as { state?: Record<string, unknown> });
       const box = getReadRenderBox(context as { state?: Record<string, unknown> });
-      const resultComponent = readRenderer.renderResult(result, options, theme, {
+      let resultComponent = readRenderer.renderResult(result, options, theme, {
         ...context,
         lastComponent: state.resultComponent,
       });
+      const errorText = context.isError ? getReadErrorText(result) : undefined;
+      if (errorText) {
+        resultComponent = new Text(`\n${errorText}`, 0, 0);
+      }
       state.resultComponent = isHiddenReadResult(resultComponent, options, context)
         ? undefined
         : resultComponent;

@@ -50,9 +50,9 @@
     "openai": "6.26.0"
   },
   "devDependencies": {
-    "@mariozechner/pi-ai": "0.70.0",
-    "@mariozechner/pi-coding-agent": "0.70.0",
-    "@mariozechner/pi-tui": "0.70.0",
+    "@mariozechner/pi-ai": "0.72.1",
+    "@mariozechner/pi-coding-agent": "0.72.1",
+    "@mariozechner/pi-tui": "0.72.1",
     "@types/node": "^24.3.0",
     "oxfmt": "0.41.0",
     "oxlint": "1.56.0",
