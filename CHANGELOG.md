@@ -4,6 +4,23 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 
 ## [Unreleased]
 
+### Added
+
+- Added a Cursor Agent CLI tool-surface reference based on the inspected local Cursor Agent bundle.
+
+### Changed
+
+- Redesigned the Codex editor frame to show skill counts in the top border, move model, usage, path, and branch details into the bottom border, and reserve two input rows.
+- Updated the Pi mode shortcut and editor legend to use `ctrl+space` for tool-set cycling.
+- Grouped skill and `SYSTEM.md` prompt injection settings under a new `System Prompt` settings submenu, with `Load Skills` relabeled as `Inject Skills` in the UI.
+- Rendered subagent activity as an unboxed tree and added spacer lines after subagent and todo widgets.
+- Updated Pi development dependencies to `0.72.1`.
+
+### Fixed
+
+- Preserved expanded `read` error output inside the self-rendered Pi read shell when the native result component is empty.
+- Used Pi's model-aware thinking-level clamp for OpenAI Responses streams so unsupported `xhigh` reasoning falls back to `high`.
+
 ## [2.2.0] - 2026-04-27
 
 ### Added
