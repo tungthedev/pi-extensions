@@ -290,10 +290,13 @@ export function buildOpenAIResponsesParams(
   if (context.tools) params.tools = convertResponsesTools(context.tools);
   if (model.reasoning) {
     if (options?.reasoningEffort || options?.reasoningSummary) {
-      params.reasoning = { effort: options?.reasoningEffort || "medium", summary: options?.reasoningSummary || "auto" };
+      const effort = options?.reasoningEffort
+        ? ((model.thinkingLevelMap as any)?.[options.reasoningEffort] ?? options.reasoningEffort)
+        : "medium";
+      params.reasoning = { effort, summary: options?.reasoningSummary || "auto" };
       params.include = ["reasoning.encrypted_content"];
-    } else if (model.provider !== "github-copilot") {
-      params.reasoning = { effort: "none" };
+    } else if (model.provider !== "github-copilot" && (model.thinkingLevelMap as any)?.off !== null) {
+      params.reasoning = { effort: (model.thinkingLevelMap as any)?.off ?? "none" };
     }
   }
   return params;

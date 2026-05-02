@@ -56,9 +56,25 @@ test("buildOpenAIResponsesParams includes encrypted reasoning when requested", (
   expect(params.include).toEqual(["reasoning.encrypted_content"]);
 });
 
+test("buildOpenAIResponsesParams applies model thinking level mappings", () => {
+  const params = buildOpenAIResponsesParams(
+    model({ thinkingLevelMap: { high: "max" } }),
+    context(),
+    { reasoningEffort: "high" } as any,
+  );
+
+  expect(params.reasoning).toEqual({ effort: "max", summary: "auto" });
+});
+
 test("buildOpenAIResponsesParams disables reasoning by default except github-copilot", () => {
   expect(buildOpenAIResponsesParams(model(), context(), undefined).reasoning).toEqual({ effort: "none" });
   expect(buildOpenAIResponsesParams(model({ provider: "github-copilot" }), context(), undefined).reasoning).toBeUndefined();
+});
+
+test("buildOpenAIResponsesParams omits default reasoning when the model cannot turn thinking off", () => {
+  expect(
+    buildOpenAIResponsesParams(model({ thinkingLevelMap: { off: null } }), context(), undefined).reasoning,
+  ).toBeUndefined();
 });
 
 test("buildOpenAIResponsesClientConfig preserves headers and Copilot dynamic headers", () => {

@@ -163,6 +163,16 @@ test("streamSimple wrapper clamps unsupported xhigh reasoning", async () => {
   expect(options.reasoningEffort).toBe("high");
 });
 
+test("streamSimple wrapper omits reasoning effort when clamped to off", async () => {
+  const options = buildOpenAIResponsesSimpleOptions(
+    model({ reasoning: false }),
+    { apiKey: "key", reasoning: "high" } as any,
+    "key",
+  );
+
+  expect(options.reasoningEffort).toBeUndefined();
+});
+
 test("stream wrapper preserves start event when onResponse aborts", async () => {
   const controller = new AbortController();
   const events = await collect(

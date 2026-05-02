@@ -184,6 +184,7 @@ export function buildOpenAIResponsesSimpleOptions(
   options: (SimpleStreamOptions & any) | undefined,
   apiKey: string,
 ): any {
+  const clampedReasoning = options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined;
   return {
     temperature: options?.temperature,
     maxTokens:
@@ -196,7 +197,7 @@ export function buildOpenAIResponsesSimpleOptions(
     onPayload: options?.onPayload,
     onResponse: options?.onResponse,
     reasoningSummary: options?.reasoningSummary,
-    reasoningEffort: options?.reasoning ? clampThinkingLevel(model, options.reasoning) : undefined,
+    reasoningEffort: clampedReasoning === "off" ? undefined : clampedReasoning,
     serviceTier: options?.serviceTier,
     maxRetryDelayMs: (options as any)?.maxRetryDelayMs,
     metadata: (options as any)?.metadata,
