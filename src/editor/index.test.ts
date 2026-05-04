@@ -3,6 +3,9 @@ import type { AutocompleteProvider } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import { Result } from "better-result";
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import { wrapAutocompleteProviderWithAtPathSupport } from "../shared/fff/editor/autocomplete-at-path.ts";
@@ -15,7 +18,10 @@ import {
   normalizeCodexEditorInput,
   wrapAutocompleteProviderWithDollarSkillSupport,
 } from "./index.ts";
+import { findContainerWithChild } from "./install.ts";
 import { formatBottomLeftStatus } from "./status-format.ts";
+import { TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
+import { EDITOR_SETTINGS_CHANGED_EVENT } from "./events.ts";
 
 test("formatBottomLeftStatus separates model and usage with half-dashes", () => {
   const status = formatBottomLeftStatus(
@@ -254,12 +260,10 @@ test("composed autocomplete keeps both $skill and @path support active", async (
   assert.equal(pathSuggestions?.items[0]?.value, "@readme.ts");
 });
 
-test("installCodexEditorUi applies and removes external status segments through editor events", async () => {
+test("installCodexEditorUi does not register a below-editor status widget", async () => {
   const lifecycleHandlers = new Map<string, Function[]>();
   const eventHandlers = new Map<string, Function>();
-  let statusWidgetFactory:
-    | ((tui: { requestRender(): void }) => { render(width: number): string[] })
-    | undefined;
+  let belowEditorWidgetRegistered = false;
 
   installCodexEditorUi({
     getThinkingLevel() {
@@ -294,6 +298,7 @@ test("installCodexEditorUi applies and removes external status segments through 
         fg: (_color: string, text: string) => text,
         bg: (_color: string, text: string) => text,
         getFgAnsi: () => "",
+        getBgAnsi: () => "",
         getColorMode: () => "truecolor",
         bold: (text: string) => text,
       },
@@ -304,9 +309,9 @@ test("installCodexEditorUi applies and removes external status segments through 
           onBranchChange: () => () => undefined,
         });
       },
-      setWidget(_key: string, factory: typeof statusWidgetFactory, options: { placement: string }) {
+      setWidget(_key: string, _factory: Function, options: { placement: string }) {
         if (options.placement === "belowEditor") {
-          statusWidgetFactory = factory;
+          belowEditorWidgetRegistered = true;
         }
       },
     },
@@ -316,23 +321,806 @@ test("installCodexEditorUi applies and removes external status segments through 
     await handler(undefined, ctx as never);
   }
 
-  assert.ok(statusWidgetFactory);
-  const widget = statusWidgetFactory!({ requestRender() {} });
-  const before = widget.render(80)[0] ?? "";
-
   eventHandlers.get(EDITOR_SET_STATUS_SEGMENT_EVENT)?.({
     key: "sync",
     text: "syncing",
     align: "right",
   });
-  const afterSet = widget.render(80)[0] ?? "";
-
   eventHandlers.get(EDITOR_REMOVE_STATUS_SEGMENT_EVENT)?.({ key: "sync" });
-  const afterRemove = widget.render(80)[0] ?? "";
 
-  assert.ok(!before.includes("syncing"));
-  assert.ok(afterSet.includes("syncing"));
-  assert.ok(!afterRemove.includes("syncing"));
+  assert.equal(belowEditorWidgetRegistered, false);
+});
+
+test("installCodexEditorUi keeps default fixed-editor runtime inactive", async () => {
+  const lifecycleHandlers = new Map<string, Function[]>();
+  let editorFactory:
+    | ((
+        tui: { requestRender(): void; terminal: { rows: number; write(data: string): void } },
+        editorTheme: unknown,
+        keybindings: unknown,
+      ) => unknown)
+    | undefined;
+  let widgetRegistered = false;
+  let footerRegistered = false;
+  const autocompleteProviders: Function[] = [];
+  const terminalWrites: string[] = [];
+
+  installCodexEditorUi({
+    getThinkingLevel() {
+      return "low";
+    },
+    getCommands() {
+      return [];
+    },
+    registerCommand() {},
+    on(event: string, handler: Function) {
+      lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
+    },
+    events: {
+      on() {},
+    },
+  } as never);
+
+  const ctx = {
+    cwd: "/tmp/project",
+    model: { id: "gpt-5.4-mini" },
+    getContextUsage() {
+      return undefined;
+    },
+    sessionManager: {
+      getBranch() {
+        return [];
+      },
+    },
+    ui: {
+      theme: {
+        fg: (_color: string, text: string) => text,
+        bg: (_color: string, text: string) => text,
+        bold: (text: string) => text,
+        strikethrough: (text: string) => text,
+        getFgAnsi: () => "",
+        getBgAnsi: () => "",
+        getColorMode: () => "truecolor",
+      },
+      addAutocompleteProvider(factory: Function) {
+        autocompleteProviders.push(factory);
+      },
+      setEditorComponent(factory: typeof editorFactory) {
+        editorFactory = factory;
+      },
+      setFooter(factory: Function) {
+        footerRegistered = true;
+        factory(undefined, undefined, {
+          getGitBranch: () => undefined,
+          onBranchChange: () => () => undefined,
+        });
+      },
+      setWidget(_key: string, _factory: Function, options: { placement: string }) {
+        if (options.placement === "belowEditor") widgetRegistered = true;
+      },
+    },
+  };
+
+  for (const handler of lifecycleHandlers.get("session_start") ?? []) {
+    await handler(undefined, ctx as never);
+  }
+
+  assert.ok(editorFactory);
+  editorFactory!(
+    {
+      requestRender() {},
+      terminal: {
+        rows: 40,
+        write(data: string) {
+          terminalWrites.push(data);
+        },
+      },
+    },
+    { borderColor: (text: string) => text, selectList: {} },
+    { matches: () => false },
+  );
+
+  assert.equal(footerRegistered, true);
+  assert.equal(widgetRegistered, false);
+  assert.equal(autocompleteProviders.length, 2);
+  assert.deepEqual(terminalWrites, []);
+});
+
+test("installCodexEditorUi writes emergency terminal reset when lifecycle resets without active compositor", async () => {
+  const lifecycleHandlers = new Map<string, Function[]>();
+  let editorFactory:
+    | ((
+        tui: { requestRender(): void; terminal: { rows: number; columns: number; write(data: string): void }; children: unknown[] },
+        editorTheme: unknown,
+        keybindings: unknown,
+      ) => { render(width: number): string[] })
+    | undefined;
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "editor-reset-"));
+  await mkdir(path.join(tmpDir, ".pi"), { recursive: true });
+  await writeFile(path.join(tmpDir, ".pi", "settings.json"), `${JSON.stringify({ editor: { fixedEditor: true } })}\n`);
+  const writes: string[] = [];
+  const originalWrite = process.stdout.write;
+  process.stdout.write = ((chunk: string | Uint8Array) => {
+    writes.push(String(chunk));
+    return true;
+  }) as typeof process.stdout.write;
+
+  try {
+    installCodexEditorUi({
+      getThinkingLevel() {
+        return "low";
+      },
+      getCommands() {
+        return [];
+      },
+      on(event: string, handler: Function) {
+        lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
+      },
+      events: {
+        on() {},
+      },
+      registerCommand() {},
+    } as never);
+
+    const ctx = createEditorTestContext(tmpDir, {
+      setEditorComponent(factory: typeof editorFactory) {
+        editorFactory = factory;
+      },
+    });
+    for (const handler of lifecycleHandlers.get("session_start") ?? []) {
+      await handler(undefined, ctx as never);
+    }
+
+    assert.ok(editorFactory);
+    const parent = { children: [] as unknown[], render: () => ["parent"] };
+    const tui = {
+      children: [parent],
+      requestRender() {},
+      terminal: {
+        rows: 20,
+        columns: 60,
+        write() {
+          throw new Error("terminal unavailable");
+        },
+      },
+    };
+    const editor = editorFactory!(tui, { borderColor: (text: string) => text, selectList: {} }, { matches: () => false });
+    parent.children.push(editor);
+    await Promise.resolve();
+
+    for (const handler of lifecycleHandlers.get("session_shutdown") ?? []) handler();
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+
+  assert.ok(writes.some((write) => write.includes("\x1b[?1049l")));
+  assert.ok(writes.some((write) => write.includes("\x1b[<999u\x1b[>4;0m")));
+});
+
+test("findContainerWithChild locates editor container and index", () => {
+  const editor = { render: () => ["editor"] };
+  const status = { render: () => ["status"] };
+  const parent = { children: [status, editor] };
+  const tui = { children: [{ children: [] }, parent] };
+
+  const match = findContainerWithChild(tui, editor);
+
+  assert.equal(match?.container, parent);
+  assert.equal(match?.index, 1);
+  assert.equal(match?.childIndex, 1);
+});
+
+function createEditorTestContext(cwd: string, uiOverrides: Record<string, unknown> = {}) {
+  return {
+    cwd,
+    model: { id: "gpt-5.4-mini" },
+    getContextUsage() {
+      return undefined;
+    },
+    sessionManager: {
+      getBranch() {
+        return [];
+      },
+    },
+    ui: {
+      theme: {
+        fg: (_color: string, text: string) => text,
+        bg: (_color: string, text: string) => text,
+        bold: (text: string) => text,
+        strikethrough: (text: string) => text,
+        getFgAnsi: () => "",
+        getBgAnsi: () => "",
+        getColorMode: () => "truecolor",
+      },
+      notify() {},
+      addAutocompleteProvider() {},
+      setEditorComponent() {},
+      setFooter(factory: Function) {
+        factory(undefined, undefined, {
+          getGitBranch: () => undefined,
+          onBranchChange: () => () => undefined,
+        });
+      },
+      setWidget() {},
+      ...uiOverrides,
+    },
+  };
+}
+
+test("installCodexEditorUi does not register an editor command", async () => {
+  const lifecycleHandlers = new Map<string, Function[]>();
+  let editorFactory:
+    | ((
+        tui: { requestRender(): void; terminal: { rows: number; write(data: string): void } },
+        editorTheme: unknown,
+        keybindings: unknown,
+      ) => unknown)
+    | undefined;
+  let renderRequests = 0;
+
+  installCodexEditorUi({
+    getThinkingLevel() {
+      return "low";
+    },
+    getCommands() {
+      return [];
+    },
+    registerCommand(name: string) {
+      throw new Error(`unexpected command registration: ${name}`);
+    },
+    on(event: string, handler: Function) {
+      lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
+    },
+    events: {
+      on() {},
+    },
+  } as never);
+
+  const ctx = {
+    cwd: "/tmp/project",
+    model: { id: "gpt-5.4-mini" },
+    getContextUsage() {
+      return undefined;
+    },
+    sessionManager: {
+      getBranch() {
+        return [];
+      },
+    },
+    ui: {
+      theme: {
+        fg: (_color: string, text: string) => text,
+        bg: (_color: string, text: string) => text,
+        bold: (text: string) => text,
+        strikethrough: (text: string) => text,
+        getFgAnsi: () => "",
+        getBgAnsi: () => "",
+        getColorMode: () => "truecolor",
+      },
+      notify() {},
+      addAutocompleteProvider() {},
+      setEditorComponent(factory: typeof editorFactory) {
+        editorFactory = factory;
+      },
+      setFooter(factory: Function) {
+        factory(undefined, undefined, {
+          getGitBranch: () => undefined,
+          onBranchChange: () => () => undefined,
+        });
+      },
+      setWidget() {},
+    },
+  };
+
+  for (const handler of lifecycleHandlers.get("session_start") ?? []) {
+    await handler(undefined, ctx as never);
+  }
+  assert.ok(editorFactory);
+  editorFactory!(
+    {
+      requestRender() {
+        renderRequests += 1;
+      },
+      terminal: { rows: 40, write() {} },
+    },
+    { borderColor: (text: string) => text, selectList: {} },
+    { matches: () => false },
+  );
+
+  assert.equal(renderRequests, 0);
+});
+
+test("installCodexEditorUi retries fixed-editor install when settings load after eager editor creation", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-editor-eager-"));
+  const projectDir = path.join(tempDir, "project");
+  await mkdir(path.join(projectDir, ".pi"), { recursive: true });
+  await writeFile(
+    path.join(projectDir, ".pi", "settings.json"),
+    `${JSON.stringify({ editor: { fixedEditor: true } }, null, 2)}\n`,
+    { encoding: "utf8" },
+  );
+  const lifecycleHandlers = new Map<string, Function[]>();
+  let childrenReads = 0;
+
+  installCodexEditorUi({
+    getThinkingLevel() {
+      return "low";
+    },
+    getCommands() {
+      return [];
+    },
+    registerCommand() {},
+    on(event: string, handler: Function) {
+      lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
+    },
+    events: {
+      on() {},
+    },
+  } as never);
+
+  const ctx = {
+    cwd: projectDir,
+    model: { id: "gpt-5.4-mini" },
+    getContextUsage() {
+      return undefined;
+    },
+    sessionManager: {
+      getBranch() {
+        return [];
+      },
+    },
+    ui: {
+      theme: {
+        fg: (_color: string, text: string) => text,
+        bg: (_color: string, text: string) => text,
+        bold: (text: string) => text,
+        strikethrough: (text: string) => text,
+        getFgAnsi: () => "",
+        getBgAnsi: () => "",
+        getColorMode: () => "truecolor",
+      },
+      notify() {},
+      addAutocompleteProvider() {},
+      setEditorComponent(factory: Function) {
+        const tui = {
+          requestRender() {},
+          terminal: { rows: 40, write() {} },
+          get children() {
+            childrenReads += 1;
+            return [];
+          },
+        };
+        factory(tui, { borderColor: (text: string) => text, selectList: {} }, { matches: () => false });
+      },
+      setFooter(factory: Function) {
+        factory(undefined, undefined, {
+          getGitBranch: () => undefined,
+          onBranchChange: () => () => undefined,
+        });
+      },
+      setWidget() {},
+    },
+  };
+
+  for (const handler of lifecycleHandlers.get("session_start") ?? []) {
+    await handler(undefined, ctx as never);
+  }
+
+  assert.ok(childrenReads > 0);
+});
+
+test("installCodexEditorUi installs fixed editor compositor when enabled", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-editor-active-"));
+  const projectDir = path.join(tempDir, "project");
+  await mkdir(path.join(projectDir, ".pi"), { recursive: true });
+  await writeFile(
+    path.join(projectDir, ".pi", "settings.json"),
+    `${JSON.stringify({ editor: { fixedEditor: true } }, null, 2)}\n`,
+    "utf8",
+  );
+  const lifecycleHandlers = new Map<string, Function[]>();
+  let editorFactory: Function | undefined;
+  const terminalWrites: string[] = [];
+  const terminal = {
+    columns: 40,
+    rows: 12,
+    write(data: string) {
+      terminalWrites.push(data);
+    },
+  };
+  const chat = {
+    render() {
+      return ["leading-row"];
+    },
+  };
+  const status = {
+    render() {
+      return ["status-row"];
+    },
+  };
+  const above = {
+    render() {
+      return ["above-row"];
+    },
+  };
+  const editorContainer = {
+    children: [] as Array<{ render?(width: number): string[] }>,
+    render(width: number) {
+      return this.children.flatMap((child) => child.render?.(width) ?? []);
+    },
+  };
+  const below = {
+    render() {
+      return ["below-row"];
+    },
+  };
+  const footer = {
+    render() {
+      return [];
+    },
+  };
+  const tui = {
+    terminal,
+    children: [chat, status, above, editorContainer, below, footer] as unknown[],
+    requestRender() {},
+    render() {
+      return ["chat"];
+    },
+    doRender() {
+      terminal.write("body");
+    },
+    getShowHardwareCursor() {
+      return true;
+    },
+  };
+
+  installCodexEditorUi({
+    getThinkingLevel: () => "low",
+    getCommands: () => [],
+    registerCommand() {},
+    on(event: string, handler: Function) {
+      lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
+    },
+    events: { on() {} },
+  } as never);
+
+  const ctx = createEditorTestContext(projectDir, {
+    setEditorComponent(factory: Function) {
+      editorFactory = factory;
+    },
+  });
+  for (const handler of lifecycleHandlers.get("session_start") ?? []) {
+    await handler(undefined, ctx as never);
+  }
+
+  assert.ok(editorFactory);
+  const editor = editorFactory!(tui, { borderColor: (text: string) => text, selectList: {} }, { matches: () => false });
+  editor.focused = true;
+  editorContainer.children.push(editor);
+  await Promise.resolve();
+
+  assert.ok(terminalWrites.some((write) => write.includes("\x1b[?1049h")));
+  assert.equal(terminalWrites.some((write) => write.includes("leading-row")), false);
+  assert.ok(terminalWrites.some((write) => write.includes("status-row")), terminalWrites.join("\n---\n"));
+  assert.ok(terminalWrites.some((write) => write.includes("above-row")), terminalWrites.join("\n---\n"));
+  assert.ok(terminalWrites.some((write) => write.includes("below-row")), terminalWrites.join("\n---\n"));
+  assert.ok(terminalWrites.some((write) => write.includes("╰─gpt-5.4-mini low")), terminalWrites.join("\n---\n"));
+  assert.equal(terminalWrites.some((write) => write.includes("gpt-5.4-mini low ·")), false);
+  assert.equal(terminalWrites.join("\n").match(/gpt-5\.4-mini low/g)?.length, 1);
+  assert.ok(terminalWrites.every((write) => !write.includes("\x1b[?25h")), terminalWrites.join("\n---\n"));
+  assert.deepEqual(chat.render(), ["leading-row"]);
+  assert.deepEqual(status.render(), []);
+  assert.deepEqual(above.render(), []);
+  assert.deepEqual(editorContainer.render(40), []);
+  assert.deepEqual(below.render(), []);
+});
+
+test("installCodexEditorUi keeps chat containers in the scrollable root", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-editor-sibling-root-"));
+  const projectDir = path.join(tempDir, "project");
+  await mkdir(path.join(projectDir, ".pi"), { recursive: true });
+  await writeFile(
+    path.join(projectDir, ".pi", "settings.json"),
+    `${JSON.stringify({ editor: { fixedEditor: true } }, null, 2)}\n`,
+    "utf8",
+  );
+  const lifecycleHandlers = new Map<string, Function[]>();
+  let editorFactory: Function | undefined;
+  const terminalWrites: string[] = [];
+  const terminal = {
+    columns: 40,
+    rows: 12,
+    write(data: string) {
+      terminalWrites.push(data);
+    },
+  };
+  const chat = {
+    render() {
+      return ["transcript-row"];
+    },
+  };
+  const status = {
+    render() {
+      return ["status-row"];
+    },
+  };
+  const above = {
+    render() {
+      return ["above-row"];
+    },
+  };
+  const editorContainer = {
+    children: [] as Array<{ render?(width: number): string[] }>,
+    render(width: number) {
+      return this.children.flatMap((child) => child.render?.(width) ?? []);
+    },
+  };
+  const below = {
+    render() {
+      return ["below-row"];
+    },
+  };
+  const footer = {
+    render() {
+      return [];
+    },
+  };
+  const tui = {
+    terminal,
+    children: [chat, status, above, editorContainer, below, footer] as unknown[],
+    requestRender() {},
+    render(width: number) {
+      return (this.children as Array<{ render?(width: number): string[] }>).flatMap((child) => child.render?.(width) ?? []);
+    },
+    doRender() {
+      terminal.write("body");
+    },
+    getShowHardwareCursor() {
+      return true;
+    },
+  };
+
+  installCodexEditorUi({
+    getThinkingLevel: () => "low",
+    getCommands: () => [],
+    registerCommand() {},
+    on(event: string, handler: Function) {
+      lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
+    },
+    events: { on() {} },
+  } as never);
+
+  const ctx = createEditorTestContext(projectDir, {
+    setEditorComponent(factory: Function) {
+      editorFactory = factory;
+    },
+  });
+  for (const handler of lifecycleHandlers.get("session_start") ?? []) {
+    await handler(undefined, ctx as never);
+  }
+
+  assert.ok(editorFactory);
+  const editor = editorFactory!(tui, { borderColor: (text: string) => text, selectList: {} }, { matches: () => false });
+  editor.focused = true;
+  editorContainer.children.push(editor);
+  await Promise.resolve();
+
+  const rootLines = tui.render(40);
+  assert.equal(rootLines[0], "transcript-row");
+  assert.equal(rootLines.includes("status-row"), false);
+  assert.equal(rootLines.includes("above-row"), false);
+  assert.equal(rootLines.includes("below-row"), false);
+  assert.equal(terminalWrites.join("\n").includes("transcript-row"), false);
+  assert.ok(terminalWrites.join("\n").includes("status-row"), terminalWrites.join("\n---\n"));
+  assert.ok(terminalWrites.join("\n").includes("above-row"), terminalWrites.join("\n---\n"));
+  assert.ok(terminalWrites.join("\n").includes("below-row"), terminalWrites.join("\n---\n"));
+});
+
+test("editor settings changed event toggles active compositor", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-editor-toggle-"));
+  const projectDir = path.join(tempDir, "project");
+  const lifecycleHandlers = new Map<string, Function[]>();
+  const eventHandlers = new Map<string, Function>();
+  let editorFactory: Function | undefined;
+  const terminalWrites: string[] = [];
+  const terminal = {
+    columns: 40,
+    rows: 12,
+    write(data: string) {
+      terminalWrites.push(data);
+    },
+  };
+  const parent = {
+    children: [] as Array<{ render?(width: number): string[] }>,
+    render(width: number) {
+      return this.children.flatMap((child) => child.render?.(width) ?? []);
+    },
+  };
+  const tui = {
+    terminal,
+    children: [parent],
+    requestRender() {},
+    render() {
+      return ["chat"];
+    },
+    doRender() {
+      terminal.write("body");
+    },
+  };
+
+  installCodexEditorUi({
+    getThinkingLevel: () => "low",
+    getCommands: () => [],
+    on(event: string, handler: Function) {
+      lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
+    },
+    events: {
+      on(event: string, handler: Function) {
+        eventHandlers.set(event, handler);
+      },
+    },
+  } as never);
+
+  const ctx = createEditorTestContext(projectDir, {
+    setEditorComponent(factory: Function) {
+      editorFactory = factory;
+    },
+  });
+  for (const handler of lifecycleHandlers.get("session_start") ?? []) {
+    await handler(undefined, ctx as never);
+  }
+  const editor = editorFactory!(tui, { borderColor: (text: string) => text, selectList: {} }, { matches: () => false });
+  parent.children.push(editor);
+
+  eventHandlers.get(EDITOR_SETTINGS_CHANGED_EVENT)?.({ settings: { fixedEditor: true } });
+  assert.ok(terminalWrites.some((write) => write.includes("\x1b[?1049h")));
+
+  eventHandlers.get(EDITOR_SETTINGS_CHANGED_EVENT)?.({ settings: { fixedEditor: false } });
+  assert.ok(terminalWrites.at(-1)?.includes("\x1b[?1049l"));
+});
+
+test("fixed editor status events repaint active compositor", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-editor-status-"));
+  const projectDir = path.join(tempDir, "project");
+  await mkdir(path.join(projectDir, ".pi"), { recursive: true });
+  await writeFile(
+    path.join(projectDir, ".pi", "settings.json"),
+    `${JSON.stringify({ editor: { fixedEditor: true } }, null, 2)}\n`,
+    "utf8",
+  );
+  const lifecycleHandlers = new Map<string, Function[]>();
+  const eventHandlers = new Map<string, Function>();
+  let editorFactory: Function | undefined;
+  const terminalWrites: string[] = [];
+  let renderRequests = 0;
+  const terminal = {
+    columns: 60,
+    rows: 12,
+    write(data: string) {
+      terminalWrites.push(data);
+    },
+  };
+  const parent = {
+    children: [] as Array<{ render?(width: number): string[] }>,
+    render(width: number) {
+      return this.children.flatMap((child) => child.render?.(width) ?? []);
+    },
+  };
+  const tui = {
+    terminal,
+    children: [parent],
+    requestRender() {
+      renderRequests += 1;
+    },
+    render() {
+      return ["chat"];
+    },
+    doRender() {
+      terminal.write("body");
+    },
+  };
+
+  installCodexEditorUi({
+    getThinkingLevel: () => "low",
+    getCommands: () => [],
+    registerCommand() {},
+    on(event: string, handler: Function) {
+      lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
+    },
+    events: {
+      on(event: string, handler: Function) {
+        eventHandlers.set(event, handler);
+      },
+    },
+  } as never);
+
+  const ctx = createEditorTestContext(projectDir, {
+    setEditorComponent(factory: Function) {
+      editorFactory = factory;
+    },
+  });
+  for (const handler of lifecycleHandlers.get("session_start") ?? []) {
+    await handler(undefined, ctx as never);
+  }
+  const editor = editorFactory!(tui, { borderColor: (text: string) => text, selectList: {} }, { matches: () => false });
+  parent.children.push(editor);
+  await Promise.resolve();
+
+  const setStatus = eventHandlers.get(EDITOR_SET_STATUS_SEGMENT_EVENT);
+  assert.ok(setStatus);
+  setStatus({ key: "sync", text: "syncing", align: "right" });
+  await Promise.resolve();
+
+  assert.ok(
+    terminalWrites.some((write) => write.includes("syncing")) || renderRequests > 0,
+    terminalWrites.join("\n---\n"),
+  );
+});
+
+test("fixed editor submit hooks jump to root bottom without replacing submit behavior", async () => {
+  let jumps = 0;
+  const originalJump = TerminalSplitCompositor.prototype.jumpToRootBottom;
+  TerminalSplitCompositor.prototype.jumpToRootBottom = function patchedJump() {
+    jumps += 1;
+    return true;
+  };
+
+  try {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-editor-submit-"));
+    const projectDir = path.join(tempDir, "project");
+    await mkdir(path.join(projectDir, ".pi"), { recursive: true });
+    await writeFile(
+      path.join(projectDir, ".pi", "settings.json"),
+      `${JSON.stringify({ editor: { fixedEditor: true } }, null, 2)}\n`,
+      "utf8",
+    );
+    const lifecycleHandlers = new Map<string, Function[]>();
+    let editorFactory: Function | undefined;
+    const terminal = { columns: 40, rows: 12, write() {} };
+    const parent = {
+      children: [] as Array<{ render?(width: number): string[] }>,
+      render(width: number) {
+        return this.children.flatMap((child) => child.render?.(width) ?? []);
+      },
+    };
+    const tui = { terminal, children: [parent], requestRender() {}, render: () => ["chat"], doRender() {} };
+
+    installCodexEditorUi({
+      getThinkingLevel: () => "low",
+      getCommands: () => [],
+      registerCommand() {},
+      on(event: string, handler: Function) {
+        lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
+      },
+      events: { on() {} },
+    } as never);
+
+    const ctx = createEditorTestContext(projectDir, {
+      setEditorComponent(factory: Function) {
+        editorFactory = factory;
+      },
+    });
+    for (const handler of lifecycleHandlers.get("session_start") ?? []) {
+      await handler(undefined, ctx as never);
+    }
+    const keybindings = { matches: (data: string, action: string) => data === "follow" && action === "app.message.followUp" };
+    const editor = editorFactory!(tui, { borderColor: (text: string) => text, selectList: {} }, keybindings);
+    parent.children.push(editor);
+    await Promise.resolve();
+
+    const submitted: string[] = [];
+    editor.onSubmit = (text: string) => submitted.push(text);
+    editor.onSubmit("hello");
+    assert.deepEqual(submitted, ["hello"]);
+    assert.equal(jumps, 1);
+
+    editor.setText("queued");
+    editor.onAction("app.message.followUp", () => editor.setText(""));
+    editor.handleInput("follow");
+    assert.equal(jumps, 2);
+  } finally {
+    TerminalSplitCompositor.prototype.jumpToRootBottom = originalJump;
+  }
 });
 
 test("installCodexEditorUi keeps at least two input rows in the boxed editor", async () => {

@@ -13,6 +13,11 @@ import {
   type ToolSetPack,
   type WebToolSettingKey,
 } from "./config.ts";
+import { DEFAULT_EDITOR_SETTINGS, type EditorSettings, type EditorSettingsUpdate } from "../editor/config.ts";
+
+export type SettingsUiSettings = PiModeSettings & {
+  editor?: EditorSettings;
+};
 
 export type SettingsCommandAction =
   | { action: "open-root" }
@@ -26,7 +31,7 @@ export type SettingsCommandAction =
 
 export type OpenSettingsUiOptions = {
   focus?: "toolSet" | "loadSkills" | "systemMdPrompt";
-  readSettings: () => Promise<PiModeSettings>;
+  readSettings: () => Promise<SettingsUiSettings>;
   applyToolSetTransition: (
     ctx: Pick<ExtensionContext, "hasUI" | "ui">,
     value: ToolSetPack,
@@ -37,6 +42,7 @@ export type OpenSettingsUiOptions = {
   ) => Promise<void>;
   writeSystemMdPrompt: (value: boolean) => Promise<void>;
   writeWebToolSetting: (key: WebToolSettingKey, value: string | undefined) => Promise<void>;
+  writeEditorSettings: (settings: EditorSettingsUpdate) => Promise<void>;
 };
 
 const TOOL_SET_LABELS: Record<"Pi" | "Codex" | "Droid", ToolSetPack> = {
@@ -55,11 +61,20 @@ const LOAD_SKILLS_LABELS: Record<"Enabled" | "Disabled", boolean> = {
   Disabled: false,
 };
 
+const EDITOR_BOOLEAN_LABELS: Record<"Enabled" | "Disabled", boolean> = {
+  Enabled: true,
+  Disabled: false,
+};
+
 export function formatSystemMdPromptLabel(value: boolean): "Enabled" | "Disabled" {
   return value ? "Enabled" : "Disabled";
 }
 
 export function formatLoadSkillsLabel(value: boolean): "Enabled" | "Disabled" {
+  return value ? "Enabled" : "Disabled";
+}
+
+function formatEditorBooleanLabel(value: boolean): "Enabled" | "Disabled" {
   return value ? "Enabled" : "Disabled";
 }
 
@@ -72,7 +87,8 @@ function buildSystemPromptSummary(
   return "Default";
 }
 
-export function buildPiModeSettingItems(settings: PiModeSettings): SettingItem[] {
+export function buildPiModeSettingItems(settings: SettingsUiSettings): SettingItem[] {
+  const editorSettings = settings.editor ?? DEFAULT_EDITOR_SETTINGS;
   return [
     {
       id: "toolSet",
@@ -81,6 +97,13 @@ export function buildPiModeSettingItems(settings: PiModeSettings): SettingItem[]
         "Selects the Pi, Codex, or Droid mode behavior for this package. Pi keeps native Pi tools only.",
       currentValue: formatToolSetLabel(settings.toolSet),
       values: ["Pi", "Codex", "Droid"],
+    },
+    {
+      id: "fixedEditor",
+      label: "Pin Editor",
+      description: "Pins the editor and status rows at the bottom while the transcript scrolls above them.",
+      currentValue: formatEditorBooleanLabel(editorSettings.fixedEditor),
+      values: ["Enabled", "Disabled"],
     },
     {
       id: "systemPrompt",
@@ -480,7 +503,8 @@ export async function openPiModeSettingsUi(
   const settings = {
     ...currentSettings,
     webTools: { ...currentSettings.webTools },
-  } satisfies PiModeSettings;
+    editor: { ...(currentSettings.editor ?? DEFAULT_EDITOR_SETTINGS) },
+  } satisfies SettingsUiSettings & { editor: EditorSettings };
 
   await ctx.ui.custom((_tui, theme, _kb, done) => {
     let showRootHeader = true;
@@ -552,6 +576,18 @@ export async function openPiModeSettingsUi(
             ...items[itemIndex],
             currentValue: formatToolSetLabel(nextValue),
           };
+          return;
+        }
+
+        if (id === "fixedEditor") {
+          const nextValue = EDITOR_BOOLEAN_LABELS[newValue as keyof typeof EDITOR_BOOLEAN_LABELS];
+          if (nextValue === undefined) return;
+
+          await options.writeEditorSettings({ fixedEditor: nextValue, mouseScroll: true });
+          settings.editor.fixedEditor = nextValue;
+          settings.editor.mouseScroll = true;
+          settingsList.updateValue(id, formatEditorBooleanLabel(nextValue));
+          ctx.ui.notify(`Pin editor: ${formatEditorBooleanLabel(nextValue)}`, "info");
           return;
         }
 

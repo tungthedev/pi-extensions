@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { handlePiModeCommand, registerPiModeShortcut, type PiModeCommandDeps } from "./index.ts";
+import { TOOL_SET_OVERRIDE_ENV } from "./session.ts";
 import { applyToolSetTransition } from "./tool-set-transition.ts";
 import { buildPiModeSettingItems, openPiModeSettingsUi } from "./ui.ts";
 
@@ -140,6 +141,9 @@ test("openPiModeSettingsUi applies the same tool-set transition side effects", a
       writeWebToolSetting: async () => {
         throw new Error("writeWebToolSetting should not run");
       },
+      writeEditorSettings: async () => {
+        throw new Error("writeEditorSettings should not run");
+      },
     },
   );
 
@@ -148,6 +152,92 @@ test("openPiModeSettingsUi applies the same tool-set transition side effects", a
   assert.deepEqual(emitted, ["codex"]);
   assert.equal(notifications.length, 1);
   assert.equal(notifications[0], "Mode: Codex");
+});
+
+test("buildPiModeSettingItems exposes top-level pin editor setting", () => {
+  const items = buildPiModeSettingItems({
+    toolSet: "codex",
+    loadSkills: true,
+    systemMdPrompt: false,
+    webTools: {},
+    editor: { fixedEditor: true, mouseScroll: false },
+  } as never);
+
+  assert.deepEqual(items.slice(0, 3).map((item) => [item.id, item.label, item.currentValue]), [
+    ["toolSet", "Mode", "Codex"],
+    ["fixedEditor", "Pin Editor", "Enabled"],
+    ["systemPrompt", "System Prompt", "Skills only"],
+  ]);
+});
+
+test("openPiModeSettingsUi toggles pin editor and enables mouse scroll with fixed mode", async () => {
+  const editorWrites: Array<Record<string, boolean>> = [];
+  const notifications: string[] = [];
+  let component: { handleInput?: (data: string) => void; render?: (width: number) => string[] } | undefined;
+
+  await openPiModeSettingsUi(
+    {
+      hasUI: true,
+      ui: {
+        notify(message: string) {
+          notifications.push(message);
+        },
+        async custom(
+          render: (
+            tui: unknown,
+            theme: { fg: (_color: string, text: string) => string; bold: (text: string) => string },
+            kb: unknown,
+            done: (value: unknown) => void,
+          ) => { handleInput?: (data: string) => void; render?: (width: number) => string[] },
+        ) {
+          component = render(
+            undefined,
+            {
+              fg: (_color: string, text: string) => text,
+              bold: (text: string) => text,
+            },
+            undefined,
+            () => undefined,
+          );
+        },
+      },
+    } as never,
+    {
+      readSettings: async () => ({
+        toolSet: "pi",
+        loadSkills: true,
+        systemMdPrompt: false,
+        webTools: {},
+        editor: { fixedEditor: false, mouseScroll: true },
+      } as never),
+      applyToolSetTransition: async () => {
+        throw new Error("applyToolSetTransition should not run");
+      },
+      applyLoadSkillsTransition: async () => {
+        throw new Error("applyLoadSkillsTransition should not run");
+      },
+      writeSystemMdPrompt: async () => {
+        throw new Error("writeSystemMdPrompt should not run");
+      },
+      writeWebToolSetting: async () => {
+        throw new Error("writeWebToolSetting should not run");
+      },
+      writeEditorSettings: async (settings: Record<string, boolean>) => {
+        editorWrites.push(settings);
+      },
+    } as never,
+  );
+
+  assert.ok(component);
+  assert.ok(component.render?.(80).some((line) => line.includes("Pin Editor")));
+
+  component.handleInput?.("\x1b[B");
+  component.handleInput?.("\r");
+  await flushMicrotasks();
+
+  assert.deepEqual(editorWrites, [{ fixedEditor: true, mouseScroll: true }]);
+  assert.deepEqual(notifications, ["Pin editor: Enabled"]);
+  assert.ok(component.render?.(80).some((line) => line.includes("Enabled")));
 });
 
 test("handlePiModeCommand writes the selected system-md setting directly", async () => {
@@ -202,6 +292,8 @@ test("handlePiModeCommand writes the selected system-md setting directly", async
 });
 
 test("registerPiModeShortcut cycles pi -> codex -> droid -> pi without saving global config", async () => {
+  const previousToolSetOverride = process.env[TOOL_SET_OVERRIDE_ENV];
+  delete process.env[TOOL_SET_OVERRIDE_ENV];
   const writes: Array<"pi" | "codex" | "droid"> = [];
   const sessionWrites: Array<"pi" | "codex" | "droid"> = [];
   const emitted: Array<"pi" | "codex" | "droid"> = [];
@@ -272,14 +364,19 @@ test("registerPiModeShortcut cycles pi -> codex -> droid -> pi without saving gl
     },
   });
 
-  await shortcutHandlers.get("ctrl+space")!(makeCtx("pi"));
-  await shortcutHandlers.get("ctrl+space")!(makeCtx("codex"));
-  await shortcutHandlers.get("ctrl+space")!(makeCtx("droid"));
+  try {
+    await shortcutHandlers.get("ctrl+space")!(makeCtx("pi"));
+    await shortcutHandlers.get("ctrl+space")!(makeCtx("codex"));
+    await shortcutHandlers.get("ctrl+space")!(makeCtx("droid"));
 
-  assert.deepEqual(writes, []);
-  assert.deepEqual(sessionWrites, ["codex", "droid", "pi"]);
-  assert.deepEqual(emitted, ["codex", "droid", "pi"]);
-  assert.deepEqual(notifications, ["Mode: Codex", "Mode: Droid", "Mode: Pi"]);
+    assert.deepEqual(writes, []);
+    assert.deepEqual(sessionWrites, ["codex", "droid", "pi"]);
+    assert.deepEqual(emitted, ["codex", "droid", "pi"]);
+    assert.deepEqual(notifications, ["Mode: Codex", "Mode: Droid", "Mode: Pi"]);
+  } finally {
+    if (previousToolSetOverride === undefined) delete process.env[TOOL_SET_OVERRIDE_ENV];
+    else process.env[TOOL_SET_OVERRIDE_ENV] = previousToolSetOverride;
+  }
 });
 
 test("registerPiModeShortcut toggles load-skills for the current session without saving global config", async () => {
@@ -513,7 +610,7 @@ test("buildPiModeSettingItems groups prompt injection settings under System Prom
 
   assert.deepEqual(
     items.map((item) => item.id),
-    ["toolSet", "systemPrompt", "webTools"],
+    ["toolSet", "fixedEditor", "systemPrompt", "webTools"],
   );
 
   const item = items.find((entry) => entry.id === "systemPrompt");
@@ -548,6 +645,7 @@ test("openPiModeSettingsUi opens prompt injection settings from System Prompt", 
           );
 
           component.handleInput?.("\x1b[B");
+          component.handleInput?.("\x1b[B");
           component.handleInput?.("\r");
           rendered = component.render(100).join("\n");
         },
@@ -571,6 +669,9 @@ test("openPiModeSettingsUi opens prompt injection settings from System Prompt", 
       },
       writeWebToolSetting: async () => {
         throw new Error("writeWebToolSetting should not run");
+      },
+      writeEditorSettings: async () => {
+        throw new Error("writeEditorSettings should not run");
       },
     },
   );

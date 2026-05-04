@@ -32,6 +32,18 @@ pi install https://github.com/tungthedev/pi-extensions
 
 The `editor` extension replaces Pi's default composer with a boxed editor UI and an extensible status row. It also integrates with the package's file and skill discovery features so autocomplete can stay consistent across modes.
 
+Fixed editor mode is available as an opt-in setting. It pins the editor and status rows at the bottom of the terminal while the conversation scrolls above them, including mouse and keyboard scrolling inside the transcript area.
+
+```json
+{
+  "editor": {
+    "fixedEditor": true
+  }
+}
+```
+
+You can toggle it from `/pi-mode` > `Pin Editor`.
+
 ### Mermaid
 
 The `mermaid` extension detects Mermaid code blocks in chat, renders them inline, and keeps a session diagram index you can browse later.

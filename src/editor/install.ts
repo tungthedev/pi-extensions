@@ -7,7 +7,7 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import type { AutocompleteProvider, EditorTheme, TUI } from "@mariozechner/pi-tui";
 
-import { CustomEditor } from "@mariozechner/pi-coding-agent";
+import { CustomEditor, copyToClipboard } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 import { ensureSessionFffRuntime, resolveSessionFffRuntimeKey } from "../fff/session-runtime.ts";
@@ -28,7 +28,18 @@ import {
   shouldTriggerDollarSkillAutocomplete,
   wrapAutocompleteProviderWithDollarSkillSupport,
 } from "./autocomplete-dollar-skill.ts";
-import { EDITOR_REMOVE_STATUS_SEGMENT_EVENT, EDITOR_SET_STATUS_SEGMENT_EVENT } from "./events.ts";
+import {
+  DEFAULT_EDITOR_SETTINGS,
+  readEditorSettings,
+  type EditorSettings,
+} from "./config.ts";
+import {
+  EDITOR_REMOVE_STATUS_SEGMENT_EVENT,
+  EDITOR_SETTINGS_CHANGED_EVENT,
+  EDITOR_SET_STATUS_SEGMENT_EVENT,
+} from "./events.ts";
+import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
+import { emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
 import {
   formatBottomLeftStatus,
   formatBottomRightStatus,
@@ -40,17 +51,14 @@ import {
 import {
   syncStateFromContext,
   syncStateFromSettings,
-  syncStatusRow,
   type EditorStatusState,
 } from "./status-state.ts";
 import {
   EDITOR_BASE_LEFT_SEGMENT_KEY,
   EDITOR_BASE_RIGHT_SEGMENT_KEY,
-  EDITOR_STATUS_WIDGET_KEY,
   type RemoveStatusSegmentPayload,
   type SetStatusSegmentPayload,
 } from "./types.ts";
-import { HorizontalLineWidget, WidgetRowRegistry, type InlineSegment } from "./widget-row.ts";
 
 const RESERVED_SEGMENT_KEYS = new Set([
   EDITOR_BASE_LEFT_SEGMENT_KEY,
@@ -60,6 +68,32 @@ const HORIZONTAL = "─";
 const MIN_INPUT_ROWS = 2;
 
 type AutocompleteKeybindings = Pick<KeybindingsManager, "matches">;
+type FixedEditorCompositorHandle = Pick<TerminalSplitCompositor, "jumpToRootBottom" | "requestRepaint" | "dispose">;
+type Renderable = { render(width: number): string[] };
+
+export function findContainerWithChild(
+  tui: unknown,
+  child: unknown,
+): { container: { children: unknown[] } & Partial<Renderable>; index: number; childIndex: number } | null {
+  const children = (tui as { children?: unknown })?.children;
+  if (!Array.isArray(children)) return null;
+
+  for (let index = 0; index < children.length; index += 1) {
+    const candidate = children[index];
+    const candidateChildren = (candidate as { children?: unknown })?.children;
+    if (!Array.isArray(candidateChildren)) continue;
+    const childIndex = candidateChildren.indexOf(child);
+    if (childIndex !== -1) {
+      return { container: candidate as { children: unknown[] }, index, childIndex };
+    }
+  }
+
+  return null;
+}
+
+function isRenderable(value: unknown): value is Renderable {
+  return typeof (value as { render?: unknown })?.render === "function";
+}
 
 class CodexBoxedEditor extends CustomEditor {
   private readonly autocompleteKeybindings: AutocompleteKeybindings;
@@ -77,9 +111,23 @@ class CodexBoxedEditor extends CustomEditor {
     private readonly getBottomRightStatus: (maxWidth: number) => string,
     private readonly useLegacyAutocompleteComposition: boolean,
     private readonly pathAutocompleteRuntime?: ReturnType<typeof ensureSessionFffRuntime>,
+    private readonly followSubmittedEditorToBottom?: () => void,
   ) {
     super(tui, editorTheme, keybindings);
     this.autocompleteKeybindings = keybindings;
+    let submitted: ((text: string) => void) | undefined;
+    Object.defineProperty(this, "onSubmit", {
+      configurable: true,
+      get: () => submitted,
+      set: (handler: ((text: string) => void) | undefined) => {
+        submitted = handler
+          ? (text: string) => {
+              this.followSubmittedEditorToBottom?.();
+              handler(text);
+            }
+          : undefined;
+      },
+    });
   }
 
   override setAutocompleteProvider(provider: AutocompleteProvider): void {
@@ -101,7 +149,14 @@ class CodexBoxedEditor extends CustomEditor {
 
   override handleInput(data: string): void {
     const normalized = normalizeCodexEditorInput(data);
+    const shouldFollowSubmittedText =
+      this.autocompleteKeybindings.matches(normalized, "app.message.followUp" as never) &&
+      this.getText().trim().length > 0;
     super.handleInput(normalized);
+
+    if (shouldFollowSubmittedText && this.getText().trim().length === 0) {
+      this.followSubmittedEditorToBottom?.();
+    }
 
     if (this.isShowingAutocomplete()) return;
 
@@ -281,13 +336,120 @@ class CodexBoxedEditor extends CustomEditor {
 }
 
 export function installCodexEditorUi(pi: ExtensionAPI): void {
-  let statusRow: WidgetRowRegistry | null = null;
-  let getStatusTheme: (() => Theme) | undefined;
+  let editorSettings: EditorSettings = DEFAULT_EDITOR_SETTINGS;
+  let currentCtx: ExtensionContext | null = null;
+  let currentTui: TUI | null = null;
+  let currentEditor: CodexBoxedEditor | null = null;
+  let runtimeSettingsOverride: EditorSettings | null = null;
+  let fixedEditorCompositor: FixedEditorCompositorHandle | null = null;
+  let fixedEditorTerminalTouched = false;
   const state: EditorStatusState = { cwd: process.cwd() };
-  const externalSegments = new Map<string, InlineSegment>();
+
+  const requestFixedEditorRepaint = () => {
+    if (fixedEditorCompositor) {
+      fixedEditorCompositor.requestRepaint();
+      return;
+    }
+    if (!editorSettings.fixedEditor) return;
+    currentTui?.requestRender();
+  };
+
+  const teardownFixedEditorCompositor = (options?: { resetExtendedKeyboardModes?: boolean }) => {
+    if (fixedEditorCompositor) {
+      fixedEditorCompositor.dispose(options);
+      fixedEditorTerminalTouched = false;
+    } else if (options?.resetExtendedKeyboardModes && fixedEditorTerminalTouched) {
+      try {
+        process.stdout.write(emergencyTerminalModeReset());
+      } catch {
+        // Lifecycle cleanup must fail closed; there is no safe UI surface during shutdown.
+      }
+      fixedEditorTerminalTouched = false;
+    }
+    fixedEditorCompositor = null;
+    currentTui?.requestRender();
+  };
+
+  const installFixedEditorCompositor = (
+    ctx: ExtensionContext,
+    tui: TUI,
+    options: { warnIfMissing?: boolean } = {},
+  ) => {
+    currentTui = tui;
+    teardownFixedEditorCompositor();
+    if (!editorSettings.fixedEditor) return;
+    if (!currentEditor) return;
+
+    const editorContainer = findContainerWithChild(tui, currentEditor);
+    if (!editorContainer) {
+      if (options.warnIfMissing) {
+        ctx.ui.notify?.("Fixed editor unavailable: editor container not found", "warning");
+      }
+      return;
+    }
+    const editorRenderable = editorContainer.container;
+    if (!isRenderable(editorRenderable)) {
+      if (options.warnIfMissing) {
+        ctx.ui.notify?.("Fixed editor unavailable: editor container cannot render", "warning");
+      }
+      return;
+    }
+
+    const tuiChildren = Array.isArray((tui as { children?: unknown }).children)
+      ? ((tui as { children: unknown[] }).children)
+      : [];
+    const statusContainer = tuiChildren[editorContainer.index - 2];
+    const widgetContainerAbove = tuiChildren[editorContainer.index - 1];
+    const widgetContainerBelow = tuiChildren[editorContainer.index + 1];
+    const fixedStatus = isRenderable(statusContainer) ? statusContainer : null;
+    const fixedAbove = isRenderable(widgetContainerAbove) ? widgetContainerAbove : null;
+    const fixedBelow = isRenderable(widgetContainerBelow) ? widgetContainerBelow : null;
+
+    try {
+      let compositor: TerminalSplitCompositor;
+      compositor = new TerminalSplitCompositor({
+        tui,
+        terminal: tui.terminal,
+        mouseScroll: editorSettings.mouseScroll,
+        renderCluster: (width, terminalRows) =>
+          renderFixedEditorCluster({
+            width,
+            terminalRows,
+            statusLines: [
+              ...(fixedAbove ? compositor.renderHidden(fixedAbove, width) : []),
+              ...(fixedStatus ? compositor.renderHidden(fixedStatus, width) : []),
+            ],
+            editorLines: compositor.renderHidden(editorRenderable, width),
+            secondaryLines: fixedBelow ? compositor.renderHidden(fixedBelow, width) : [],
+          }),
+        getShowHardwareCursor: () => false,
+        onCopySelection: (text) => {
+          void copyToClipboard(text).catch(() => undefined);
+        },
+      });
+
+      if (fixedStatus) compositor.hideRenderable(fixedStatus);
+      if (fixedAbove) compositor.hideRenderable(fixedAbove);
+      compositor.hideRenderable(editorRenderable);
+      if (fixedBelow) compositor.hideRenderable(fixedBelow);
+      fixedEditorTerminalTouched = true;
+      compositor.install();
+      fixedEditorCompositor = compositor;
+      compositor.requestRepaint();
+    } catch (error) {
+      fixedEditorCompositor = null;
+      const message = error instanceof Error ? error.message : String(error);
+      ctx.ui.notify?.(`Fixed editor unavailable: ${message}`, "warning");
+    }
+  };
+
+  const followSubmittedEditorToBottom = () => {
+    fixedEditorCompositor?.jumpToRootBottom();
+  };
+  void followSubmittedEditorToBottom;
 
   const applyUi = (ctx: ExtensionContext) => {
-    getStatusTheme = () => ctx.ui.theme;
+    currentCtx = ctx;
     const fffRuntime = ensureSessionFffRuntime(resolveSessionFffRuntimeKey(ctx), ctx.cwd);
     const useProviderStack = typeof ctx.ui.addAutocompleteProvider === "function";
     if (useProviderStack) {
@@ -298,7 +460,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
     }
     ctx.ui.setEditorComponent(
       (tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager) => {
-        return new CodexBoxedEditor(
+        const editor = new CodexBoxedEditor(
           tui,
           editorTheme,
           keybindings,
@@ -311,7 +473,16 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
           (maxWidth) => formatBottomRightStatus(state, maxWidth),
           !useProviderStack,
           fffRuntime,
+          followSubmittedEditorToBottom,
         );
+        currentTui = tui;
+        currentEditor = editor;
+        queueMicrotask(() => {
+          if (currentCtx === ctx && currentTui === tui && currentEditor === editor) {
+            installFixedEditorCompositor(ctx, tui, { warnIfMissing: true });
+          }
+        });
+        return editor;
       },
     );
 
@@ -320,7 +491,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
 
       const unsubscribe = footerData.onBranchChange(() => {
         state.gitBranch = footerData.getGitBranch() ?? undefined;
-        syncStatusRow(state, statusRow, externalSegments, getStatusTheme);
+        requestFixedEditorRepaint();
       });
 
       return {
@@ -333,30 +504,37 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
         },
       };
     });
-
-    ctx.ui.setWidget(
-      EDITOR_STATUS_WIDGET_KEY,
-      (tui) => {
-        statusRow = new WidgetRowRegistry(tui);
-        syncStatusRow(state, statusRow, externalSegments, getStatusTheme);
-        return new HorizontalLineWidget(
-          () => statusRow?.snapshot() ?? [],
-          () => statusRow?.version ?? 0,
-        );
-      },
-      { placement: "belowEditor" },
-    );
   };
 
   const syncContext = async (ctx: ExtensionContext) => {
+    editorSettings = runtimeSettingsOverride ?? (await readEditorSettings({ cwd: ctx.cwd }));
     syncStateFromContext(state, ctx, pi);
     await syncStateFromSettings(state, ctx);
-    syncStatusRow(state, statusRow, externalSegments, getStatusTheme);
+    let repainted = false;
+    if (editorSettings.fixedEditor && currentTui) {
+      if (fixedEditorCompositor) {
+        requestFixedEditorRepaint();
+        repainted = true;
+      } else {
+        installFixedEditorCompositor(ctx, currentTui);
+        repainted = true;
+      }
+    }
+    if (!repainted) requestFixedEditorRepaint();
   };
 
   pi.on("session_start", async (_event, ctx) => {
+    runtimeSettingsOverride = null;
+    teardownFixedEditorCompositor({ resetExtendedKeyboardModes: true });
+    currentCtx = null;
+    currentTui = null;
+    currentEditor = null;
     applyUi(ctx);
     await syncContext(ctx);
+  });
+
+  pi.on("session_shutdown", () => {
+    teardownFixedEditorCompositor({ resetExtendedKeyboardModes: true });
   });
 
   pi.on("model_select", async (_event, ctx) => {
@@ -376,7 +554,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
     if (!payload?.toolSet) return;
 
     state.toolSetLabel = formatToolSetLabel(payload.toolSet);
-    syncStatusRow(state, statusRow, externalSegments, getStatusTheme);
+    requestFixedEditorRepaint();
   });
 
   pi.events.on(LOAD_SKILLS_CHANGED_EVENT, (data: unknown) => {
@@ -384,31 +562,34 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
     if (typeof payload?.loadSkills !== "boolean") return;
 
     state.loadSkillsEnabled = payload.loadSkills;
-    syncStatusRow(state, statusRow, externalSegments, getStatusTheme);
+    requestFixedEditorRepaint();
+  });
+
+  pi.events.on(EDITOR_SETTINGS_CHANGED_EVENT, (data: unknown) => {
+    const settings = (data as { settings?: Partial<EditorSettings> })?.settings;
+    if (!settings) return;
+
+    editorSettings = { ...editorSettings, ...settings };
+    runtimeSettingsOverride = editorSettings;
+    if (editorSettings.fixedEditor && currentCtx && currentTui) {
+      installFixedEditorCompositor(currentCtx, currentTui, { warnIfMissing: true });
+    } else if (!editorSettings.fixedEditor) {
+      teardownFixedEditorCompositor();
+    } else {
+      requestFixedEditorRepaint();
+    }
   });
 
   pi.events.on(EDITOR_SET_STATUS_SEGMENT_EVENT, (data: unknown) => {
     const payload = data as SetStatusSegmentPayload;
     if (!payload?.key || typeof payload.text !== "string") return;
     if (RESERVED_SEGMENT_KEYS.has(payload.key)) return;
-
-    const segment: InlineSegment = {
-      align: payload.align === "center" || payload.align === "right" ? payload.align : "left",
-      priority:
-        typeof payload.priority === "number" && Number.isFinite(payload.priority)
-          ? payload.priority
-          : 0,
-      renderInline: () => payload.text,
-    };
-
-    externalSegments.set(payload.key, segment);
-    statusRow?.set(payload.key, segment);
+    requestFixedEditorRepaint();
   });
 
   pi.events.on(EDITOR_REMOVE_STATUS_SEGMENT_EVENT, (data: unknown) => {
     const payload = data as RemoveStatusSegmentPayload;
     if (!payload?.key || RESERVED_SEGMENT_KEYS.has(payload.key)) return;
-    externalSegments.delete(payload.key);
-    statusRow?.remove(payload.key);
+    requestFixedEditorRepaint();
   });
 }

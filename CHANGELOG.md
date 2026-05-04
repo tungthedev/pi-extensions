@@ -7,6 +7,7 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 ### Added
 
 - Added a Cursor Agent CLI tool-surface reference based on the inspected local Cursor Agent bundle.
+- Added opt-in fixed editor mode for the `editor` extension, with a `/pi-mode` `Pin Editor` setting backed by `editor.fixedEditor`.
 
 ### Changed
 

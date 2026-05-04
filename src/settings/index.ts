@@ -16,8 +16,14 @@ import {
   type WebToolSettingKey,
   type ToolSetChangedPayload,
   type ToolSetPack,
-  type PiModeSettings,
 } from "./config.ts";
+import {
+  readEditorSettings,
+  resolveEditorSettingsWritePath,
+  writeEditorSettings,
+  type EditorSettingsUpdate,
+} from "../editor/config.ts";
+import { EDITOR_SETTINGS_CHANGED_EVENT } from "../editor/events.ts";
 import {
   applyLoadSkillsTransition,
   applySessionLoadSkillsTransition,
@@ -31,16 +37,22 @@ import {
   writeSessionToolSetSnapshot,
 } from "./session.ts";
 import { applySessionToolSetTransition, applyToolSetTransition } from "./tool-set-transition.ts";
-import { formatSystemMdPromptLabel, openPiModeSettingsUi, parseSettingsCommand } from "./ui.ts";
+import {
+  formatSystemMdPromptLabel,
+  openPiModeSettingsUi,
+  parseSettingsCommand,
+  type SettingsUiSettings,
+} from "./ui.ts";
 
 export type PiModeCommandDeps = {
-  readSettings: () => Promise<PiModeSettings>;
+  readSettings: () => Promise<SettingsUiSettings>;
   writeToolSet: (value: ToolSetPack) => Promise<void>;
   writeSessionToolSet: (value: ToolSetPack) => Promise<void> | void;
   writeSessionLoadSkills: (value: boolean) => Promise<void> | void;
   writeLoadSkills: (value: boolean) => Promise<void>;
   writeSystemMdPrompt: (value: boolean) => Promise<void>;
   writeWebToolSetting: (key: WebToolSettingKey, value: string | undefined) => Promise<void>;
+  writeEditorSettings?: (settings: EditorSettingsUpdate, ctx: ExtensionCommandContext) => Promise<void>;
   emitToolSetChange?: (value: ToolSetPack) => Promise<void> | void;
   emitLoadSkillsChange?: (value: boolean) => Promise<void> | void;
   openSettingsUi: (
@@ -118,6 +130,7 @@ function createDefaultDeps(pi: ExtensionAPI): PiModeCommandDeps {
             ...settings,
             toolSet: await resolveSessionToolSet(ctx.sessionManager),
             loadSkills: await resolveSessionLoadSkills(ctx.sessionManager),
+            editor: await readEditorSettings({ cwd: ctx.cwd }),
           };
         },
         applyLoadSkillsTransition: (transitionCtx, value) =>
@@ -137,6 +150,11 @@ function createDefaultDeps(pi: ExtensionAPI): PiModeCommandDeps {
           ),
         writeSystemMdPrompt: (value) => writeSystemMdPromptSetting(value),
         writeWebToolSetting: (key, value) => writeWebToolSetting(key, value),
+        writeEditorSettings: async (settings) => {
+          const settingsPath = await resolveEditorSettingsWritePath({ cwd: ctx.cwd });
+          await writeEditorSettings(settings, settingsPath);
+          pi.events.emit(EDITOR_SETTINGS_CHANGED_EVENT, { settings });
+        },
         applyToolSetTransition: (ctx, value) =>
           applyToolSetTransition(
             ctx,

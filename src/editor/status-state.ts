@@ -64,9 +64,11 @@ export function syncStatusRow(
 ): void {
   if (!statusRow) return;
 
-  void state;
-  void getTheme;
   statusRow.clear();
+
+  for (const { key, segment } of baseSegments(state, getTheme)) {
+    statusRow.set(key, segment);
+  }
 
   for (const [key, segment] of externalSegments) {
     statusRow.set(key, segment);
