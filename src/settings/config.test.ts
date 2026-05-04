@@ -9,6 +9,7 @@ import {
   readPiModeSettingsSync,
   readSettingsFromFile,
   writeLoadSkillsSetting,
+  writeModeShortcutSetting,
   writeToolSetSetting,
   writeWebToolSetting,
 } from "./config.ts";
@@ -28,6 +29,7 @@ test("readSettingsFromFile fails closed on malformed json", async () => {
     toolSet: "pi",
     loadSkills: true,
     systemMdPrompt: false,
+    modeShortcut: "f2",
     webTools: {},
   });
 });
@@ -37,8 +39,21 @@ test("parsePiModeSettings migrates legacy forge settings to pi", () => {
     toolSet: "pi",
     loadSkills: true,
     systemMdPrompt: false,
+    modeShortcut: "f2",
     webTools: {},
   });
+});
+
+test("parsePiModeSettings reads custom mode shortcut and defaults blanks to f2", () => {
+  assert.deepEqual(parsePiModeSettings({ "pi-mode": { modeShortcut: " ctrl+o " } }), {
+    toolSet: "pi",
+    loadSkills: true,
+    systemMdPrompt: false,
+    modeShortcut: "ctrl+o",
+    webTools: {},
+  });
+
+  assert.equal(parsePiModeSettings({ "pi-mode": { modeShortcut: " " } }).modeShortcut, "f2");
 });
 
 test("readPiModeSettingsSync reads stored web tool settings", async () => {
@@ -65,6 +80,7 @@ test("readPiModeSettingsSync reads stored web tool settings", async () => {
     toolSet: "pi",
     loadSkills: true,
     systemMdPrompt: false,
+    modeShortcut: "f2",
     webTools: {
       geminiApiKey: "gemini-secret",
       firecrawlApiKey: "firecrawl-secret",
@@ -141,6 +157,18 @@ test("writeLoadSkillsSetting persists the load-skills toggle", async () => {
 
   const updated = JSON.parse(await readFile(settingsPath, "utf8")) as Record<string, unknown>;
   assert.deepEqual(updated["pi-mode"], { loadSkills: false });
+});
+
+test("writeModeShortcutSetting persists and normalizes the mode shortcut", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-tung-settings-"));
+  const settingsPath = path.join(tempDir, "settings.json");
+  await writeFile(settingsPath, "{}\n", "utf8");
+
+  await writeModeShortcutSetting(" ctrl+o ", settingsPath);
+  assert.equal(readPiModeSettingsSync(settingsPath).modeShortcut, "ctrl+o");
+
+  await writeModeShortcutSetting(" ", settingsPath);
+  assert.equal(readPiModeSettingsSync(settingsPath).modeShortcut, "f2");
 });
 
 test("writeWebToolSetting persists and clears stored web tool secrets", async () => {

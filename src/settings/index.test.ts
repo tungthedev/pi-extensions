@@ -159,15 +159,97 @@ test("buildPiModeSettingItems exposes top-level pin editor setting", () => {
     toolSet: "codex",
     loadSkills: true,
     systemMdPrompt: false,
+    modeShortcut: "f2",
     webTools: {},
     editor: { fixedEditor: true, mouseScroll: false },
   } as never);
 
-  assert.deepEqual(items.slice(0, 3).map((item) => [item.id, item.label, item.currentValue]), [
+  assert.deepEqual(items.slice(0, 4).map((item) => [item.id, item.label, item.currentValue]), [
     ["toolSet", "Mode", "Codex"],
+    ["modeShortcut", "Mode Shortcut", "f2"],
     ["fixedEditor", "Pin Editor", "Enabled"],
     ["systemPrompt", "System Prompt", "Skills only"],
   ]);
+});
+
+test("openPiModeSettingsUi edits the mode shortcut from the root list", async () => {
+  const shortcutWrites: string[] = [];
+  const notifications: string[] = [];
+  let component: { handleInput?: (data: string) => void; render?: (width: number) => string[] } | undefined;
+
+  await openPiModeSettingsUi(
+    {
+      hasUI: true,
+      ui: {
+        notify(message: string) {
+          notifications.push(message);
+        },
+        async custom(
+          render: (
+            tui: unknown,
+            theme: { fg: (_color: string, text: string) => string; bold: (text: string) => string },
+            kb: unknown,
+            done: (value: unknown) => void,
+          ) => { handleInput?: (data: string) => void; render?: (width: number) => string[] },
+        ) {
+          component = render(
+            undefined,
+            {
+              fg: (_color: string, text: string) => text,
+              bold: (text: string) => text,
+            },
+            undefined,
+            () => undefined,
+          );
+        },
+      },
+    } as never,
+    {
+      readSettings: async () => ({
+        toolSet: "pi",
+        loadSkills: true,
+        systemMdPrompt: false,
+        modeShortcut: "f2",
+        webTools: {},
+        editor: { fixedEditor: false, mouseScroll: true },
+      } as never),
+      applyToolSetTransition: async () => {
+        throw new Error("applyToolSetTransition should not run");
+      },
+      applyLoadSkillsTransition: async () => {
+        throw new Error("applyLoadSkillsTransition should not run");
+      },
+      writeSystemMdPrompt: async () => {
+        throw new Error("writeSystemMdPrompt should not run");
+      },
+      writeWebToolSetting: async () => {
+        throw new Error("writeWebToolSetting should not run");
+      },
+      writeModeShortcut: async (value: string) => {
+        shortcutWrites.push(value);
+      },
+      writeEditorSettings: async () => {
+        throw new Error("writeEditorSettings should not run");
+      },
+    } as never,
+  );
+
+  assert.ok(component);
+  assert.ok(component.render?.(80).some((line) => line.includes("Mode Shortcut")));
+
+  component.handleInput?.("\x1b[B");
+  component.handleInput?.("\r");
+  assert.match(component.render?.(80).join("\n") ?? "", /Pi Mode > Mode Shortcut/);
+
+  component.handleInput?.("\x1b[3~");
+  component.handleInput?.("\x1b[3~");
+  component.handleInput?.("ctrl+o");
+  component.handleInput?.("\r");
+  await flushMicrotasks();
+
+  assert.deepEqual(shortcutWrites, ["ctrl+o"]);
+  assert.deepEqual(notifications, ["Mode shortcut: ctrl+o"]);
+  assert.ok(component.render?.(80).some((line) => line.includes("ctrl+o")));
 });
 
 test("openPiModeSettingsUi toggles pin editor and enables mouse scroll with fixed mode", async () => {
@@ -231,6 +313,7 @@ test("openPiModeSettingsUi toggles pin editor and enables mouse scroll with fixe
   assert.ok(component);
   assert.ok(component.render?.(80).some((line) => line.includes("Pin Editor")));
 
+  component.handleInput?.("\x1b[B");
   component.handleInput?.("\x1b[B");
   component.handleInput?.("\r");
   await flushMicrotasks();
@@ -300,7 +383,7 @@ test("registerPiModeShortcut cycles pi -> codex -> droid -> pi without saving gl
   const notifications: string[] = [];
   const shortcutHandlers = new Map<string, (ctx: unknown) => Promise<void>>();
 
-  registerPiModeShortcut(
+  await registerPiModeShortcut(
     {
       registerShortcut(key: string, config: { handler: (ctx: unknown) => Promise<void> }) {
         shortcutHandlers.set(key, config.handler);
@@ -347,7 +430,7 @@ test("registerPiModeShortcut cycles pi -> codex -> droid -> pi without saving gl
     },
   );
 
-  assert.notEqual(shortcutHandlers.get("ctrl+space"), undefined);
+  assert.notEqual(shortcutHandlers.get("f2"), undefined);
   assert.notEqual(shortcutHandlers.get("ctrl+alt+k"), undefined);
 
   const makeCtx = (toolSet: "pi" | "codex" | "droid") => ({
@@ -365,9 +448,9 @@ test("registerPiModeShortcut cycles pi -> codex -> droid -> pi without saving gl
   });
 
   try {
-    await shortcutHandlers.get("ctrl+space")!(makeCtx("pi"));
-    await shortcutHandlers.get("ctrl+space")!(makeCtx("codex"));
-    await shortcutHandlers.get("ctrl+space")!(makeCtx("droid"));
+    await shortcutHandlers.get("f2")!(makeCtx("pi"));
+    await shortcutHandlers.get("f2")!(makeCtx("codex"));
+    await shortcutHandlers.get("f2")!(makeCtx("droid"));
 
     assert.deepEqual(writes, []);
     assert.deepEqual(sessionWrites, ["codex", "droid", "pi"]);
@@ -379,6 +462,41 @@ test("registerPiModeShortcut cycles pi -> codex -> droid -> pi without saving gl
   }
 });
 
+test("registerPiModeShortcut uses configured mode shortcut", async () => {
+  const shortcutHandlers = new Map<string, (ctx: unknown) => Promise<void>>();
+
+  await registerPiModeShortcut(
+    {
+      registerShortcut(key: string, config: { handler: (ctx: unknown) => Promise<void> }) {
+        shortcutHandlers.set(key, config.handler);
+      },
+      appendEntry() {},
+      events: {
+        emit() {},
+      },
+    } as never,
+    {
+      readSettings: async () => ({
+        toolSet: "pi",
+        loadSkills: true,
+        systemMdPrompt: false,
+        modeShortcut: "ctrl+o",
+        webTools: {},
+      }),
+      writeToolSet: async () => {},
+      writeSessionToolSet: async () => {},
+      writeSessionLoadSkills: async () => {},
+      writeLoadSkills: async () => {},
+      writeSystemMdPrompt: async () => {},
+      writeWebToolSetting: async () => {},
+      openSettingsUi: async () => {},
+    },
+  );
+
+  assert.equal(shortcutHandlers.has("ctrl+o"), true);
+  assert.equal(shortcutHandlers.has("f2"), false);
+});
+
 test("registerPiModeShortcut toggles load-skills for the current session without saving global config", async () => {
   const writes: boolean[] = [];
   const sessionWrites: boolean[] = [];
@@ -386,7 +504,7 @@ test("registerPiModeShortcut toggles load-skills for the current session without
   const notifications: string[] = [];
   const shortcutHandlers = new Map<string, (ctx: unknown) => Promise<void>>();
 
-  registerPiModeShortcut(
+  await registerPiModeShortcut(
     {
       registerShortcut(key: string, config: { handler: (ctx: unknown) => Promise<void> }) {
         shortcutHandlers.set(key, config.handler);
@@ -608,10 +726,13 @@ test("buildPiModeSettingItems groups prompt injection settings under System Prom
     webTools: {},
   });
 
-  assert.deepEqual(
-    items.map((item) => item.id),
-    ["toolSet", "fixedEditor", "systemPrompt", "webTools"],
-  );
+  assert.deepEqual(items.map((item) => item.id), [
+    "toolSet",
+    "modeShortcut",
+    "fixedEditor",
+    "systemPrompt",
+    "webTools",
+  ]);
 
   const item = items.find((entry) => entry.id === "systemPrompt");
   assert.equal(item?.label, "System Prompt");
@@ -644,6 +765,7 @@ test("openPiModeSettingsUi opens prompt injection settings from System Prompt", 
             () => undefined,
           );
 
+          component.handleInput?.("\x1b[B");
           component.handleInput?.("\x1b[B");
           component.handleInput?.("\x1b[B");
           component.handleInput?.("\r");

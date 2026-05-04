@@ -58,7 +58,7 @@ test("sortSubagentActivityViews prioritizes active tools and latest tool activit
   );
 });
 
-test("buildSubagentActivityWidgetLines renders an unboxed activity tree", () => {
+test("buildSubagentActivityWidgetLines renders a boxed activity tree with horizontal padding", () => {
   const activities = [
     activity({
       agent_id: "a",
@@ -83,11 +83,14 @@ test("buildSubagentActivityWidgetLines renders an unboxed activity tree", () => 
   const wide = buildSubagentActivityWidgetLines(theme, activities, 170, 61_000);
   const narrow = buildSubagentActivityWidgetLines(theme, activities, 46, 61_000);
 
-  assert.equal(wide.length, 5);
-  assert.equal(narrow.length, 5);
-  assert.equal(wide[0], "Agents");
+  assert.equal(wide.length, 7);
+  assert.equal(narrow.length, 7);
+  assert.match(wide[0], /^╭─+╮$/);
+  assert.match(wide[1], /^│ Agents\s+│$/);
+  assert.match(wide[2], /^│ ├ badger \[explorer\]/);
+  assert.match(wide.at(-2) ?? "", /^╰─+╯$/);
   assert.equal(wide.at(-1), "<dim> </dim>");
-  assert.doesNotMatch(wide.join("\n"), /Agents active|calls total|[╭╮╰╯│]/);
+  assert.doesNotMatch(wide.join("\n"), /Agents active|calls total/);
 });
 
 test("buildSubagentActivityWidgetLines renders a single hidden agent instead of plus one more", () => {
@@ -195,7 +198,7 @@ test("buildSubagentActivityWidgetLines renders interactive agents without tool t
   );
 
   const rendered = lines.join("\n");
-  assert.match(rendered, /^Agents$/m);
+  assert.match(rendered, /^│ Agents\s+│$/m);
   assert.doesNotMatch(rendered, /calls total/);
   assert.match(rendered, /interactive session/);
   assert.doesNotMatch(rendered, /thinking/);

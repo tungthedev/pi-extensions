@@ -8,6 +8,7 @@ import {
 } from "@mariozechner/pi-tui";
 
 import {
+  DEFAULT_MODE_SHORTCUT,
   formatToolSetLabel,
   type PiModeSettings,
   type ToolSetPack,
@@ -41,6 +42,7 @@ export type OpenSettingsUiOptions = {
     value: boolean,
   ) => Promise<void>;
   writeSystemMdPrompt: (value: boolean) => Promise<void>;
+  writeModeShortcut?: (value: string) => Promise<void>;
   writeWebToolSetting: (key: WebToolSettingKey, value: string | undefined) => Promise<void>;
   writeEditorSettings: (settings: EditorSettingsUpdate) => Promise<void>;
 };
@@ -97,6 +99,12 @@ export function buildPiModeSettingItems(settings: SettingsUiSettings): SettingIt
         "Selects the Pi, Codex, or Droid mode behavior for this package. Pi keeps native Pi tools only.",
       currentValue: formatToolSetLabel(settings.toolSet),
       values: ["Pi", "Codex", "Droid"],
+    },
+    {
+      id: "modeShortcut",
+      label: "Mode Shortcut",
+      description: "Keyboard shortcut for cycling Pi, Codex, and Droid modes in the current session.",
+      currentValue: settings.modeShortcut ?? DEFAULT_MODE_SHORTCUT,
     },
     {
       id: "fixedEditor",
@@ -300,9 +308,7 @@ function createSecretInputComponent(options: {
       if (errorMessage) {
         lines.push(`Error: ${errorMessage}`);
       }
-      lines.push(
-        options.dimText(`${options.saveLabel}. Submit an empty value to clear the stored setting.`),
-      );
+      lines.push(options.dimText(options.saveLabel));
       lines.push("");
       lines.push(options.mutedText("[enter] save  [esc] back"));
       return lines;
@@ -383,7 +389,7 @@ function createWebToolsSubmenu(
           title: item.label,
           description: item.description ?? "",
           prefill: state.webTools[item.id as WebToolSettingKey],
-          saveLabel: `Stored value for ${item.label}`,
+          saveLabel: `Stored value for ${item.label}. Submit an empty value to clear the stored setting.`,
           dimText: stylers.dimText,
           mutedText: stylers.mutedText,
           onSubmit: async (value) => {
@@ -512,6 +518,36 @@ export async function openPiModeSettingsUi(
     const breadcrumbText = (parent: string, current: string) =>
       `${theme.fg("muted", parent)} ${theme.fg("muted", ">")} ${theme.fg("accent", theme.bold(current))}`;
     const items = buildPiModeSettingItems(settings).map((item) => {
+      if (item.id === "modeShortcut") {
+        return {
+          ...item,
+          submenu: (_currentValue: string, done: (selectedValue?: string) => void) => {
+            showRootHeader = false;
+            return createSecretInputComponent({
+              title: breadcrumbText("Pi Mode", "Mode Shortcut"),
+              description: item.description ?? "",
+              prefill: settings.modeShortcut ?? DEFAULT_MODE_SHORTCUT,
+              saveLabel: "Submit an empty value to restore the default shortcut.",
+              dimText: (text) => theme.fg("dim", text),
+              mutedText: (text) => theme.fg("muted", text),
+              onSubmit: async (value) => {
+                const nextValue = value ?? DEFAULT_MODE_SHORTCUT;
+                await options.writeModeShortcut?.(nextValue);
+                settings.modeShortcut = nextValue;
+                settingsList.updateValue("modeShortcut", nextValue);
+                ctx.ui.notify(`Mode shortcut: ${nextValue}`, "info");
+                showRootHeader = true;
+                done(nextValue);
+              },
+              onCancel: () => {
+                showRootHeader = true;
+                done(undefined);
+              },
+            });
+          },
+        };
+      }
+
       if (item.id === "systemPrompt") {
         return {
           ...item,

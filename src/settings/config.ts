@@ -19,6 +19,7 @@ export type LoadSkillsChangedPayload = {
 export const DEFAULT_TOOL_SET: ToolSetPack = "pi";
 export const DEFAULT_LOAD_SKILLS = true;
 export const DEFAULT_SYSTEM_MD_PROMPT = false;
+export const DEFAULT_MODE_SHORTCUT = "f2";
 export const TOOL_SET_CHANGED_EVENT = "settings:tool-set-changed";
 export const LOAD_SKILLS_CHANGED_EVENT = "settings:load-skills-changed";
 
@@ -35,6 +36,7 @@ export type PiModeSettings = {
   toolSet: ToolSetPack;
   loadSkills: boolean;
   systemMdPrompt: boolean;
+  modeShortcut?: string;
   webTools: WebToolSettings;
 };
 
@@ -64,6 +66,10 @@ function normalizeOptionalString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed || undefined;
+}
+
+function normalizeModeShortcut(value: unknown): string {
+  return normalizeOptionalString(value) ?? DEFAULT_MODE_SHORTCUT;
 }
 
 function normalizeWebToolSettings(value: unknown): WebToolSettings {
@@ -136,11 +142,16 @@ export function parsePiModeSettings(root: unknown): PiModeSettings {
     namespace && typeof namespace === "object" && !Array.isArray(namespace)
       ? (namespace as SettingsRoot).webTools
       : undefined;
+  const modeShortcut =
+    namespace && typeof namespace === "object" && !Array.isArray(namespace)
+      ? (namespace as SettingsRoot).modeShortcut
+      : undefined;
 
   return {
     toolSet: normalizeToolSet(toolSet),
     loadSkills: normalizeLoadSkills(loadSkills),
     systemMdPrompt: normalizeSystemMdPrompt(systemMdPrompt),
+    modeShortcut: normalizeModeShortcut(modeShortcut),
     webTools: normalizeWebToolSettings(webTools),
   };
 }
@@ -225,6 +236,19 @@ export async function writeLoadSkillsSetting(
     (namespace) => ({
       ...namespace,
       loadSkills,
+    }),
+    filePath,
+  );
+}
+
+export async function writeModeShortcutSetting(
+  modeShortcut: string | undefined,
+  filePath = getGlobalPiSettingsPath(),
+): Promise<void> {
+  await writeSettings(
+    (namespace) => ({
+      ...namespace,
+      modeShortcut: normalizeModeShortcut(modeShortcut),
     }),
     filePath,
   );

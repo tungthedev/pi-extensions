@@ -1,6 +1,6 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
 
-import { truncateToWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 import type { ChildTransport } from "./types.ts";
 
@@ -12,6 +12,7 @@ const MAX_COLUMNS = 3;
 const MAX_VISIBLE_ROWS = 3;
 const INPUT_SUMMARY_MAX_CHARS = 52;
 const TIMER_TICK_MS = 1_000;
+const BOX_HORIZONTAL_PADDING = 1;
 
 export type SubagentIdentity = {
   agent_id: string;
@@ -284,6 +285,34 @@ export function renderSubagentActivityCell(
   return truncateToWidth(text, width);
 }
 
+function padToWidth(text: string, width: number): string {
+  const truncated = truncateToWidth(text, width);
+  return `${truncated}${" ".repeat(Math.max(0, width - visibleWidth(truncated)))}`;
+}
+
+function renderBoxedLine(theme: Theme, line: string, width: number): string {
+  if (width <= 2) {
+    return truncateToWidth(line, width);
+  }
+
+  const contentWidth = Math.max(0, width - 2 - BOX_HORIZONTAL_PADDING * 2);
+  const content = padToWidth(line, contentWidth);
+  return `${theme.fg("muted", "│")}${" ".repeat(BOX_HORIZONTAL_PADDING)}${content}${" ".repeat(BOX_HORIZONTAL_PADDING)}${theme.fg("muted", "│")}`;
+}
+
+function renderBoxedSubagentActivityLines(theme: Theme, lines: string[], width: number): string[] {
+  if (width <= 2) {
+    return lines.map((line) => truncateToWidth(line, width));
+  }
+
+  const innerWidth = Math.max(0, width - 2);
+  return [
+    `${theme.fg("muted", "╭")}${theme.fg("muted", "─".repeat(innerWidth))}${theme.fg("muted", "╮")}`,
+    ...lines.map((line) => renderBoxedLine(theme, line, width)),
+    `${theme.fg("muted", "╰")}${theme.fg("muted", "─".repeat(innerWidth))}${theme.fg("muted", "╯")}`,
+  ];
+}
+
 function layoutActivityTreeRows(
   theme: Theme,
   activities: SubagentActivityView[],
@@ -298,7 +327,7 @@ function layoutActivityTreeRows(
   return activities.map((activity, index) => {
     const hasMoreLine = hiddenCount > 0;
     const isLast = index === activities.length - 1 && !hasMoreLine;
-    const prefix = theme.fg("dim", isLast ? "└ " : "├ ");
+    const prefix = theme.fg("dim", isLast ? "╰ " : "├ ");
     return truncateToWidth(
       `${prefix}${renderSubagentActivityCell(theme, activity, Math.max(1, width - 2), now)}`,
       width,
@@ -322,12 +351,20 @@ export function buildSubagentActivityWidgetLines(
   const visibleCount = hiddenAfterLimit === 1 ? visibleLimit + 1 : visibleLimit;
   const visibleActivities = sorted.slice(0, visibleCount);
   const hiddenCount = sorted.length - visibleActivities.length;
-  const lines = layoutActivityTreeRows(theme, visibleActivities, width, now, hiddenCount);
+  const contentWidth = Math.max(1, width - 2 - BOX_HORIZONTAL_PADDING * 2);
+  const lines = layoutActivityTreeRows(theme, visibleActivities, contentWidth, now, hiddenCount);
   if (hiddenCount > 0) {
-    lines.push(theme.fg("muted", `└ +${hiddenCount} more`));
+    lines.push(theme.fg("muted", `╰ +${hiddenCount} more`));
   }
 
-  return [truncateToWidth(theme.fg("accent", "Agents"), width), ...lines, theme.fg("dim", " ")];
+  return [
+    ...renderBoxedSubagentActivityLines(
+      theme,
+      [truncateToWidth(theme.fg("accent", "Agents"), contentWidth), ...lines],
+      width,
+    ),
+    theme.fg("dim", " "),
+  ];
 }
 
 export class SubagentActivityWidget {

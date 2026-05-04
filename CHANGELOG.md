@@ -4,17 +4,15 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-05-04
+
 ### Added
 
-- Added a Cursor Agent CLI tool-surface reference based on the inspected local Cursor Agent bundle.
-- Added opt-in fixed editor mode for the `editor` extension, with a `/pi-mode` `Pin Editor` setting backed by `editor.fixedEditor`.
+- Added fixed editor mode.
 
 ### Changed
 
-- Redesigned the Codex editor frame to show skill counts in the top border, move model, usage, path, and branch details into the bottom border, and reserve two input rows.
-- Updated the Pi mode shortcut and editor legend to use `ctrl+space` for tool-set cycling.
-- Grouped skill and `SYSTEM.md` prompt injection settings under a new `System Prompt` settings submenu, with `Load Skills` relabeled as `Inject Skills` in the UI.
-- Rendered subagent activity as an unboxed tree and added spacer lines after subagent and todo widgets.
+- Improve `/pi-mode` settings UI.
 - Updated Pi development dependencies to `0.72.1`.
 
 ### Fixed

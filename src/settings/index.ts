@@ -3,13 +3,16 @@ import type {
   ExtensionCommandContext,
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
+import type { KeyId } from "@mariozechner/pi-tui";
 
 import {
+  DEFAULT_MODE_SHORTCUT,
   LOAD_SKILLS_CHANGED_EVENT,
   TOOL_SET_CHANGED_EVENT,
   readPiModeSettings,
   type LoadSkillsChangedPayload,
   writeLoadSkillsSetting,
+  writeModeShortcutSetting,
   writeWebToolSetting,
   writeSystemMdPromptSetting,
   writeToolSetSetting,
@@ -51,6 +54,7 @@ export type PiModeCommandDeps = {
   writeSessionLoadSkills: (value: boolean) => Promise<void> | void;
   writeLoadSkills: (value: boolean) => Promise<void>;
   writeSystemMdPrompt: (value: boolean) => Promise<void>;
+  writeModeShortcut?: (value: string) => Promise<void>;
   writeWebToolSetting: (key: WebToolSettingKey, value: string | undefined) => Promise<void>;
   writeEditorSettings?: (settings: EditorSettingsUpdate, ctx: ExtensionCommandContext) => Promise<void>;
   emitToolSetChange?: (value: ToolSetPack) => Promise<void> | void;
@@ -110,6 +114,7 @@ function createDefaultDeps(pi: ExtensionAPI): PiModeCommandDeps {
     writeSessionLoadSkills: (value) => writeSessionLoadSkillsSnapshot(pi, value),
     writeLoadSkills: (value) => writeLoadSkillsSetting(value),
     writeSystemMdPrompt: (value) => writeSystemMdPromptSetting(value),
+    writeModeShortcut: (value) => writeModeShortcutSetting(value),
     writeWebToolSetting: (key, value) => writeWebToolSetting(key, value),
     emitToolSetChange: (value) => {
       pi.events.emit(TOOL_SET_CHANGED_EVENT, {
@@ -149,6 +154,7 @@ function createDefaultDeps(pi: ExtensionAPI): PiModeCommandDeps {
             value,
           ),
         writeSystemMdPrompt: (value) => writeSystemMdPromptSetting(value),
+        writeModeShortcut: (value) => writeModeShortcutSetting(value),
         writeWebToolSetting: (key, value) => writeWebToolSetting(key, value),
         writeEditorSettings: async (settings) => {
           const settingsPath = await resolveEditorSettingsWritePath({ cwd: ctx.cwd });
@@ -225,13 +231,14 @@ export function registerPiModeCommand(
   });
 }
 
-export function registerPiModeShortcut(
+export async function registerPiModeShortcut(
   pi: ExtensionAPI,
   deps: PiModeCommandDeps = createDefaultDeps(pi),
-): void {
+): Promise<void> {
   if (typeof pi.registerShortcut !== "function") return;
 
-  pi.registerShortcut("ctrl+space", {
+  const settings = await deps.readSettings();
+  pi.registerShortcut((settings.modeShortcut || DEFAULT_MODE_SHORTCUT) as KeyId, {
     description: "Cycle tool set",
     handler: async (ctx) => {
       await cycleToolSet(ctx, deps);
@@ -255,5 +262,5 @@ export default function registerPiModeSettingsExtension(pi: ExtensionAPI) {
   });
 
   registerPiModeCommand(pi, deps);
-  registerPiModeShortcut(pi, deps);
+  void registerPiModeShortcut(pi, deps);
 }
