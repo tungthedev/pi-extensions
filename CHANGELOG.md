@@ -2,7 +2,7 @@
 
 All notable changes to `@tungthedev/pi-extensions` will be documented in this file.
 
-## [Unreleased]
+## [2.4.0] - 2026-05-05
 
 ### Added
 
