@@ -4,6 +4,21 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 
 ## [Unreleased]
 
+### Added
+
+- Added Codex-style task-tree subagents with canonical `/root/...` paths, nested subagent support, and `list_agents` for inspecting live agents.
+
+### Changed
+
+- Updated Codex subagent tools to align more closely with Codex v2, including `task_name`, `fork_turns`, model overrides, and relative task-path targeting.
+- Changed the default mode shortcut to `ctrl+alt+m`.
+- Refined fixed editor status chrome for compact terminals, including narrower border labels and compact repository metadata.
+
+### Fixed
+
+- Kept nested child sessions aware of their canonical task path so descendant agents can be addressed consistently.
+- Removed the visible border around the subagent activity widget while preserving horizontal padding.
+
 ## [2.3.0] - 2026-05-04
 
 ### Added
