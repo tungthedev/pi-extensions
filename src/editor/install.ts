@@ -45,7 +45,6 @@ import {
   formatCompactMetadataStatus,
   formatEditorBorderLegend,
   formatSkillCountLabel,
-  buildBottomBorderLine,
   buildTopBorderLine,
 } from "./status-format.ts";
 import {
@@ -254,15 +253,30 @@ class CodexBoxedEditor extends CustomEditor {
     return Math.max(0, lines.length - 1);
   }
 
-  private wrapRow(inner: string, width: number): string {
-    const theme = this.getAppTheme();
-    const paddedInner = `${inner}${" ".repeat(Math.max(0, width - 2 - visibleWidth(inner)))}`;
-    return `${theme.fg("muted", "│")}${paddedInner}${theme.fg("muted", "│")}`;
-  }
-
   private normalizeRenderedWidth(line: string, width: number): string {
     if (visibleWidth(line) <= width) return line;
     return truncateToWidth(line, width, "");
+  }
+
+  private padRenderedWidth(line: string, width: number): string {
+    const normalized = this.normalizeRenderedWidth(line, width);
+    return `${normalized}${" ".repeat(Math.max(0, width - visibleWidth(normalized)))}`;
+  }
+
+  private buildBottomStatusLine(width: number, leftText: string, rightText: string): string {
+    if (!leftText && !rightText) return "";
+    const contentWidth = Math.max(0, width - 2);
+    if (!rightText) return ` ${this.padRenderedWidth(leftText, contentWidth)} `;
+
+    const leftBudget = Math.max(0, Math.floor((contentWidth - 1) / 2));
+    const renderedLeft = truncateToWidth(leftText, leftBudget);
+    const rightBudget = Math.max(0, contentWidth - visibleWidth(renderedLeft) - 1);
+    const renderedRight = truncateToWidth(rightText, rightBudget, "");
+    const gap = " ".repeat(
+      Math.max(1, contentWidth - visibleWidth(renderedLeft) - visibleWidth(renderedRight)),
+    );
+
+    return this.normalizeRenderedWidth(` ${renderedLeft}${gap}${renderedRight} `, width);
   }
 
   private styleLegend(legendText: string): string {
@@ -287,7 +301,7 @@ class CodexBoxedEditor extends CustomEditor {
     if (innerWidth < 4) return super.render(width);
     const compact = width < COMPACT_WIDTH;
 
-    const lines = super.render(innerWidth);
+    const lines = super.render(width);
     if (lines.length < 2) return lines;
     const showSkillCount = width >= MIN_SKILL_COUNT_WIDTH;
 
@@ -310,34 +324,28 @@ class CodexBoxedEditor extends CustomEditor {
 
     let inputRowCount = 0;
     for (let index = 1; index < bottomIndex; index += 1) {
-      rendered.push(this.wrapRow(lines[index] ?? "", width));
+      rendered.push(this.padRenderedWidth(lines[index] ?? "", width));
       inputRowCount += 1;
     }
 
     while (inputRowCount < MIN_INPUT_ROWS) {
-      rendered.push(this.wrapRow("", width));
+      rendered.push(this.padRenderedWidth("", width));
       inputRowCount += 1;
     }
 
     const bottomRightStatus = compact
       ? ""
-      : this.getBottomRightStatus(Math.max(0, Math.floor((width - 4) / 2)));
+      : this.getBottomRightStatus(Math.max(0, Math.floor((width - 2) / 2)));
     const bottomLeftBudget = bottomRightStatus
-      ? Math.max(0, Math.floor((width - 6) / 2))
-      : Math.max(0, width - 4);
+      ? Math.max(0, Math.floor((width - 2) / 2))
+      : Math.max(0, width);
 
-    rendered.push(
-      buildBottomBorderLine(
-        this.getAppTheme(),
-        width,
-        this.getBottomLeftStatus(bottomLeftBudget),
-        bottomRightStatus,
-        {
-          left: "╰",
-          right: "╯",
-        },
-      ),
+    const bottomStatusLine = this.buildBottomStatusLine(
+      width,
+      this.getBottomLeftStatus(bottomLeftBudget),
+      bottomRightStatus,
     );
+    if (bottomStatusLine) rendered.push(bottomStatusLine);
 
     for (let index = bottomIndex + 1; index < lines.length; index += 1) {
       rendered.push(` ${lines[index] ?? ""} `);
@@ -345,7 +353,7 @@ class CodexBoxedEditor extends CustomEditor {
 
     if (compact) {
       const metadata = this.getCompactMetadataStatus(Math.max(0, width - 2));
-      if (metadata) rendered.push(this.normalizeRenderedWidth(`  ${metadata}`, width));
+      if (metadata) rendered.push(this.normalizeRenderedWidth(` ${metadata} `, width));
     }
 
     return rendered;

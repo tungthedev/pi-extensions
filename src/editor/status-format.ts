@@ -243,7 +243,7 @@ function truncatePathFromLeft(value: string, maxWidth: number): string {
   if (visibleWidth(value) <= maxWidth) return value;
 
   const separator = value.includes("\\") && !value.includes("/") ? "\\" : "/";
-  const prefix = `${HORIZONTAL_RIGHT_HALF}⋯${separator}`;
+  const prefix = `⋯${separator}`;
   const parts = value.split(/[\\/]+/).filter((part) => part.length > 0);
   const lastPart = parts.at(-1);
   if (!lastPart) return truncateSuffix("...", value, maxWidth);
@@ -426,13 +426,13 @@ export function buildTopBorderLine(
   const rightText = rightLabel ? truncateToWidth(rightLabel, Math.max(0, innerWidth - 1)) : "";
 
   if (!legend && !rightText) {
-    return colorBorder(theme, `╭${HORIZONTAL.repeat(innerWidth)}╮`);
+    return colorBorder(theme, HORIZONTAL.repeat(width));
   }
 
   const legendBudget = Math.max(0, innerWidth - visibleWidth(rightText) - 2);
   const legendText = legend ? truncateToWidth(legend, legendBudget) : "";
   if (!legendText && !rightText) {
-    return colorBorder(theme, `╭${HORIZONTAL.repeat(innerWidth)}╮`);
+    return colorBorder(theme, HORIZONTAL.repeat(width));
   }
 
   const legendBlock = legendText
@@ -444,11 +444,11 @@ export function buildTopBorderLine(
   const middleFill = Math.max(0, innerWidth - visibleWidth(legendBlock) - visibleWidth(rightBlock));
 
   return (
-    colorBorder(theme, "╭") +
+    colorBorder(theme, HORIZONTAL) +
     legendBlock +
     colorBorder(theme, HORIZONTAL.repeat(middleFill)) +
     rightBlock +
-    colorBorder(theme, "╮")
+    colorBorder(theme, HORIZONTAL)
   );
 }
 
