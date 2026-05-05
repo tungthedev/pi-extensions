@@ -26,7 +26,7 @@ test("readSettingsFromFile fails closed on malformed json", async () => {
     toolSet: "pi",
     loadSkills: true,
     systemMdPrompt: false,
-    modeShortcut: "f2",
+    modeShortcut: "ctrl+alt+m",
     webTools: {},
   });
 });
@@ -36,7 +36,7 @@ test("parsePiModeSettings migrates legacy forge settings to pi", () => {
     toolSet: "pi",
     loadSkills: true,
     systemMdPrompt: false,
-    modeShortcut: "f2",
+    modeShortcut: "ctrl+alt+m",
     webTools: {},
   });
 });
@@ -91,7 +91,7 @@ test("writeModeShortcutSetting persists and normalizes the mode shortcut", async
   assert.equal(readPiModeSettingsSync(settingsPath).modeShortcut, "ctrl+o");
 
   await writeModeShortcutSetting(" ", settingsPath);
-  assert.equal(readPiModeSettingsSync(settingsPath).modeShortcut, "f2");
+  assert.equal(readPiModeSettingsSync(settingsPath).modeShortcut, "ctrl+alt+m");
 });
 
 test("writeWebToolSetting persists and clears stored web tool secrets", async () => {

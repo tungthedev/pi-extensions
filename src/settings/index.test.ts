@@ -191,7 +191,7 @@ test("openPiModeSettingsUi edits the mode shortcut from the root list", async ()
         toolSet: "pi",
         loadSkills: true,
         systemMdPrompt: false,
-        modeShortcut: "f2",
+        modeShortcut: "xx",
         webTools: {},
         editor: { fixedEditor: false, mouseScroll: true },
       } as never),
@@ -412,7 +412,7 @@ test("registerPiModeShortcut cycles pi -> codex -> droid -> pi without saving gl
     },
   );
 
-  assert.notEqual(shortcutHandlers.get("f2"), undefined);
+  assert.notEqual(shortcutHandlers.get("ctrl+alt+m"), undefined);
   assert.notEqual(shortcutHandlers.get("ctrl+alt+k"), undefined);
 
   const makeCtx = (toolSet: "pi" | "codex" | "droid") => ({
@@ -430,9 +430,9 @@ test("registerPiModeShortcut cycles pi -> codex -> droid -> pi without saving gl
   });
 
   try {
-    await shortcutHandlers.get("f2")!(makeCtx("pi"));
-    await shortcutHandlers.get("f2")!(makeCtx("codex"));
-    await shortcutHandlers.get("f2")!(makeCtx("droid"));
+    await shortcutHandlers.get("ctrl+alt+m")!(makeCtx("pi"));
+    await shortcutHandlers.get("ctrl+alt+m")!(makeCtx("codex"));
+    await shortcutHandlers.get("ctrl+alt+m")!(makeCtx("droid"));
 
     assert.deepEqual(writes, []);
     assert.deepEqual(sessionWrites, ["codex", "droid", "pi"]);
@@ -476,7 +476,7 @@ test("registerPiModeShortcut uses configured mode shortcut", async () => {
   );
 
   assert.equal(shortcutHandlers.has("ctrl+o"), true);
-  assert.equal(shortcutHandlers.has("f2"), false);
+  assert.equal(shortcutHandlers.has("ctrl+alt+m"), false);
 });
 
 test("registerPiModeShortcut toggles load-skills for the current session without saving global config", async () => {

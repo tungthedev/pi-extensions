@@ -19,7 +19,7 @@ export type LoadSkillsChangedPayload = {
 export const DEFAULT_TOOL_SET: ToolSetPack = "pi";
 export const DEFAULT_LOAD_SKILLS = true;
 export const DEFAULT_SYSTEM_MD_PROMPT = false;
-export const DEFAULT_MODE_SHORTCUT = "f2";
+export const DEFAULT_MODE_SHORTCUT = "ctrl+alt+m";
 export const TOOL_SET_CHANGED_EVENT = "settings:tool-set-changed";
 export const LOAD_SKILLS_CHANGED_EVENT = "settings:load-skills-changed";
 
