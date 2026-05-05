@@ -11,7 +11,7 @@ import {
 
 const theme = {
   fg: (color: string, text: string) => (color === "dim" && text === " " ? "<dim> </dim>" : text),
-  bold: (text: string) => text,
+  bold: (text: string) => `**${text}**`,
 } as unknown as Theme;
 
 function activity(
@@ -58,7 +58,7 @@ test("sortSubagentActivityViews prioritizes active tools and latest tool activit
   );
 });
 
-test("buildSubagentActivityWidgetLines renders a boxed activity tree with horizontal padding", () => {
+test("buildSubagentActivityWidgetLines renders an activity tree with horizontal padding and no border", () => {
   const activities = [
     activity({
       agent_id: "a",
@@ -83,12 +83,13 @@ test("buildSubagentActivityWidgetLines renders a boxed activity tree with horizo
   const wide = buildSubagentActivityWidgetLines(theme, activities, 170, 61_000);
   const narrow = buildSubagentActivityWidgetLines(theme, activities, 46, 61_000);
 
-  assert.equal(wide.length, 7);
-  assert.equal(narrow.length, 7);
-  assert.match(wide[0], /^╭─+╮$/);
-  assert.match(wide[1], /^│ Agents\s+│$/);
-  assert.match(wide[2], /^│ ├ badger \[explorer\]/);
-  assert.match(wide.at(-2) ?? "", /^╰─+╯$/);
+  assert.equal(wide.length, 5);
+  assert.equal(narrow.length, 5);
+  assert.equal(wide[0].startsWith(" **Agents**"), true);
+  assert.match(wide[1], /^ ├ badger \[explorer\]/);
+  assert.equal(wide[0].length, 170);
+  assert.equal(narrow[0].length, 46);
+  assert.doesNotMatch(wide.join("\n"), /[│╭╮─]/);
   assert.equal(wide.at(-1), "<dim> </dim>");
   assert.doesNotMatch(wide.join("\n"), /Agents active|calls total/);
 });
@@ -198,7 +199,7 @@ test("buildSubagentActivityWidgetLines renders interactive agents without tool t
   );
 
   const rendered = lines.join("\n");
-  assert.match(rendered, /^│ Agents\s+│$/m);
+  assert.match(rendered, /^ \*\*Agents\*\*\s+$/m);
   assert.doesNotMatch(rendered, /calls total/);
   assert.match(rendered, /interactive session/);
   assert.doesNotMatch(rendered, /thinking/);

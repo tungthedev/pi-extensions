@@ -17,6 +17,7 @@ import { childSnapshot } from "./registry.ts";
 import { createAttachmentRegistry } from "./attachment-registry.ts";
 import { createCompletionTracker } from "./completion-tracker.ts";
 import { isResumable } from "./session.ts";
+import { isDescendantTaskPath, normalizeTaskPath, resolveTaskTarget } from "./task-paths.ts";
 
 function normalizePublicName(name: string): string {
   return name.trim();
@@ -119,6 +120,40 @@ export function createSubagentRuntimeStore() {
         return record;
       }
       return undefined;
+    },
+    findChildByTaskPath(taskPath: string, options: { addressableOnly?: boolean } = {}) {
+      const normalizedPath = normalizeTaskPath(taskPath);
+      for (const record of attachments.durableValues()) {
+        if (record.taskPath !== normalizedPath) continue;
+        if (options.addressableOnly !== false && !isPubliclyAddressableChild(record)) continue;
+        return record;
+      }
+      return undefined;
+    },
+    findChildByTarget(target: string, currentTaskPath: string, options: { addressableOnly?: boolean } = {}) {
+      const records = Array.from(attachments.durableValues()).filter((record) =>
+        options.addressableOnly === false ? true : isPubliclyAddressableChild(record),
+      );
+      return resolveTaskTarget(records, currentTaskPath, target);
+    },
+    listChildrenByParentTaskPath(parentTaskPath: string, options: { addressableOnly?: boolean } = {}) {
+      const normalizedPath = normalizeTaskPath(parentTaskPath);
+      return Array.from(attachments.durableValues())
+        .filter((record) => record.parentTaskPath === normalizedPath)
+        .filter((record) => options.addressableOnly === false || isPubliclyAddressableChild(record))
+        .sort((a, b) => (a.taskPath ?? a.name ?? a.agentId).localeCompare(b.taskPath ?? b.name ?? b.agentId));
+    },
+    listDescendantsByTaskPath(taskPath: string, options: { addressableOnly?: boolean } = {}) {
+      const normalizedPath = normalizeTaskPath(taskPath);
+      return Array.from(attachments.durableValues())
+        .filter((record) => record.taskPath && isDescendantTaskPath(normalizedPath, record.taskPath))
+        .filter((record) => options.addressableOnly === false || isPubliclyAddressableChild(record))
+        .sort((a, b) => (a.taskPath ?? a.name ?? a.agentId).localeCompare(b.taskPath ?? b.name ?? b.agentId));
+    },
+    listAddressableChildren() {
+      return Array.from(attachments.durableValues())
+        .filter(isPubliclyAddressableChild)
+        .sort((a, b) => (a.taskPath ?? a.name ?? a.agentId).localeCompare(b.taskPath ?? b.name ?? b.agentId));
     },
     hasAddressableChildName(name: string) {
       return Boolean(this.findChildByPublicName(name, { addressableOnly: true }));

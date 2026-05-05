@@ -120,6 +120,7 @@ function createCodexLifecycleMock() {
     waitAny: [],
     waitByNames: [],
     stopByName: [],
+    listAgents: [],
   };
 
   const snapshots = new Map<string, {
@@ -128,6 +129,7 @@ function createCodexLifecycleMock() {
     status: "running" | "idle" | "failed" | "closed" | "timeout" | "detached";
     durable_status: "live_running" | "live_idle" | "failed" | "closed" | "detached";
     cwd: string;
+    task_path?: string;
     last_assistant_text?: string;
     last_error?: string;
   }>();
@@ -137,6 +139,7 @@ function createCodexLifecycleMock() {
     status: "running" | "idle" | "failed" | "closed" | "timeout" | "detached";
     durable_status: "live_running" | "live_idle" | "failed" | "closed" | "detached";
     cwd: string;
+    task_path?: string;
     last_assistant_text?: string;
     last_error?: string;
   }>();
@@ -161,6 +164,7 @@ function createCodexLifecycleMock() {
               ? "failed"
               : "live_idle",
     cwd: "/tmp/project",
+    task_path: `/root/${name}`,
     ...(status === "failed" ? { last_error: output } : { last_assistant_text: output }),
     ...extras,
   } as const);
@@ -212,11 +216,11 @@ function createCodexLifecycleMock() {
               },
         };
       },
-      async resumeByName(request: { name: string; input: string; interrupt?: boolean }) {
+      async resumeByName(request: { name: string; input: string; steer?: boolean }) {
         calls.resumeByName.push(request);
         return {
           submissionId: "submission-1",
-          commandType: request.interrupt ? "steer" : "follow_up",
+          commandType: request.steer ? "steer" : "follow_up",
           input: request.input,
           snapshot: buildSnapshot(request.name, "running", request.input),
         };
@@ -250,6 +254,18 @@ function createCodexLifecycleMock() {
             durable_status: "closed" as const,
             cwd: "/tmp/project",
           },
+        };
+      },
+      listAgents(request: { pathPrefix?: string } = {}) {
+        calls.listAgents.push(request);
+        const agents = [
+          buildSnapshot("researcher_one", "running", "still researching"),
+          buildSnapshot("reviewer_one", "idle", "review complete"),
+        ];
+        return {
+          snapshots: request.pathPrefix
+            ? agents.filter((agent) => agent.task_path === request.pathPrefix || agent.task_path?.startsWith(`${request.pathPrefix}/`))
+            : agents,
         };
       },
     },
@@ -348,7 +364,7 @@ function captureEntryRegistration(register: (pi: never) => void) {
   return { tools, events };
 }
 
-test("rpc child entrypoint alone registers caller_update without parent-only tools", () => {
+test("rpc child entrypoint registers caller_update and nested subagent tools", () => {
   const { tools, events } = captureEntryRegistration(childEntry as never);
 
   assert.equal(tools.includes("shell"), true);
@@ -357,11 +373,12 @@ test("rpc child entrypoint alone registers caller_update without parent-only too
   assert.equal(tools.includes("request_user_input"), true);
   assert.equal(tools.includes("Execute"), true);
   assert.equal(tools.includes("TodoWrite"), true);
-  assert.equal(tools.includes("spawn_agent"), false);
-  assert.equal(tools.includes("send_message"), false);
-  assert.equal(tools.includes("wait_agent"), false);
-  assert.equal(tools.includes("close_agent"), false);
-  assert.equal(tools.includes("Task"), false);
+  assert.equal(tools.includes("spawn_agent"), true);
+  assert.equal(tools.includes("send_message"), true);
+  assert.equal(tools.includes("wait_agent"), true);
+  assert.equal(tools.includes("list_agents"), true);
+  assert.equal(tools.includes("close_agent"), true);
+  assert.equal(tools.includes("Task"), true);
   assert.equal(tools.includes("subagent_done"), false);
   assert.equal(tools.includes("caller_ping"), false);
   assert.equal(tools.includes("caller_update"), true);
@@ -409,6 +426,12 @@ test("rpc caller_update emits an unsolicited caller_update event without shuttin
 test("interactive child entrypoint still registers caller_update", () => {
   const { tools } = captureEntryRegistration(interactiveChildEntry as never);
 
+  assert.equal(tools.includes("spawn_agent"), true);
+  assert.equal(tools.includes("send_message"), true);
+  assert.equal(tools.includes("wait_agent"), true);
+  assert.equal(tools.includes("list_agents"), true);
+  assert.equal(tools.includes("close_agent"), true);
+  assert.equal(tools.includes("Task"), true);
   assert.equal(tools.includes("caller_ping"), true);
   assert.equal(tools.includes("caller_update"), true);
   assert.equal(tools.includes("subagent_done"), false);
@@ -514,6 +537,7 @@ test("shared resolver switches Codex subagent tool family to send_message", () =
     { name: "spawn_agent", description: "subagent" },
     { name: "send_message", description: "subagent" },
     { name: "wait_agent", description: "subagent" },
+    { name: "list_agents", description: "subagent" },
     { name: "close_agent", description: "subagent" },
     { name: "Task", description: "task" },
     { name: "WebSearch", description: "web" },
@@ -524,6 +548,7 @@ test("shared resolver switches Codex subagent tool family to send_message", () =
     "spawn_agent",
     "send_message",
     "wait_agent",
+    "list_agents",
     "close_agent",
   ]);
   assert.deepEqual(resolveToolsetToolNames("droid", toolInfos), [
@@ -559,65 +584,51 @@ test("codex tool adapters use public names and do not leak agent ids", async () 
   const spawnAgent = tools.get("spawn_agent");
   const sendMessage = tools.get("send_message");
   const waitAgent = tools.get("wait_agent");
+  const listAgents = tools.get("list_agents");
   const closeAgent = tools.get("close_agent");
 
   assert.ok(spawnAgent);
   assert.ok(sendMessage);
   assert.ok(waitAgent);
+  assert.ok(listAgents);
   assert.ok(closeAgent);
 
   const spawnResult = await (spawnAgent!.execute as (...args: unknown[]) => Promise<any>)("call-1", {
-    name: "researcher_one",
+    task_name: "researcher_one",
     message: "Investigate auth flow",
+    fork_turns: "none",
   }, undefined, undefined, createMockCtx());
   assert.equal(calls.spawn.length, 1);
   assert.equal((calls.spawn[0] as { name: string }).name, "researcher_one");
   assert.equal((calls.spawn[0] as { runInBackground: boolean }).runInBackground, true);
+  assert.equal((calls.spawn[0] as { forkContext: boolean }).forkContext, false);
   assert.deepEqual(JSON.parse(spawnResult.content[0].text), {
-    name: "researcher_one",
+    task_name: "researcher_one",
   });
   assert.equal(JSON.stringify(spawnResult).includes("agent_id"), false);
 
-  const spawnForegroundExplicit = await (spawnAgent!.execute as (...args: unknown[]) => Promise<any>)("call-1b", {
-    name: "researcher_two",
+  const spawnDefaultFork = await (spawnAgent!.execute as (...args: unknown[]) => Promise<any>)("call-1b", {
+    task_name: "researcher_two",
     message: "Investigate billing flow",
-    wait_for_agent: true,
   }, undefined, undefined, createMockCtx());
   assert.equal(calls.spawn.length, 2);
-  const explicitForegroundSpawnCall = calls.spawn[1] as Record<string, unknown>;
-  assert.equal(explicitForegroundSpawnCall.mode, "codex");
-  assert.equal(explicitForegroundSpawnCall.name, "researcher_two");
-  assert.equal(explicitForegroundSpawnCall.prompt, "Investigate billing flow");
-  assert.equal(explicitForegroundSpawnCall.runInBackground, false);
-  assert.deepEqual(JSON.parse(spawnForegroundExplicit.content[0].text), {
-    name: "researcher_two",
-    status: { researcher_two: "idle" },
-    timed_out: false,
-    agent: {
-      name: "researcher_two",
-      status: "idle",
-      durable_status: "live_idle",
-      cwd: "/tmp/project",
-      last_assistant_text: "child done",
-    },
-    agents: [
-      {
-        name: "researcher_two",
-        status: "idle",
-        durable_status: "live_idle",
-        cwd: "/tmp/project",
-        last_assistant_text: "child done",
-      },
-    ],
+  const defaultForkSpawnCall = calls.spawn[1] as Record<string, unknown>;
+  assert.equal(defaultForkSpawnCall.mode, "codex");
+  assert.equal(defaultForkSpawnCall.name, "researcher_two");
+  assert.equal(defaultForkSpawnCall.prompt, "Investigate billing flow");
+  assert.equal(defaultForkSpawnCall.runInBackground, true);
+  assert.equal(defaultForkSpawnCall.forkContext, true);
+  assert.deepEqual(JSON.parse(spawnDefaultFork.content[0].text), {
+    task_name: "researcher_two",
   });
 
   const sendResult = await (sendMessage!.execute as (...args: unknown[]) => Promise<any>)("call-2", {
     target: "researcher_one",
     message: "Keep digging",
-    interrupt: true,
+    steer: true,
   });
   assert.deepEqual(calls.resumeByName, [
-    { mode: "codex", name: "researcher_one", input: "Keep digging", interrupt: true },
+    { mode: "codex", name: "researcher_one", input: "Keep digging", steer: true },
   ]);
   assert.deepEqual(JSON.parse(sendResult.content[0].text), { submission_id: "submission-1" });
   assert.equal(JSON.stringify(sendResult.details).includes("agent_id"), false);
@@ -627,18 +638,29 @@ test("codex tool adapters use public names and do not leak agent ids", async () 
   });
   assert.deepEqual(calls.waitAny, [{ timeoutMs: 45_000 }]);
   assert.deepEqual(JSON.parse(waitResult.content[0].text), {
-    status: { researcher_one: "idle" },
+    message: "researcher_one has updates",
     timed_out: false,
+  });
+
+  const listResult = await (listAgents!.execute as (...args: unknown[]) => Promise<any>)("call-3b", {
+    path_prefix: "/root/researcher_one",
+  });
+  assert.deepEqual(calls.listAgents, [{ pathPrefix: "/root/researcher_one" }]);
+  assert.deepEqual(JSON.parse(listResult.content[0].text), {
     agents: [
       {
-        name: "researcher_one",
-        status: "idle",
-        durable_status: "live_idle",
-        cwd: "/tmp/project",
-        last_assistant_text: "researcher_one done",
+        agent_name: "researcher_one",
+        agent_status: "running",
+        task_path: "/root/researcher_one",
+        last_task_message: "still researching",
       },
     ],
   });
+
+  await (listAgents!.execute as (...args: unknown[]) => Promise<any>)("call-3c", {
+    path_prefix: "reviewer",
+  });
+  assert.deepEqual(calls.listAgents.at(-1), { pathPrefix: "reviewer" });
 
   const closeResult = await (closeAgent!.execute as (...args: unknown[]) => Promise<any>)("call-4", { target: "researcher_one" });
   assert.deepEqual(calls.stopByName, [{ name: "researcher_one" }]);
@@ -663,14 +685,14 @@ test("spawn_agent renders foreground prompt in call output and content-only resu
 
   const theme = createRenderTheme();
   const foregroundCall = (spawnAgent!.renderCall as (...args: unknown[]) => unknown)(
-    { name: "worker", agent_type: "researcher", message: "Investigate auth flow", wait_for_agent: true },
+    { task_name: "worker", agent_type: "researcher", message: "Investigate auth flow" },
     theme,
   ) as { children?: Array<{ text?: string }> };
-  assert.equal(foregroundCall.children?.[0]?.text, "**Spawn **worker [researcher]");
+  assert.equal(foregroundCall.children?.[0]?.text, "**Spawn **worker [researcher] (background)");
   assert.equal(foregroundCall.children?.[1]?.text, "Investigate auth flow");
 
   const backgroundCall = (spawnAgent!.renderCall as (...args: unknown[]) => unknown)(
-    { name: "worker", message: "Investigate auth flow" },
+    { task_name: "worker", message: "Investigate auth flow" },
     theme,
   ) as { children?: Array<{ text?: string }> };
   assert.equal(backgroundCall.children?.[0]?.text, "**Spawn **worker (background)");
@@ -875,18 +897,8 @@ test("wait_agent returns a running snapshot with update_message", async () => {
   });
 
   assert.deepEqual(JSON.parse(result.content[0].text), {
-    status: { researcher_one: "running" },
+    message: "researcher_one has updates",
     timed_out: false,
-    agents: [
-      {
-        name: "researcher_one",
-        status: "running",
-        durable_status: "live_running",
-        cwd: "/tmp/project",
-        last_assistant_text: "finished text should not win",
-        update_message: "still auditing",
-      },
-    ],
   });
 
   const theme = createRenderTheme();
@@ -1061,7 +1073,7 @@ test("buildWaitAgentContent uses public names in status payloads", () => {
 
 test("buildSpawnAgentContent and buildSendMessageContent use public contract fields", () => {
   assert.deepEqual(JSON.parse(buildSpawnAgentContent("alpha")), {
-    name: "alpha",
+    task_name: "alpha",
   });
 
   assert.deepEqual(
@@ -1075,7 +1087,7 @@ test("buildSpawnAgentContent and buildSendMessageContent use public contract fie
       }),
     ),
     {
-      name: "beta",
+      task_name: "beta",
       status: { beta: "idle" },
       timed_out: false,
       agent: {

@@ -16,6 +16,8 @@ export function childSnapshot(
     cwd: record.cwd,
     model: record.model,
     name: record.name,
+    task_path: record.taskPath,
+    parent_task_path: record.parentTaskPath,
     session_id: record.sessionId,
     session_file: record.sessionFile,
     last_assistant_text: record.lastAssistantText,

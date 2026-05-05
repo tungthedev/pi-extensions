@@ -17,11 +17,6 @@ export function registerRequestUserInputTool(pi: ExtensionAPI): void {
         minItems: 1,
         maxItems: 4,
       }),
-      timeout_ms: Type.Optional(
-        Type.Number({
-          description: "Optional timeout for select/input dialogs in milliseconds. Defaults to 60000.",
-        }),
-      ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       return await executeAskUserRequest(ctx, params);

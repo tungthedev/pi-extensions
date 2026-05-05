@@ -17,6 +17,14 @@ import { applySpawnAgentProfile } from "./profiles-apply.ts";
 import { validateSubagentName } from "./naming.ts";
 import { resolveAgentProfiles } from "./profiles.ts";
 import { resolveSessionToolSet } from "../../settings/session.ts";
+import {
+  buildChildTaskPath,
+  normalizeTaskPath,
+  resolveTaskPathPrefix,
+  ROOT_TASK_PATH,
+  validateAgentTarget,
+} from "./task-paths.ts";
+import { SUBAGENT_TASK_PATH_ENV } from "./types.ts";
 
 export type SpawnLifecycleRequest = {
   mode: "codex" | "task";
@@ -46,7 +54,7 @@ export type ResumeLifecycleRequest = {
   mode: "codex" | "task";
   agentId: string;
   input: string;
-  interrupt?: boolean;
+  steer?: boolean;
   taskSummary?: string;
 };
 
@@ -74,6 +82,11 @@ export type SnapshotLifecycleResult = {
 
 export type StopLifecycleResult = {
   snapshot: AgentSnapshot;
+  closedDescendantCount?: number;
+};
+
+export type ListLifecycleResult = {
+  snapshots: AgentSnapshot[];
 };
 
 export type SubagentLifecycleServiceDeps = {
@@ -97,6 +110,13 @@ export type SubagentLifecycleServiceDeps = {
     childCwd: string;
   }) => string;
   findAddressableChildByName: (name: string) => DurableChildRecord | undefined;
+  findAddressableChildByTarget: (
+    target: string,
+    currentTaskPath: string,
+  ) => DurableChildRecord | undefined;
+  findAddressableChildByTaskPath: (taskPath: string) => DurableChildRecord | undefined;
+  listAddressableChildren: () => DurableChildRecord[];
+  listDescendantsByTaskPath: (taskPath: string) => DurableChildRecord[];
   attachChild: (
     record: DurableChildRecord,
     mode: "fresh" | "resume" | "fork",
@@ -165,6 +185,14 @@ export type SubagentLifecycleServiceDeps = {
 };
 
 export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDeps) {
+  const resolveCurrentTaskPath = (): string => {
+    try {
+      return normalizeTaskPath(process.env[SUBAGENT_TASK_PATH_ENV]);
+    } catch {
+      return ROOT_TASK_PATH;
+    }
+  };
+
   const resolveAppliedProfile = (request: SpawnLifecycleRequest): AppliedSpawnProfile => {
     const inheritedDefaults = deps.resolveParentSpawnDefaults({
       modelId:
@@ -204,6 +232,8 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
     transport: ChildTransport,
     appliedProfile: AppliedSpawnProfile,
     name: string,
+    parentTaskPath: string,
+    taskPath: string,
     forkedSessionFile?: string,
   ): DurableChildRecord => ({
     agentId,
@@ -212,6 +242,8 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
     cwd: request.ctx.cwd,
     model: appliedProfile.effectiveModel,
     name,
+    parentTaskPath,
+    taskPath,
     ...(request.taskSummary ? { taskSummary: request.taskSummary } : {}),
     status: "live_running",
     createdAt: new Date().toISOString(),
@@ -236,8 +268,10 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
 
   const spawn = async (request: SpawnLifecycleRequest): Promise<SpawnLifecycleResult> => {
       const publicName = validateSubagentName(request.name);
-      if (deps.findAddressableChildByName(publicName)) {
-        throw new Error(`name is already in use: ${publicName}`);
+      const parentTaskPath = resolveCurrentTaskPath();
+      const taskPath = buildChildTaskPath(parentTaskPath, publicName);
+      if (deps.findAddressableChildByTaskPath(taskPath)) {
+        throw new Error(`task path is already in use: ${taskPath}`);
       }
 
       const transport: ChildTransport = request.mode === "codex" && request.interactive ? "interactive" : "rpc";
@@ -271,6 +305,8 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
         transport,
         appliedProfile,
         publicName,
+        parentTaskPath,
+        taskPath,
         forkedSessionFile,
       );
 
@@ -375,7 +411,7 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
           commandType =
             record.status === "live_running"
               ? request.mode === "codex"
-                ? request.interrupt
+                ? request.steer
                   ? "steer"
                   : "follow_up"
                 : "follow_up"
@@ -441,7 +477,7 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
     };
   };
 
-  const stop = async (agentId: string): Promise<StopLifecycleResult> => {
+  const stopSingle = async (agentId: string): Promise<StopLifecycleResult> => {
       const record = deps.requireDurableChild(agentId);
       const ensured = await deps.ensureLiveAttachment(agentId).catch(() => undefined);
       const attachment = ensured?.attachment;
@@ -474,21 +510,42 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
       };
     };
 
-  const resolveAgentIdByName = (name: string, fieldName = "name"): string => {
-    const publicName = validateSubagentName(name, fieldName);
-    const record = deps.findAddressableChildByName(publicName);
+  const stop = async (agentId: string): Promise<StopLifecycleResult> => {
+    const record = deps.requireDurableChild(agentId);
+    const descendants = record.taskPath
+      ? deps.listDescendantsByTaskPath(record.taskPath).filter((child) => child.agentId !== agentId).reverse()
+      : [];
+    let closedDescendantCount = 0;
+    for (const descendant of descendants) {
+      if (descendant.status === "closed") continue;
+      await stopSingle(descendant.agentId);
+      closedDescendantCount += 1;
+    }
+
+    const result = await stopSingle(agentId);
+    return {
+      ...result,
+      closedDescendantCount,
+    };
+  };
+
+  const resolveAgentIdByTarget = (target: string, fieldName = "name"): string => {
+    const publicTarget = validateAgentTarget(target, fieldName);
+    const record = deps.findAddressableChildByTarget(publicTarget, resolveCurrentTaskPath());
     if (!record) {
-      throw new Error(`Unknown ${fieldName}: ${publicName}`);
+      throw new Error(`Unknown ${fieldName}: ${publicTarget}`);
     }
     return record.agentId;
   };
+
+  const resolveAgentIdByName = resolveAgentIdByTarget;
 
   const resumeByName = async (
     request: Omit<ResumeLifecycleRequest, "agentId"> & { name: string },
   ): Promise<ResumeLifecycleResult> => {
     return await resume({
       ...request,
-      agentId: resolveAgentIdByName(request.name),
+      agentId: resolveAgentIdByTarget(request.name),
     });
   };
 
@@ -496,16 +553,27 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
     names: string[];
     timeoutMs: number;
   }): Promise<WaitLifecycleResult> => {
-    const ids = [...new Set(request.names.map((name) => resolveAgentIdByName(name)))];
+    const ids = [...new Set(request.names.map((name) => resolveAgentIdByTarget(name)))];
     return await wait({ ids, timeoutMs: request.timeoutMs });
   };
 
   const getSnapshotByName = (name: string): SnapshotLifecycleResult => {
-    return getSnapshot(resolveAgentIdByName(name));
+    return getSnapshot(resolveAgentIdByTarget(name));
   };
 
   const stopByName = async (name: string): Promise<StopLifecycleResult> => {
-    return await stop(resolveAgentIdByName(name));
+    return await stop(resolveAgentIdByTarget(name));
+  };
+
+  const listAgents = (request: { pathPrefix?: string } = {}): ListLifecycleResult => {
+    const pathPrefix = resolveTaskPathPrefix(resolveCurrentTaskPath(), request.pathPrefix);
+    const records = deps.listAddressableChildren().filter((record) => {
+      if (!pathPrefix) return true;
+      return record.taskPath === pathPrefix || Boolean(record.taskPath?.startsWith(`${pathPrefix}/`));
+    });
+    return {
+      snapshots: records.map((record) => deps.childSnapshot(record)),
+    };
   };
 
   return {
@@ -516,9 +584,11 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
     getSnapshot,
     stop,
     resolveAgentIdByName,
+    resolveAgentIdByTarget,
     resumeByName,
     waitByNames,
     getSnapshotByName,
     stopByName,
+    listAgents,
   };
 }

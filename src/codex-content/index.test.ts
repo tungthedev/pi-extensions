@@ -28,6 +28,7 @@ const TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "spawn_agent", description: "subagent" },
   { name: "send_message", description: "subagent" },
   { name: "wait_agent", description: "subagent" },
+  { name: "list_agents", description: "subagent" },
   { name: "close_agent", description: "subagent" },
 ]);
 
@@ -65,6 +66,7 @@ test("codex mode activates codex tool groups and hides conflicting tools", () =>
     "spawn_agent",
     "send_message",
     "wait_agent",
+    "list_agents",
     "close_agent",
   ]);
 });

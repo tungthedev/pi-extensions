@@ -12,6 +12,7 @@ import {
   PROJECT_ROOT,
   SUBAGENT_CWD_ENV,
   SUBAGENT_CHILD_ENV,
+  SUBAGENT_TASK_PATH_ENV,
   TOOL_SET_OVERRIDE_ENV,
 } from "./types.ts";
 
@@ -30,11 +31,24 @@ export function appendBounded(current: string, chunk: string, max = 16 * 1024): 
   return combined.length <= max ? combined : combined.slice(combined.length - max);
 }
 
+function buildChildDeveloperInstructions(options: {
+  developerInstructions?: string;
+  taskPath?: string;
+}): string {
+  return [
+    options.developerInstructions?.trim(),
+    options.taskPath?.trim()
+      ? `Your canonical task path is ${options.taskPath.trim()}. Other agents can address you by this path.`
+      : undefined,
+  ].filter(Boolean).join("\n\n");
+}
+
 export function createLiveAttachment(options: {
   agentId: string;
   cwd: string;
   model?: string;
   profileBootstrap?: ChildProfileBootstrap;
+  taskPath?: string;
   sessionFile?: string;
   launchMode?: "fresh" | "fork" | "resume";
   toolSet?: "pi" | "codex" | "droid";
@@ -54,7 +68,10 @@ export function createLiveAttachment(options: {
     args.push("--model", options.model);
   }
 
-  const developerInstructions = options.profileBootstrap?.developerInstructions?.trim();
+  const developerInstructions = buildChildDeveloperInstructions({
+    developerInstructions: options.profileBootstrap?.developerInstructions,
+    taskPath: options.taskPath,
+  });
   if (developerInstructions) {
     args.push("--append-system-prompt", developerInstructions);
   }
@@ -66,6 +83,7 @@ export function createLiveAttachment(options: {
       FORCE_COLOR: "0",
       PI_SUBAGENT_PROJECT_ROOT: PROJECT_ROOT,
       [SUBAGENT_CWD_ENV]: options.cwd,
+      ...(options.taskPath ? { [SUBAGENT_TASK_PATH_ENV]: options.taskPath } : {}),
       ...(options.toolSet ? { [TOOL_SET_OVERRIDE_ENV]: options.toolSet } : {}),
       [SUBAGENT_CHILD_ENV]: "1",
     },

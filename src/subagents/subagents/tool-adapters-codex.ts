@@ -14,7 +14,6 @@ import {
   toolCallLine,
 } from "../../shared/renderers/common.ts";
 import { validateSubagentName } from "./naming.ts";
-import { buildWaitAgentContent } from "./notifications.ts";
 import type { createSubagentLifecycleService } from "./lifecycle-service.ts";
 import {
   buildSpawnAgentTypeDescription,
@@ -23,14 +22,13 @@ import {
 import { resolveRequestedAgentType } from "./profiles-apply.ts";
 import {
   buildSendMessageContent,
-  buildSpawnAgentContent,
   toPublicAgentSnapshot,
 } from "./results.ts";
+import { validateAgentTarget } from "./task-paths.ts";
 import {
   extractSnapshotDetails,
   normalizeTaskOutput,
   previewTaskText,
-  renderAgentCompletionResult,
   renderWaitAgentResult,
 } from "./renderers.ts";
 
@@ -85,7 +83,12 @@ function renderForegroundSpawnResult(
 function buildSpawnAgentToolDescription(agentRoleGuidance: string): string {
   const toolDescription = [
     agentRoleGuidance,
-    "Spawn a sub-agent for a well-scoped task. Returns the public child-agent name, plus completion details when available.",
+    "Spawns an agent to work on the specified task. If your current task is `/root/task1` and you spawn_agent with task_name \"task_3\" the agent will have canonical task name `/root/task1/task_3`.",
+    "You are then able to refer to this agent as `task_3` or `/root/task1/task_3` interchangeably. However an agent `/root/task2/task_3` would only be able to communicate with this agent via its canonical name `/root/task1/task_3`.",
+    "The spawned agent will have the same tools as you and the ability to spawn its own subagents.",
+    "Spawned agents inherit your current model by default. Omit `model` to use that preferred default; set `model` only when an explicit override is needed.",
+    "It will be able to send you and other running agents messages, and its final answer will be provided to you when it finishes.",
+    "The new agent's canonical task name will be provided to it along with the message.",
   ].join("\n");
 
   const agentRoleUsageHint = agentRoleGuidance
@@ -94,7 +97,7 @@ function buildSpawnAgentToolDescription(agentRoleGuidance: string): string {
 
   return [
     toolDescription,
-    "This spawn_agent tool provides you access to smaller but more efficient sub-agents. A mini model can solve many tasks faster than the main model. You should follow the rules and guidelines below to use this tool.",
+    "This spawn_agent tool provides you access to sub-agents that inherit your current model by default. Do not set the `model` field unless the user explicitly asks for a different model or there is a clear task-specific reason. You should follow the rules and guidelines below to use this tool.",
     "",
     "Only use `spawn_agent` if and only if the user explicitly asks for sub-agents, delegation, or parallel agent work.",
     "Requests for depth, thoroughness, research, investigation, or detailed codebase analysis do not count as permission to spawn.",
@@ -102,7 +105,7 @@ function buildSpawnAgentToolDescription(agentRoleGuidance: string): string {
     "",
     "### When to delegate vs. do the subtask yourself",
     "- First, quickly analyze the overall user task and form a succinct high-level plan. Identify which tasks are immediate blockers on the critical path, and which tasks are sidecar tasks that are needed but can run in parallel without blocking the next local step. As part of that plan, explicitly decide what immediate task you should do locally right now. Do this planning step before delegating to agents so you do not hand off the immediate blocking task to a submodel and then waste time waiting on it.",
-    "- Use the smaller subagent when a subtask is easy enough for it to handle and can run in parallel with your local work. Prefer delegating concrete, bounded sidecar tasks that materially advance the main task without blocking your immediate next local step.",
+    "- Use a subagent when a subtask is easy enough for it to handle and can run in parallel with your local work. Prefer delegating concrete, bounded sidecar tasks that materially advance the main task without blocking your immediate next local step.",
     "- Do not delegate urgent blocking work when your immediate next step depends on that result. If the very next action is blocked on that task, the main rollout should usually do it locally to keep the critical path moving.",
     "- Keep work local when the subtask is too difficult to delegate well and when it is tightly coupled, urgent, or likely to block your immediate next step.",
     "",
@@ -115,10 +118,6 @@ function buildSpawnAgentToolDescription(agentRoleGuidance: string): string {
     "- For coding tasks, prefer delegating concrete code-change worker subtasks over read-only explorer analysis when the subagent can make a bounded patch in a clear write scope.",
     "- When delegating coding work, instruct the submodel to edit files directly in its forked workspace and list the file paths it changed in the final answer.",
     "- For code-edit subtasks, decompose work so each delegated task has a disjoint write set.",
-    "- Use `fork_context` only when inheriting the current session history provides a real speed or quality benefit because re-explaining a long thread would be expensive, usually for debugging or continuing complex in-flight work.",
-    "- Do not use `fork_context` for simple or self-contained tasks where a fresh agent can start quickly without the extra history.",
-    "- Do not use `fork_context` for tasks that benefit from fresh context and low bias, especially review, audit, or other evaluative work.",
-    "",
     "### After you delegate",
     "- Call wait_agent very sparingly. Only call wait_agent when you need the result immediately for the next critical-path step and you are blocked until it returns.",
     "- Do not redo delegated subagent tasks yourself; focus on integrating results or tackling non-overlapping work.",
@@ -134,14 +133,50 @@ function buildSpawnAgentToolDescription(agentRoleGuidance: string): string {
   ].filter((line, index, lines) => !(line === "" && lines[index - 1] === "")).join("\n");
 }
 
+function shouldForkCodexTurns(forkTurns: unknown): boolean {
+  if (forkTurns === undefined || forkTurns === null || forkTurns === "" || forkTurns === "all") {
+    return true;
+  }
+  if (forkTurns === "none") return false;
+  if (typeof forkTurns === "string" && /^[1-9][0-9]*$/.test(forkTurns)) return true;
+  throw new Error("fork_turns must be `none`, `all`, or a positive integer string");
+}
+
+function buildCodexSpawnAgentContent(taskName: string): string {
+  return JSON.stringify({ task_name: taskName });
+}
+
+function buildCodexWaitAgentContent(agents: PublicAgentSnapshot[], timedOut: boolean): string {
+  if (timedOut || agents.length === 0) {
+    return JSON.stringify({ message: "No agent updates before timeout", timed_out: true });
+  }
+  const names = agents.map((agent) => agent.name).join(", ");
+  return JSON.stringify({
+    message: `${names} ${agents.length === 1 ? "has" : "have"} updates`,
+    timed_out: false,
+  });
+}
+
+function buildCodexListAgentsContent(agents: PublicAgentSnapshot[]): string {
+  return JSON.stringify({
+    agents: agents.map((agent) => ({
+      agent_name: agent.name,
+      agent_status: agent.status,
+      task_path: agent.task_path,
+      last_task_message: resolvePreferredAgentOutput(agent),
+    })),
+  });
+}
+
 export function registerCodexToolAdapters(
   pi: Pick<ExtensionAPI, "registerTool">,
   deps: CodexToolAdapterDeps,
 ): CodexToolAdapterHandle {
   type RegisteredTool = Parameters<typeof pi.registerTool>[0];
   const spawnAgentParameters = Type.Object({
-    name: Type.String({
-      description: "Required lowercase public name for the child agent. May include hyphens and underscores.",
+    task_name: Type.String({
+      description:
+        "Task name for the new agent. Use lowercase letters, digits, underscores and hyphens.",
     }),
     message: Type.String({
       description: "Initial plain-text task for the new agent.",
@@ -154,18 +189,24 @@ export function registerCodexToolAdapters(
     fork_context: Type.Optional(
       Type.Boolean({
         description:
-          "Only use when copying the current persisted session branch into the child will clearly help by avoiding re-explaining a long history and letting the subagent start faster, usually for debugging or continuing complex ongoing work. Never use it for simple self-contained tasks, or for work that benefits from fresh context and low bias such as review or audit tasks.",
+          "Compatibility option. When true, fork the current thread history into the new agent before sending the initial prompt. Prefer `fork_turns` for Codex-style launches.",
+      }),
+    ),
+    fork_turns: Type.Optional(
+      Type.String({
+        description:
+          "Optional number of turns to fork. Defaults to `all`. Use `none` or `all`; positive integer strings such as `3` are accepted for Codex compatibility but currently fork all available context.",
+      }),
+    ),
+    model: Type.Optional(
+      Type.String({
+        description:
+          "Optional model override for the new agent. Leave unset to inherit the same model as the parent, which is the preferred default. Only set this when the user explicitly asks for a different model or the task clearly requires one.",
       }),
     ),
     reasoning_effort: Type.Optional(
       Type.String({
-        description: "Optional reasoning effort override for the child agent.",
-      }),
-    ),
-    wait_for_agent: Type.Optional(
-      Type.Boolean({
-        description:
-          "If true, wait for agent completion in this call. If false or omitted, return immediately and notify later when the child completes.",
+        description: "Optional reasoning effort override for the new agent. Replaces the inherited reasoning effort.",
       }),
     ),
     interactive: Type.Optional(
@@ -190,49 +231,36 @@ export function registerCodexToolAdapters(
       const result = await deps.lifecycle.spawn({
         mode: "codex",
         ctx,
-        name: validateSubagentName(params.name),
+        name: validateSubagentName(params.task_name, "task_name"),
         prompt,
         requestedAgentType: params.agent_type,
+        requestedModel: params.model,
         requestedReasoningEffort: params.reasoning_effort,
-        runInBackground: params.wait_for_agent !== true,
+        runInBackground: true,
         interactive: params.interactive,
-        forkContext: params.fork_context,
+        forkContext: params.fork_context ?? shouldForkCodexTurns(params.fork_turns),
       });
-
-      const completedAgent = result.completedAgent
-        ? toPublicAgentSnapshot(result.completedAgent)
-        : undefined;
 
       return {
         content: [
           {
             type: "text",
-            text: buildSpawnAgentContent(result.name, completedAgent),
+            text: buildCodexSpawnAgentContent(result.name),
           },
         ],
-        details: completedAgent
-          ? {
-              name: result.name,
-              agents: [completedAgent],
-              status: { [result.name]: completedAgent.status },
-              timed_out: false,
-              prompt,
-              wait_for_agent: Boolean(params.wait_for_agent),
-            }
-          : {
-              name: result.name,
-              prompt,
-              wait_for_agent: Boolean(params.wait_for_agent),
-            },
+        details: {
+          task_name: result.name,
+          prompt,
+        },
       };
     },
     renderCall(args: any, theme: any) {
       const publicName =
-        typeof args.name === "string" && args.name.trim().length > 0 ? args.name.trim() : "agent";
+        typeof args.task_name === "string" && args.task_name.trim().length > 0 ? args.task_name.trim() : "agent";
       const agentType = resolveRequestedAgentType(args.agent_type);
       const roleLabel = agentType !== "default" ? ` [${agentType}]` : "";
       const transportLabel = args.interactive ? theme.fg("muted", " (interactive)") : "";
-      const backgroundLabel = args.wait_for_agent ? "" : theme.fg("muted", " (background)");
+      const backgroundLabel = theme.fg("muted", " (background)");
       const agentName = `${theme.fg("accent", `${publicName}${roleLabel}`)}${transportLabel}`;
       const callLine = new Text(
         toolCallLine(theme, "Spawn", `${agentName}${backgroundLabel}`),
@@ -288,20 +316,21 @@ export function registerCodexToolAdapters(
     name: "send_message",
     label: "send_message",
     description:
-      "Send more work to a persistent child agent. Automatically resumes detached agents, uses queued follow-up semantics by default, and uses steering when interrupt is true.",
+      "Send a message to an existing agent. The message will be delivered promptly. By default, uses follow-up mode; set steer=true to redirect an active agent mid-turn or to start a new turn for an inactive agent.",
     parameters: Type.Object({
-      target: Type.String({ description: "Public name of the child agent to message." }),
+      target: Type.String({ description: "Relative or canonical task name to message (from spawn_agent)." }),
       message: Type.String({
-        description: "Plain-text message to send to the agent.",
+        description: "Message text to send to the target agent.",
       }),
-      interrupt: Type.Optional(
+      steer: Type.Optional(
         Type.Boolean({
-          description: "Use steering semantics when the child is already running.",
+          description:
+            "When true, steer active agents mid-turn; inactive agents start a new turn. Defaults to false follow-up mode.",
         }),
       ),
     }),
     async execute(_toolCallId: any, params: any) {
-      const target = validateSubagentName(params.target, "target");
+      const target = validateAgentTarget(params.target, "target");
       const input = params.message?.trim();
       if (!input) {
         throw new Error("message is required");
@@ -311,7 +340,7 @@ export function registerCodexToolAdapters(
         mode: "codex",
         name: target,
         input,
-        interrupt: params.interrupt,
+        steer: params.steer,
       });
 
       return {
@@ -352,10 +381,53 @@ export function registerCodexToolAdapters(
   });
 
   pi.registerTool({
+    name: "list_agents",
+    label: "list_agents",
+    description: "List live agents in the current root thread tree. Optionally filter by task-path prefix.",
+    parameters: Type.Object({
+      path_prefix: Type.Optional(
+        Type.String({ description: "Optional task-path prefix (not ending with trailing slash). Accepts the same relative or absolute task-path syntax." }),
+      ),
+    }),
+    async execute(_toolCallId: any, params: any) {
+      const result = deps.lifecycle.listAgents({
+        pathPrefix: params.path_prefix,
+      });
+      const agents = result.snapshots.map(toPublicAgentSnapshot);
+      return {
+        content: [{ type: "text", text: buildCodexListAgentsContent(agents) }],
+        details: {
+          agents,
+          path_prefix: params.path_prefix,
+        },
+      };
+    },
+    renderCall(args: any, theme: any) {
+      const prefix = typeof args.path_prefix === "string" && args.path_prefix.trim().length > 0
+        ? args.path_prefix.trim()
+        : "agents";
+      return new Text(toolCallLine(theme, "List", theme.fg("accent", prefix)), 0, 0);
+    },
+    renderResult(result: any, _options: any, theme: any) {
+      const details = result.details as { agents?: PublicAgentSnapshot[] } | undefined;
+      const agents = details?.agents ?? [];
+      if (agents.length === 0) {
+        return new Text(theme.fg("muted", "No agents"), 0, 0);
+      }
+      return renderLines(
+        agents.map((agent) => {
+          const path = agent.task_path ? theme.fg("muted", ` ${agent.task_path}`) : "";
+          return `${theme.fg("accent", agent.name)}${path}${theme.fg("muted", ": ")}${agent.status}`;
+        }),
+      );
+    },
+  });
+
+  pi.registerTool({
     name: "wait_agent",
     label: "wait_agent",
     description:
-      "Wait for any child agent to complete a turn. Completed statuses may include the agent's final message. Returns empty status when timed out. Once the agent reaches a completed status, a notification message will be received containing the same completed status.",
+      "Wait for a mailbox update from any live agent, including queued messages and final-status notifications. Does not return the content; returns either a summary of which agents have updates (if any), or a timeout summary if no mailbox update arrives before the deadline.",
     parameters: Type.Object({
       timeout_ms: Type.Optional(
         Type.Number({
@@ -370,7 +442,7 @@ export function registerCodexToolAdapters(
       });
       const snapshots = result.snapshots.map(toPublicAgentSnapshot);
       return {
-        content: [{ type: "text", text: buildWaitAgentContent(snapshots, result.timedOut) }],
+        content: [{ type: "text", text: buildCodexWaitAgentContent(snapshots, result.timedOut) }],
         details: {
           agents: snapshots,
           status: Object.fromEntries(snapshots.map((snapshot) => [snapshot.name, snapshot.status])),
@@ -385,7 +457,7 @@ export function registerCodexToolAdapters(
       const details =
         result.details as { agents?: PublicAgentSnapshot[]; timed_out?: boolean } | undefined;
       if (!details) {
-        return renderFallbackResult(result, theme.fg("muted", buildWaitAgentContent([], false)));
+        return renderFallbackResult(result, theme.fg("muted", buildCodexWaitAgentContent([], false)));
       }
       return renderWaitAgentResult(details, Boolean(options.expanded), theme);
     },
@@ -394,12 +466,12 @@ export function registerCodexToolAdapters(
   pi.registerTool({
     name: "close_agent",
     label: "close_agent",
-    description: "Close a persistent child agent. Closed agents cannot be resumed.",
+    description: "Close an agent and any open descendants when they are no longer needed, and return the target agent's current status after shutdown was requested. Don't keep agents open for too long if they are not needed anymore.",
     parameters: Type.Object({
-      target: Type.String({ description: "Public name of the agent to close." }),
+      target: Type.String({ description: "Relative or canonical task name to close (from spawn_agent)." }),
     }),
     async execute(_toolCallId: any, params: any) {
-      const target = validateSubagentName(params.target, "target");
+      const target = validateAgentTarget(params.target, "target");
       const result = await deps.lifecycle.stopByName(target);
       const snapshot = toPublicAgentSnapshot(result.snapshot);
       return {
@@ -411,6 +483,7 @@ export function registerCodexToolAdapters(
         ],
         details: {
           status: snapshot,
+          closed_descendant_count: result.closedDescendantCount ?? 0,
         },
       };
     },

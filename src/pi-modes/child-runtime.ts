@@ -6,6 +6,7 @@ import registerCodexContentExtension from "../codex-content/index.ts";
 import registerDroidContentExtension from "../droid-content/index.ts";
 import registerShellExtension from "../shell/index.ts";
 import registerSkillExtension from "../skill/index.ts";
+import { registerSubagentTools } from "../subagents/subagents/index.ts";
 import interactiveChild from "../subagents/subagents/interactive-child.ts";
 import registerSystemMdExtension from "../system-md/index.ts";
 import registerWebExtension from "../web/index.ts";
@@ -38,6 +39,7 @@ function registerSharedChildRuntime(pi: ExtensionAPI): void {
   registerDroidContentExtension(pi);
   registerShellExtension(pi);
   registerSkillExtension(pi);
+  registerSubagentTools(pi);
   registerSystemMdExtension(pi);
   registerWebExtension(pi);
 }

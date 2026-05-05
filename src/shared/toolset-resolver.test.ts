@@ -37,6 +37,7 @@ const ALL_TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "spawn_agent", description: "subagent codex" },
   { name: "send_message", description: "subagent codex" },
   { name: "wait_agent", description: "subagent codex" },
+  { name: "list_agents", description: "subagent codex" },
   { name: "close_agent", description: "subagent codex" },
   { name: "Task", description: "task" },
 ]);
@@ -75,6 +76,7 @@ test("resolveToolsetToolNames computes the canonical tool list for each mode", (
     "spawn_agent",
     "send_message",
     "wait_agent",
+    "list_agents",
     "close_agent",
   ]);
 

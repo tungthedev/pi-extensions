@@ -8,16 +8,19 @@ export const SUBAGENT_TOOL_NAMES = [
   "spawn_agent",
   "send_message",
   "wait_agent",
+  "list_agents",
   "close_agent",
 ] as const;
 export const SUBAGENT_RESERVED_TOOL_NAMES = [
   "spawn_agent",
   "send_message",
   "wait_agent",
+  "list_agents",
   "close_agent",
 ] as const;
 export const SUBAGENT_CHILD_ENV = "PI_SUBAGENT_CHILD";
 export const SUBAGENT_CWD_ENV = "PI_SUBAGENT_CWD";
+export const SUBAGENT_TASK_PATH_ENV = "PI_SUBAGENT_TASK_PATH";
 export const TOOL_SET_OVERRIDE_ENV = "PI_SESSION_TOOL_SET";
 
 export const CODEX_SUBAGENT_TOOL_NAMES = SUBAGENT_TOOL_NAMES;
@@ -73,6 +76,8 @@ export type DurableChildRecord = {
   cwd: string;
   model?: string;
   name?: string;
+  taskPath?: string;
+  parentTaskPath?: string;
   status: DurableChildStatus;
   createdAt: string;
   updatedAt: string;
@@ -136,6 +141,8 @@ export type AgentSnapshot = {
   cwd: string;
   model?: string;
   name?: string;
+  task_path?: string;
+  parent_task_path?: string;
   session_id?: string;
   session_file?: string;
   last_assistant_text?: string;

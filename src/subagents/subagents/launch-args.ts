@@ -8,6 +8,7 @@ export function buildInteractivePiArgs(options: {
   model?: string;
   thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   developerInstructions?: string;
+  taskPath?: string;
 }): string[] {
   const args = [
     "--session",
@@ -26,7 +27,12 @@ export function buildInteractivePiArgs(options: {
     args.push("--thinking", options.thinkingLevel);
   }
 
-  const developerInstructions = options.developerInstructions?.trim();
+  const developerInstructions = [
+    options.developerInstructions?.trim(),
+    options.taskPath?.trim()
+      ? `Your canonical task path is ${options.taskPath.trim()}. Other agents can address you by this path.`
+      : undefined,
+  ].filter(Boolean).join("\n\n");
   if (developerInstructions) {
     args.push("--append-system-prompt", developerInstructions);
   }

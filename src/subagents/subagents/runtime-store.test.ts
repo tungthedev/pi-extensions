@@ -107,3 +107,48 @@ test("markRunning preserves update tracking while terminal transitions clear it"
     suppressedVersion: undefined,
   });
 });
+
+test("runtime store resolves task paths and permits duplicate names under different parents", () => {
+  const store = createSubagentRuntimeStore();
+  const firstReviewer = createRecord({
+    agentId: "reviewer-a",
+    name: "reviewer",
+    taskPath: "/root/researcher/reviewer",
+    parentTaskPath: "/root/researcher",
+  });
+  const secondReviewer = createRecord({
+    agentId: "reviewer-b",
+    name: "reviewer",
+    taskPath: "/root/auditor/reviewer",
+    parentTaskPath: "/root/auditor",
+  });
+
+  store.setDurableChild(firstReviewer.agentId, firstReviewer);
+  store.setDurableChild(secondReviewer.agentId, secondReviewer);
+
+  assert.equal(store.findChildByTaskPath("/root/researcher/reviewer")?.agentId, "reviewer-a");
+  assert.equal(store.findChildByTaskPath("/root/auditor/reviewer")?.agentId, "reviewer-b");
+  assert.equal(store.findChildByTarget("reviewer", "/root/researcher")?.agentId, "reviewer-a");
+  assert.equal(store.findChildByTarget("reviewer", "/root/auditor")?.agentId, "reviewer-b");
+});
+
+test("runtime store lists children and descendants by task path", () => {
+  const store = createSubagentRuntimeStore();
+  for (const record of [
+    createRecord({ agentId: "parent", name: "researcher", taskPath: "/root/researcher", parentTaskPath: "/root" }),
+    createRecord({ agentId: "child", name: "reviewer", taskPath: "/root/researcher/reviewer", parentTaskPath: "/root/researcher" }),
+    createRecord({ agentId: "grandchild", name: "auditor", taskPath: "/root/researcher/reviewer/auditor", parentTaskPath: "/root/researcher/reviewer" }),
+    createRecord({ agentId: "sibling", name: "writer", taskPath: "/root/writer", parentTaskPath: "/root" }),
+  ]) {
+    store.setDurableChild(record.agentId, record);
+  }
+
+  assert.deepEqual(
+    store.listChildrenByParentTaskPath("/root/researcher").map((record) => record.agentId),
+    ["child"],
+  );
+  assert.deepEqual(
+    store.listDescendantsByTaskPath("/root/researcher").map((record) => record.agentId),
+    ["child", "grandchild"],
+  );
+});

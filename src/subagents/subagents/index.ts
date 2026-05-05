@@ -95,6 +95,7 @@ import {
   INTERACTIVE_EXTENSION_ENTRY,
   INTERACTIVE_LAUNCHER_ENTRY,
   SUBAGENT_CHILD_ENV,
+  SUBAGENT_TASK_PATH_ENV,
   SUBAGENT_RESERVED_TOOL_NAMES,
   SUBAGENT_TOOL_NAMES,
   SUBAGENT_ENTRY_TYPES,
@@ -719,6 +720,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
       model: options.record.model,
       thinkingLevel: options.thinkingLevel,
       developerInstructions: options.profileBootstrap?.developerInstructions,
+      taskPath: options.record.taskPath,
     });
     piArgs.push(`@${promptFile}`);
 
@@ -734,6 +736,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
         PI_SUBAGENT_SESSION: sessionFile,
         [SUBAGENT_CWD_ENV]: options.record.cwd,
         [SUBAGENT_CHILD_ENV]: "1",
+        ...(options.record.taskPath ? { [SUBAGENT_TASK_PATH_ENV]: options.record.taskPath } : {}),
         [TOOL_SET_OVERRIDE_ENV]: options.toolSet,
       },
       cleanupPaths: [promptFile],
@@ -924,6 +927,7 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
             source: profile.source,
           }
         : undefined,
+      taskPath: record.taskPath,
       sessionFile: mode === "fresh" ? undefined : record.sessionFile,
       launchMode: mode,
       toolSet,
@@ -1238,6 +1242,10 @@ export function registerCodexSubagentTools(pi: ExtensionAPI) {
     normalizeReasoningEffortToThinkingLevel,
     resolveForkContextSessionFile,
     findAddressableChildByName: (name) => store.findChildByPublicName(name),
+    findAddressableChildByTarget: (target, currentTaskPath) => store.findChildByTarget(target, currentTaskPath),
+    findAddressableChildByTaskPath: (taskPath) => store.findChildByTaskPath(taskPath),
+    listAddressableChildren: () => store.listAddressableChildren(),
+    listDescendantsByTaskPath: (taskPath) => store.listDescendantsByTaskPath(taskPath, { addressableOnly: false }),
     attachChild,
     launchInteractiveChild,
     watchInteractiveAttachment,

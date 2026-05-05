@@ -37,6 +37,7 @@ const TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "spawn_agent", description: "subagent" },
   { name: "send_message", description: "subagent" },
   { name: "wait_agent", description: "subagent" },
+  { name: "list_agents", description: "subagent" },
   { name: "close_agent", description: "subagent" },
 ]);
 

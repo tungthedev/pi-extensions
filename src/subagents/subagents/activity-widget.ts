@@ -290,27 +290,18 @@ function padToWidth(text: string, width: number): string {
   return `${truncated}${" ".repeat(Math.max(0, width - visibleWidth(truncated)))}`;
 }
 
-function renderBoxedLine(theme: Theme, line: string, width: number): string {
-  if (width <= 2) {
+function renderPaddedLine(line: string, width: number): string {
+  if (width <= BOX_HORIZONTAL_PADDING * 2) {
     return truncateToWidth(line, width);
   }
 
-  const contentWidth = Math.max(0, width - 2 - BOX_HORIZONTAL_PADDING * 2);
+  const contentWidth = Math.max(0, width - BOX_HORIZONTAL_PADDING * 2);
   const content = padToWidth(line, contentWidth);
-  return `${theme.fg("muted", "│")}${" ".repeat(BOX_HORIZONTAL_PADDING)}${content}${" ".repeat(BOX_HORIZONTAL_PADDING)}${theme.fg("muted", "│")}`;
+  return `${" ".repeat(BOX_HORIZONTAL_PADDING)}${content}${" ".repeat(BOX_HORIZONTAL_PADDING)}`;
 }
 
-function renderBoxedSubagentActivityLines(theme: Theme, lines: string[], width: number): string[] {
-  if (width <= 2) {
-    return lines.map((line) => truncateToWidth(line, width));
-  }
-
-  const innerWidth = Math.max(0, width - 2);
-  return [
-    `${theme.fg("muted", "╭")}${theme.fg("muted", "─".repeat(innerWidth))}${theme.fg("muted", "╮")}`,
-    ...lines.map((line) => renderBoxedLine(theme, line, width)),
-    `${theme.fg("muted", "╰")}${theme.fg("muted", "─".repeat(innerWidth))}${theme.fg("muted", "╯")}`,
-  ];
+function renderPaddedSubagentActivityLines(lines: string[], width: number): string[] {
+  return lines.map((line) => renderPaddedLine(line, width));
 }
 
 function layoutActivityTreeRows(
@@ -351,16 +342,15 @@ export function buildSubagentActivityWidgetLines(
   const visibleCount = hiddenAfterLimit === 1 ? visibleLimit + 1 : visibleLimit;
   const visibleActivities = sorted.slice(0, visibleCount);
   const hiddenCount = sorted.length - visibleActivities.length;
-  const contentWidth = Math.max(1, width - 2 - BOX_HORIZONTAL_PADDING * 2);
+  const contentWidth = Math.max(1, width - BOX_HORIZONTAL_PADDING * 2);
   const lines = layoutActivityTreeRows(theme, visibleActivities, contentWidth, now, hiddenCount);
   if (hiddenCount > 0) {
     lines.push(theme.fg("muted", `╰ +${hiddenCount} more`));
   }
 
   return [
-    ...renderBoxedSubagentActivityLines(
-      theme,
-      [truncateToWidth(theme.fg("accent", "Agents"), contentWidth), ...lines],
+    ...renderPaddedSubagentActivityLines(
+      [truncateToWidth(theme.bold(theme.fg("accent", "Agents")), contentWidth), ...lines],
       width,
     ),
     theme.fg("dim", " "),

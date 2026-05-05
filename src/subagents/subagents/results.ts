@@ -14,6 +14,8 @@ export function toPublicAgentSnapshot(snapshot: AgentSnapshot): PublicAgentSnaps
     durable_status: snapshot.durable_status,
     cwd: snapshot.cwd,
     model: snapshot.model,
+    task_path: snapshot.task_path,
+    parent_task_path: snapshot.parent_task_path,
     session_id: snapshot.session_id,
     session_file: snapshot.session_file,
     last_assistant_text: snapshot.last_assistant_text,
@@ -29,7 +31,7 @@ export function buildSpawnAgentContent(
   completedAgent?: PublicAgentSnapshot,
 ): string {
   return JSON.stringify({
-    name,
+    task_name: name,
     ...(completedAgent
       ? {
           status: {

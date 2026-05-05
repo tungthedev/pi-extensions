@@ -40,3 +40,19 @@ test("buildInteractivePiArgs preserves model/thinking but re-applies role prompt
   assert.equal(args.includes("--append-system-prompt"), true);
   assert.equal(args.includes("Review carefully."), true);
 });
+
+test("buildInteractivePiArgs includes canonical task path in child instructions", () => {
+  const args = buildInteractivePiArgs({
+    sessionFile: "/tmp/forked.jsonl",
+    sessionDir: "/tmp/sessions",
+    extensionEntry: "/tmp/interactive-child-entry.ts",
+    launchMode: "spawn",
+    taskPath: "/root/researcher/reviewer",
+  });
+
+  assert.equal(args.includes("--append-system-prompt"), true);
+  assert.equal(
+    args.includes("Your canonical task path is /root/researcher/reviewer. Other agents can address you by this path."),
+    true,
+  );
+});

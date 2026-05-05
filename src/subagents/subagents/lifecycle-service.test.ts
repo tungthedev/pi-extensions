@@ -62,6 +62,16 @@ function createBaseDeps(overrides: Partial<Parameters<typeof createSubagentLifec
       resolveForkContextSessionFile: () => "/tmp/fork.jsonl",
       findAddressableChildByName: (name: string) =>
         [...records.values()].find((record) => record.name === name),
+      findAddressableChildByTarget: (target: string, currentTaskPath: string) =>
+        [...records.values()].find((record) => {
+          if (target.startsWith("/")) return record.taskPath === target;
+          return record.taskPath === `${currentTaskPath}/${target}` || (!record.taskPath && record.name === target);
+        }),
+      findAddressableChildByTaskPath: (taskPath: string) =>
+        [...records.values()].find((record) => record.taskPath === taskPath),
+      listAddressableChildren: () => [...records.values()].filter((record) => record.status !== "closed"),
+      listDescendantsByTaskPath: (taskPath: string) =>
+        [...records.values()].filter((record) => record.taskPath?.startsWith(`${taskPath}/`)),
       attachChild: async () => ({ attachment: attachment as never, record: records.get("agent-1")! }),
       launchInteractiveChild: async () => ({ attachment, record: records.get("agent-1")! }),
       watchInteractiveAttachment() {},
@@ -122,10 +132,27 @@ test("lifecycle service uses shared resume semantics for codex and task adapters
   });
   const service = createSubagentLifecycleService(deps);
 
-  await service.resume({ mode: "codex", agentId: "agent-1", input: "do work", interrupt: true });
+  await service.resume({ mode: "codex", agentId: "agent-1", input: "do work", steer: true });
   await service.resume({ mode: "task", agentId: "agent-1", input: "resume task" });
 
   assert.deepEqual(sentCommands, ["steer", "follow_up"]);
+});
+
+test("lifecycle service starts a new turn when steering an inactive codex agent", async () => {
+  const sentCommands: string[] = [];
+  const { deps, records } = createBaseDeps({
+    sendAttachmentMessage: async (_attachment, _input, commandType) => {
+      sentCommands.push(commandType);
+      return "submission-1";
+    },
+  });
+  records.set("agent-1", { ...records.get("agent-1")!, status: "live_idle" });
+  const service = createSubagentLifecycleService(deps);
+
+  const resumed = await service.resume({ mode: "codex", agentId: "agent-1", input: "do work", steer: true });
+
+  assert.equal(resumed.commandType, "prompt");
+  assert.deepEqual(sentCommands, ["prompt"]);
 });
 
 test("lifecycle service spawn failure persists cleanup semantics", async () => {
@@ -160,6 +187,95 @@ test("lifecycle service spawn failure persists cleanup semantics", async () => {
 
   assert.deepEqual(persisted, ["subagent:create", "subagent:close"]);
   assert.equal(closed, 1);
+});
+
+test("lifecycle service stores canonical task paths when spawning", async () => {
+  const previousTaskPath = process.env.PI_SUBAGENT_TASK_PATH;
+  delete process.env.PI_SUBAGENT_TASK_PATH;
+  try {
+    let latestRecord: DurableChildRecord | undefined;
+    const { deps, records, attachment } = createBaseDeps({
+      attachChild: async (record) => {
+        latestRecord = record;
+        records.set(record.agentId, record);
+        return { attachment: attachment as never, record };
+      },
+      sendPromptToAttachment: async () => latestRecord!,
+    });
+    const service = createSubagentLifecycleService(deps);
+
+    const rootSpawn = await service.spawn({
+      mode: "codex",
+      ctx: {
+        cwd: "/tmp/project",
+        sessionManager: { getEntries: () => [], getLeafId: () => null, getSessionFile: () => "/tmp/session.jsonl" },
+      } as never,
+      name: "reviewer",
+      prompt: "Review",
+      runInBackground: true,
+    });
+
+    assert.equal(rootSpawn.record.parentTaskPath, "/root");
+    assert.equal(rootSpawn.record.taskPath, "/root/reviewer");
+
+    process.env.PI_SUBAGENT_TASK_PATH = "/root/reviewer";
+    const childSpawn = await service.spawn({
+      mode: "codex",
+      ctx: {
+        cwd: "/tmp/project",
+        sessionManager: { getEntries: () => [], getLeafId: () => null, getSessionFile: () => "/tmp/session.jsonl" },
+      } as never,
+      name: "auditor",
+      prompt: "Audit",
+      runInBackground: true,
+    });
+
+    assert.equal(childSpawn.record.parentTaskPath, "/root/reviewer");
+    assert.equal(childSpawn.record.taskPath, "/root/reviewer/auditor");
+  } finally {
+    if (previousTaskPath === undefined) delete process.env.PI_SUBAGENT_TASK_PATH;
+    else process.env.PI_SUBAGENT_TASK_PATH = previousTaskPath;
+  }
+});
+
+test("lifecycle service allows duplicate task names under different parent paths", async () => {
+  const previousTaskPath = process.env.PI_SUBAGENT_TASK_PATH;
+  process.env.PI_SUBAGENT_TASK_PATH = "/root/researcher";
+  try {
+    let latestRecord: DurableChildRecord | undefined;
+    const { deps, records, attachment } = createBaseDeps({
+      attachChild: async (record) => {
+        latestRecord = record;
+        records.set(record.agentId, record);
+        return { attachment: attachment as never, record };
+      },
+      sendPromptToAttachment: async () => latestRecord!,
+    });
+    records.set("root-reviewer", {
+      ...records.get("agent-1")!,
+      agentId: "root-reviewer",
+      name: "reviewer",
+      taskPath: "/root/reviewer",
+      parentTaskPath: "/root",
+    });
+    const service = createSubagentLifecycleService(deps);
+
+    const spawned = await service.spawn({
+      mode: "codex",
+      ctx: {
+        cwd: "/tmp/project",
+        sessionManager: { getEntries: () => [], getLeafId: () => null, getSessionFile: () => "/tmp/session.jsonl" },
+      } as never,
+      name: "reviewer",
+      prompt: "Review nested scope",
+      runInBackground: true,
+    });
+
+    assert.equal(spawned.record.taskPath, "/root/researcher/reviewer");
+  } finally {
+    if (previousTaskPath === undefined) delete process.env.PI_SUBAGENT_TASK_PATH;
+    else process.env.PI_SUBAGENT_TASK_PATH = previousTaskPath;
+  }
 });
 
 test("lifecycle service resumes detached interactive agents by attaching with the resume input", async () => {
@@ -259,6 +375,129 @@ test("lifecycle service wait and stop share active wait and close behavior", asy
   assert.equal(decrements, 2);
   assert.equal(flushed, 2);
   assert.equal(closed, 1);
+});
+
+test("lifecycle service resolves relative and canonical targets from current task path", async () => {
+  const previousTaskPath = process.env.PI_SUBAGENT_TASK_PATH;
+  process.env.PI_SUBAGENT_TASK_PATH = "/root/researcher";
+  const sentTo: string[] = [];
+  try {
+    const { deps, records } = createBaseDeps({
+      ensureLiveAttachment: async (agentId) => {
+        sentTo.push(agentId);
+        return { attachment: { ...createBaseDeps().attachment, agentId } as never };
+      },
+    });
+    records.set("nested", {
+      ...records.get("agent-1")!,
+      agentId: "nested",
+      name: "reviewer",
+      taskPath: "/root/researcher/reviewer",
+      parentTaskPath: "/root/researcher",
+    });
+    records.set("other", {
+      ...records.get("agent-1")!,
+      agentId: "other",
+      name: "reviewer",
+      taskPath: "/root/other/reviewer",
+      parentTaskPath: "/root/other",
+    });
+    const service = createSubagentLifecycleService(deps);
+
+    await service.resumeByName({ mode: "codex", name: "reviewer", input: "go" });
+    await service.resumeByName({ mode: "codex", name: "/root/other/reviewer", input: "go" });
+
+    assert.deepEqual(sentTo, ["nested", "other"]);
+  } finally {
+    if (previousTaskPath === undefined) delete process.env.PI_SUBAGENT_TASK_PATH;
+    else process.env.PI_SUBAGENT_TASK_PATH = previousTaskPath;
+  }
+});
+
+test("lifecycle service resolves relative list_agents prefixes from current task path", () => {
+  const previousTaskPath = process.env.PI_SUBAGENT_TASK_PATH;
+  process.env.PI_SUBAGENT_TASK_PATH = "/root/researcher";
+  try {
+    const { deps, records } = createBaseDeps();
+    records.clear();
+    records.set("nested", {
+      agentId: "nested",
+      transport: "rpc",
+      cwd: "/tmp/project",
+      status: "live_running",
+      createdAt: "2026-04-14T00:00:00.000Z",
+      updatedAt: "2026-04-14T00:00:00.000Z",
+      name: "reviewer",
+      taskPath: "/root/researcher/reviewer",
+      parentTaskPath: "/root/researcher",
+    });
+    records.set("nested-child", {
+      ...records.get("nested")!,
+      agentId: "nested-child",
+      name: "auditor",
+      taskPath: "/root/researcher/reviewer/auditor",
+      parentTaskPath: "/root/researcher/reviewer",
+    });
+    records.set("root", {
+      ...records.get("nested")!,
+      agentId: "root",
+      taskPath: "/root/reviewer",
+      parentTaskPath: "/root",
+    });
+    records.set("sibling-prefix", {
+      ...records.get("nested")!,
+      agentId: "sibling-prefix",
+      name: "reviewer_extra",
+      taskPath: "/root/researcher/reviewer_extra",
+      parentTaskPath: "/root/researcher",
+    });
+    const service = createSubagentLifecycleService(deps);
+
+    assert.deepEqual(
+      service.listAgents({ pathPrefix: "reviewer" }).snapshots.map((snapshot) => snapshot.agent_id),
+      ["nested", "nested-child"],
+    );
+    assert.deepEqual(
+      service.listAgents({ pathPrefix: "/root/reviewer" }).snapshots.map((snapshot) => snapshot.agent_id),
+      ["root"],
+    );
+  } finally {
+    if (previousTaskPath === undefined) delete process.env.PI_SUBAGENT_TASK_PATH;
+    else process.env.PI_SUBAGENT_TASK_PATH = previousTaskPath;
+  }
+});
+
+test("lifecycle service closes descendants when closing a task path", async () => {
+  const closed: string[] = [];
+  const { deps, records } = createBaseDeps({
+    closeLiveAttachment: async (attachment) => {
+      closed.push(attachment.agentId);
+    },
+    ensureLiveAttachment: async (agentId) => ({ attachment: { ...createBaseDeps().attachment, agentId } as never }),
+  });
+  records.set("parent", {
+    ...records.get("agent-1")!,
+    agentId: "parent",
+    name: "researcher",
+    taskPath: "/root/researcher",
+    parentTaskPath: "/root",
+  });
+  records.set("child", {
+    ...records.get("agent-1")!,
+    agentId: "child",
+    name: "reviewer",
+    taskPath: "/root/researcher/reviewer",
+    parentTaskPath: "/root/researcher",
+  });
+  const service = createSubagentLifecycleService(deps);
+
+  const result = await service.stopByName("/root/researcher");
+
+  assert.equal(result.snapshot.status, "closed");
+  assert.equal(result.closedDescendantCount, 1);
+  assert.deepEqual(closed, ["child", "parent"]);
+  assert.equal(records.get("child")?.status, "closed");
+  assert.equal(records.get("parent")?.status, "closed");
 });
 
 test("lifecycle service waitAny rejects when no child agents are available", async () => {

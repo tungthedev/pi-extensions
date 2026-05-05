@@ -71,6 +71,7 @@ export const TOOLSET_CONTRIBUTIONS = {
       optional("spawn_agent"),
       optional("send_message"),
       optional("wait_agent"),
+      optional("list_agents"),
       optional("close_agent"),
     ],
   },
@@ -110,7 +111,7 @@ export const TOOLSET_CONFLICT_RULES = [
   {
     owner: "subagents-task",
     when: ["pi", "droid"],
-    hides: ["spawn_agent", "send_message", "wait_agent", "close_agent"],
+    hides: ["spawn_agent", "send_message", "wait_agent", "list_agents", "close_agent"],
   },
   {
     owner: "mode-conflicts",
