@@ -12,11 +12,12 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 
 - Updated Codex subagent tools to align more closely with Codex v2, including `task_name`, `fork_turns`, model overrides, and relative task-path targeting.
 - Changed the default mode shortcut to `ctrl+alt+m`.
-- Refined fixed editor status chrome for compact terminals, including narrower border labels and compact repository metadata.
+- Refined editor status chrome for compact terminals, including narrower border labels and compact repository metadata.
+- Simplified editor chrome with horizontal-only borders and a below-editor status row.
 
 ### Fixed
 
-- Kept nested child sessions aware of their canonical task path so descendant agents can be addressed consistently.
+- Fixed editor to show the correct shortcut.
 - Removed the visible border around the subagent activity widget while preserving horizontal padding.
 
 ## [2.3.0] - 2026-05-04

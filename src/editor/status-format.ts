@@ -441,14 +441,19 @@ export function buildTopBorderLine(
   const rightBlock = rightText
     ? colorBorder(theme, HORIZONTAL_RIGHT_HALF) + styleRightLabel(rightText) + colorBorder(theme, HORIZONTAL_LEFT_HALF)
     : "";
-  const middleFill = Math.max(0, innerWidth - visibleWidth(legendBlock) - visibleWidth(rightBlock));
+  const leftEdge = legendBlock ? "" : colorBorder(theme, HORIZONTAL);
+  const rightEdge = colorBorder(theme, HORIZONTAL.repeat(rightBlock ? 2 : 1));
+  const middleFill = Math.max(
+    0,
+    width - visibleWidth(leftEdge) - visibleWidth(legendBlock) - visibleWidth(rightBlock) - visibleWidth(rightEdge),
+  );
 
   return (
-    colorBorder(theme, HORIZONTAL) +
+    leftEdge +
     legendBlock +
     colorBorder(theme, HORIZONTAL.repeat(middleFill)) +
     rightBlock +
-    colorBorder(theme, HORIZONTAL)
+    rightEdge
   );
 }
 

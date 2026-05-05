@@ -281,7 +281,7 @@ test("composed autocomplete keeps both $skill and @path support active", async (
   assert.equal(pathSuggestions?.items[0]?.value, "@readme.ts");
 });
 
-test("installCodexEditorUi does not register a below-editor status widget", async () => {
+test("installCodexEditorUi registers a below-editor status widget", async () => {
   const lifecycleHandlers = new Map<string, Function[]>();
   const eventHandlers = new Map<string, Function>();
   let belowEditorWidgetRegistered = false;
@@ -349,7 +349,7 @@ test("installCodexEditorUi does not register a below-editor status widget", asyn
   });
   eventHandlers.get(EDITOR_REMOVE_STATUS_SEGMENT_EVENT)?.({ key: "sync" });
 
-  assert.equal(belowEditorWidgetRegistered, false);
+  assert.equal(belowEditorWidgetRegistered, true);
 });
 
 test("installCodexEditorUi keeps default fixed-editor runtime inactive", async () => {
@@ -442,7 +442,7 @@ test("installCodexEditorUi keeps default fixed-editor runtime inactive", async (
   );
 
   assert.equal(footerRegistered, true);
-  assert.equal(widgetRegistered, false);
+  assert.equal(widgetRegistered, true);
   assert.equal(autocompleteProviders.length, 2);
   assert.deepEqual(terminalWrites, []);
 });
@@ -825,9 +825,7 @@ test("installCodexEditorUi installs fixed editor compositor when enabled", async
   assert.ok(terminalWrites.some((write) => write.includes("status-row")), terminalWrites.join("\n---\n"));
   assert.ok(terminalWrites.some((write) => write.includes("above-row")), terminalWrites.join("\n---\n"));
   assert.ok(terminalWrites.some((write) => write.includes("below-row")), terminalWrites.join("\n---\n"));
-  assert.ok(terminalWrites.some((write) => write.includes("╰╴gpt-5.4-mini low")), terminalWrites.join("\n---\n"));
-  assert.equal(terminalWrites.some((write) => write.includes("gpt-5.4-mini low ·")), false);
-  assert.equal(terminalWrites.join("\n").match(/gpt-5\.4-mini low/g)?.length, 1);
+  assert.equal(terminalWrites.some((write) => write.includes("gpt-5.4-mini low")), false);
   assert.ok(terminalWrites.every((write) => !write.includes("\x1b[?25h")), terminalWrites.join("\n---\n"));
   assert.deepEqual(chat.render(), ["leading-row"]);
   assert.deepEqual(status.render(), []);
@@ -1217,12 +1215,10 @@ test("installCodexEditorUi keeps at least two input rows in the boxed editor", a
     { matches: () => false },
   );
 
-  const rows = editor.render(80).filter((line) => line.startsWith("│"));
+  const rows = editor.render(80).slice(1, 3);
   assert.equal(rows.length, 2);
   assert.ok(rows.every((line) => visibleWidth(line) === 80));
-
-  const bottom = editor.render(80).find((line) => line.startsWith("╰")) ?? "";
-  assert.ok(bottom.includes("\u001b[48;"), bottom);
+  assert.equal(editor.render(80).some((line) => line.startsWith("╰")), false);
 });
 
 test("installCodexEditorUi renders compact repo metadata below narrow editor", async () => {
@@ -1299,17 +1295,9 @@ test("installCodexEditorUi renders compact repo metadata below narrow editor", a
   );
 
   const lines = editor.render(50);
-  const bottom = lines.find((line) => line.startsWith("╰")) ?? "";
-  const metadata = lines.at(-1) ?? "";
-
-  assert.ok(bottom.includes("gpt-5.4-mini low"), bottom);
-  assert.ok(bottom.includes("272k"), bottom);
-  assert.equal(bottom.includes("pi-extensions"), false);
-  assert.equal(metadata, "  pi-extensions╶╴mobile-proposal");
+  assert.equal(lines.some((line) => line.includes("gpt-5.4-mini low")), false);
+  assert.equal(lines.some((line) => line.includes("pi-extensions")), false);
   assert.ok(lines.every((line) => visibleWidth(line) <= 50));
-
-  const narrowBottom = editor.render(40).find((line) => line.startsWith("╰")) ?? "";
-  assert.ok(narrowBottom.includes("272k"), narrowBottom);
 });
 
 test("installCodexEditorUi keeps compact skill count above forty columns", async () => {

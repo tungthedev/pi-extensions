@@ -55,6 +55,7 @@ import {
 import {
   EDITOR_BASE_LEFT_SEGMENT_KEY,
   EDITOR_BASE_RIGHT_SEGMENT_KEY,
+  EDITOR_STATUS_WIDGET_KEY,
   type RemoveStatusSegmentPayload,
   type SetStatusSegmentPayload,
 } from "./types.ts";
@@ -137,9 +138,6 @@ class CodexBoxedEditor extends CustomEditor {
     private readonly getToolSetLabel: () => string | undefined,
     private readonly getLoadSkillsEnabled: () => boolean | undefined,
     private readonly getSkillCount: () => number | undefined,
-    private readonly getBottomLeftStatus: (maxWidth: number) => string,
-    private readonly getBottomRightStatus: (maxWidth: number) => string,
-    private readonly getCompactMetadataStatus: (maxWidth: number) => string,
     private readonly useLegacyAutocompleteComposition: boolean,
     private readonly pathAutocompleteRuntime?: ReturnType<typeof ensureSessionFffRuntime>,
     private readonly followSubmittedEditorToBottom?: () => void,
@@ -263,20 +261,9 @@ class CodexBoxedEditor extends CustomEditor {
     return `${normalized}${" ".repeat(Math.max(0, width - visibleWidth(normalized)))}`;
   }
 
-  private buildBottomStatusLine(width: number, leftText: string, rightText: string): string {
-    if (!leftText && !rightText) return "";
+  private padWriteZoneRow(line: string, width: number): string {
     const contentWidth = Math.max(0, width - 2);
-    if (!rightText) return ` ${this.padRenderedWidth(leftText, contentWidth)} `;
-
-    const leftBudget = Math.max(0, Math.floor((contentWidth - 1) / 2));
-    const renderedLeft = truncateToWidth(leftText, leftBudget);
-    const rightBudget = Math.max(0, contentWidth - visibleWidth(renderedLeft) - 1);
-    const renderedRight = truncateToWidth(rightText, rightBudget, "");
-    const gap = " ".repeat(
-      Math.max(1, contentWidth - visibleWidth(renderedLeft) - visibleWidth(renderedRight)),
-    );
-
-    return this.normalizeRenderedWidth(` ${renderedLeft}${gap}${renderedRight} `, width);
+    return ` ${this.padRenderedWidth(line, contentWidth)} `;
   }
 
   private styleLegend(legendText: string): string {
@@ -324,39 +311,74 @@ class CodexBoxedEditor extends CustomEditor {
 
     let inputRowCount = 0;
     for (let index = 1; index < bottomIndex; index += 1) {
-      rendered.push(this.padRenderedWidth(lines[index] ?? "", width));
+      rendered.push(this.padWriteZoneRow(lines[index] ?? "", width));
       inputRowCount += 1;
     }
 
     while (inputRowCount < MIN_INPUT_ROWS) {
-      rendered.push(this.padRenderedWidth("", width));
+      rendered.push(this.padWriteZoneRow("", width));
       inputRowCount += 1;
     }
 
-    const bottomRightStatus = compact
-      ? ""
-      : this.getBottomRightStatus(Math.max(0, Math.floor((width - 2) / 2)));
-    const bottomLeftBudget = bottomRightStatus
-      ? Math.max(0, Math.floor((width - 2) / 2))
-      : Math.max(0, width);
-
-    const bottomStatusLine = this.buildBottomStatusLine(
-      width,
-      this.getBottomLeftStatus(bottomLeftBudget),
-      bottomRightStatus,
-    );
-    if (bottomStatusLine) rendered.push(bottomStatusLine);
+    rendered.push(this.getAppTheme().fg("muted", HORIZONTAL.repeat(width)));
 
     for (let index = bottomIndex + 1; index < lines.length; index += 1) {
       rendered.push(` ${lines[index] ?? ""} `);
     }
 
+    return rendered;
+  }
+}
+
+class EditorBottomStatusWidget {
+  constructor(
+    private readonly getLeftStatus: (maxWidth: number) => string,
+    private readonly getRightStatus: (maxWidth: number) => string,
+    private readonly getCompactMetadataStatus: (maxWidth: number) => string,
+  ) {}
+
+  invalidate(): void {}
+
+  private normalizeRenderedWidth(line: string, width: number): string {
+    if (visibleWidth(line) <= width) return line;
+    return truncateToWidth(line, width, "");
+  }
+
+  private padRenderedWidth(line: string, width: number): string {
+    const normalized = this.normalizeRenderedWidth(line, width);
+    return `${normalized}${" ".repeat(Math.max(0, width - visibleWidth(normalized)))}`;
+  }
+
+  private renderStatusLine(width: number, leftText: string, rightText: string): string {
+    if (!leftText && !rightText) return "";
+    const contentWidth = Math.max(0, width - 2);
+    if (!rightText) return ` ${this.padRenderedWidth(leftText, contentWidth)} `;
+
+    const leftBudget = Math.max(0, Math.floor((contentWidth - 1) / 2));
+    const renderedLeft = truncateToWidth(leftText, leftBudget);
+    const rightBudget = Math.max(0, contentWidth - visibleWidth(renderedLeft) - 1);
+    const renderedRight = truncateToWidth(rightText, rightBudget, "");
+    const gap = " ".repeat(
+      Math.max(1, contentWidth - visibleWidth(renderedLeft) - visibleWidth(renderedRight)),
+    );
+
+    return this.normalizeRenderedWidth(` ${renderedLeft}${gap}${renderedRight} `, width);
+  }
+
+  render(width: number): string[] {
+    const compact = width < COMPACT_WIDTH;
+    const lines: string[] = [];
     if (compact) {
       const metadata = this.getCompactMetadataStatus(Math.max(0, width - 2));
-      if (metadata) rendered.push(this.normalizeRenderedWidth(` ${metadata} `, width));
+      if (metadata) lines.push(this.normalizeRenderedWidth(` ${metadata} `, width));
+      return lines;
     }
 
-    return rendered;
+    const rightStatus = this.getRightStatus(Math.max(0, Math.floor((width - 2) / 2)));
+    const leftBudget = rightStatus ? Math.max(0, Math.floor((width - 2) / 2)) : Math.max(0, width - 2);
+    const line = this.renderStatusLine(width, this.getLeftStatus(leftBudget), rightStatus);
+    if (line) lines.push(line);
+    return lines;
   }
 }
 
@@ -494,9 +516,6 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
           () => state.toolSetLabel,
           () => state.loadSkillsEnabled,
           () => state.skillCount,
-          (maxWidth) => formatBottomLeftStatus(state, ctx.ui.theme, maxWidth),
-          (maxWidth) => formatBottomRightStatus(state, maxWidth, ctx.ui.theme),
-          (maxWidth) => formatCompactMetadataStatus(state, maxWidth, ctx.ui.theme),
           !useProviderStack,
           fffRuntime,
           followSubmittedEditorToBottom,
@@ -510,6 +529,17 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
         });
         return editor;
       },
+    );
+
+    ctx.ui.setWidget(
+      EDITOR_STATUS_WIDGET_KEY,
+      () =>
+        new EditorBottomStatusWidget(
+          (maxWidth) => formatBottomLeftStatus(state, ctx.ui.theme, maxWidth),
+          (maxWidth) => formatBottomRightStatus(state, maxWidth, ctx.ui.theme),
+          (maxWidth) => formatCompactMetadataStatus(state, maxWidth, ctx.ui.theme),
+        ),
+      { placement: "belowEditor" },
     );
 
     ctx.ui.setFooter((_tui, _theme, footerData) => {
