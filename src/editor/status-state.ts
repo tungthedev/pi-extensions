@@ -7,7 +7,7 @@ import type {
 
 import type { InlineSegment, WidgetRowRegistry } from "./widget-row.ts";
 
-import { formatToolSetLabel } from "../settings/config.ts";
+import { DEFAULT_MODE_SHORTCUT, formatToolSetLabel, readPiModeSettings } from "../settings/config.ts";
 import { resolveSessionLoadSkills, resolveSessionToolSet } from "../settings/session.ts";
 import { formatLeftStatus, formatRightStatus } from "./status-format.ts";
 import { EDITOR_BASE_LEFT_SEGMENT_KEY, EDITOR_BASE_RIGHT_SEGMENT_KEY } from "./types.ts";
@@ -15,9 +15,11 @@ import { EDITOR_BASE_LEFT_SEGMENT_KEY, EDITOR_BASE_RIGHT_SEGMENT_KEY } from "./t
 export type EditorStatusState = {
   cwd: string;
   gitBranch?: string;
+  gitChanges?: { added: number; removed: number };
   modelId?: string;
   thinkingLevel?: string;
   toolSetLabel?: string;
+  modeShortcut?: string;
   loadSkillsEnabled?: boolean;
   skillCount?: number;
   usage?: ContextUsage;
@@ -91,6 +93,8 @@ export async function syncStateFromSettings(
   state: EditorStatusState,
   ctx: Pick<ExtensionContext, "sessionManager">,
 ): Promise<void> {
+  const settings = await readPiModeSettings();
   state.toolSetLabel = formatToolSetLabel(await resolveSessionToolSet(ctx.sessionManager));
   state.loadSkillsEnabled = await resolveSessionLoadSkills(ctx.sessionManager);
+  state.modeShortcut = settings.modeShortcut || DEFAULT_MODE_SHORTCUT;
 }

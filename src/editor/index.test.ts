@@ -10,6 +10,8 @@ import test from "node:test";
 
 import { wrapAutocompleteProviderWithAtPathSupport } from "../shared/fff/editor/autocomplete-at-path.ts";
 import { composeAutocompleteProvider } from "../shared/fff/editor/autocomplete-compose.ts";
+import { EDITOR_SETTINGS_CHANGED_EVENT } from "./events.ts";
+import { TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
 import {
   createSubagentRoleAutocompleteProvider,
   EDITOR_REMOVE_STATUS_SEGMENT_EVENT,
@@ -20,8 +22,6 @@ import {
 } from "./index.ts";
 import { findContainerWithChild } from "./install.ts";
 import { formatBottomLeftStatus } from "./status-format.ts";
-import { TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
-import { EDITOR_SETTINGS_CHANGED_EVENT } from "./events.ts";
 
 test("formatBottomLeftStatus separates model and usage with half-dashes", () => {
   const status = formatBottomLeftStatus(
@@ -42,6 +42,23 @@ test("formatBottomLeftStatus separates model and usage with half-dashes", () => 
 
   assert.ok(status.startsWith("gpt-5.5 medium<muted>╶╴</muted>"));
   assert.ok(status.includes("\u001b[48;"));
+});
+
+test("formatBottomLeftStatus preserves usage when width is tight", () => {
+  const status = formatBottomLeftStatus(
+    {
+      cwd: "/tmp/project",
+      modelId: "very-long-model-name-for-mobile",
+      thinkingLevel: "medium",
+      usage: { tokens: 122400, percent: 45, contextWindow: 272000 },
+    },
+    undefined,
+    24,
+  );
+
+  assert.ok(status.includes("272k"), status);
+  assert.ok(status.includes("╶╴"), status);
+  assert.ok(visibleWidth(status) <= 24, status);
 });
 
 async function renderEditorTopLine(loadSkills: boolean): Promise<string> {
@@ -129,7 +146,11 @@ async function renderEditorTopLine(loadSkills: boolean): Promise<string> {
 }
 
 test("installCodexEditorUi colors skill count by inject-skills state", async () => {
-  assert.ok((await renderEditorTopLine(true)).includes("\u001b[31m2 skills\u001b[39m"));
+  const enabledTopLine = await renderEditorTopLine(true);
+  assert.ok(enabledTopLine.includes("╴Codex (ctrl+alt+m)╶"), enabledTopLine);
+  assert.equal(enabledTopLine.includes("╴ Codex"), false);
+  assert.equal(enabledTopLine.includes("f2"), false);
+  assert.ok(enabledTopLine.includes("\u001b[31m2 skills\u001b[39m"));
   assert.ok((await renderEditorTopLine(false)).includes("\u001b[2m2 skills\u001b[22m"));
 });
 
@@ -804,7 +825,7 @@ test("installCodexEditorUi installs fixed editor compositor when enabled", async
   assert.ok(terminalWrites.some((write) => write.includes("status-row")), terminalWrites.join("\n---\n"));
   assert.ok(terminalWrites.some((write) => write.includes("above-row")), terminalWrites.join("\n---\n"));
   assert.ok(terminalWrites.some((write) => write.includes("below-row")), terminalWrites.join("\n---\n"));
-  assert.ok(terminalWrites.some((write) => write.includes("╰─gpt-5.4-mini low")), terminalWrites.join("\n---\n"));
+  assert.ok(terminalWrites.some((write) => write.includes("╰╴gpt-5.4-mini low")), terminalWrites.join("\n---\n"));
   assert.equal(terminalWrites.some((write) => write.includes("gpt-5.4-mini low ·")), false);
   assert.equal(terminalWrites.join("\n").match(/gpt-5\.4-mini low/g)?.length, 1);
   assert.ok(terminalWrites.every((write) => !write.includes("\x1b[?25h")), terminalWrites.join("\n---\n"));
@@ -1202,6 +1223,176 @@ test("installCodexEditorUi keeps at least two input rows in the boxed editor", a
 
   const bottom = editor.render(80).find((line) => line.startsWith("╰")) ?? "";
   assert.ok(bottom.includes("\u001b[48;"), bottom);
+});
+
+test("installCodexEditorUi renders compact repo metadata below narrow editor", async () => {
+  const lifecycleHandlers = new Map<string, Function[]>();
+  let editorFactory:
+    | ((
+        tui: { requestRender(): void; terminal: { rows: number } },
+        editorTheme: unknown,
+        keybindings: unknown,
+      ) => { render(width: number): string[] })
+    | undefined;
+
+  installCodexEditorUi({
+    getThinkingLevel() {
+      return "low";
+    },
+    getCommands() {
+      return [];
+    },
+    on(event: string, handler: Function) {
+      lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
+    },
+    events: {
+      on() {},
+    },
+  } as never);
+
+  const ctx = {
+    cwd: "/tmp/project/pi-extensions",
+    model: { id: "gpt-5.4-mini" },
+    getContextUsage() {
+      return { percent: 45, contextWindow: 272000 };
+    },
+    sessionManager: {
+      getBranch() {
+        return [
+          { type: "custom", customType: "pi-mode:tool-set", data: { toolSet: "codex" } },
+          { type: "custom", customType: "pi-mode:load-skills", data: { loadSkills: true } },
+        ];
+      },
+    },
+    ui: {
+      theme: {
+        fg: (_color: string, text: string) => text,
+        bg: (_color: string, text: string) => text,
+        bold: (text: string) => text,
+        strikethrough: (text: string) => text,
+        getFgAnsi: () => "",
+        getBgAnsi: () => "",
+        getColorMode: () => "truecolor",
+      },
+      setEditorComponent(factory: typeof editorFactory) {
+        editorFactory = factory;
+      },
+      setFooter(factory: Function) {
+        factory(undefined, undefined, {
+          getGitBranch: () => "mobile-proposal",
+          onBranchChange: () => () => undefined,
+        });
+      },
+      setWidget() {},
+    },
+  };
+
+  for (const handler of lifecycleHandlers.get("session_start") ?? []) {
+    await handler(undefined, ctx as never);
+  }
+
+  assert.ok(editorFactory);
+  const editor = editorFactory!(
+    { requestRender() {}, terminal: { rows: 40 } },
+    { borderColor: (text: string) => text, selectList: {} },
+    { matches: () => false },
+  );
+
+  const lines = editor.render(50);
+  const bottom = lines.find((line) => line.startsWith("╰")) ?? "";
+  const metadata = lines.at(-1) ?? "";
+
+  assert.ok(bottom.includes("gpt-5.4-mini low"), bottom);
+  assert.ok(bottom.includes("272k"), bottom);
+  assert.equal(bottom.includes("pi-extensions"), false);
+  assert.equal(metadata, "  pi-extensions╶╴mobile-proposal");
+  assert.ok(lines.every((line) => visibleWidth(line) <= 50));
+
+  const narrowBottom = editor.render(40).find((line) => line.startsWith("╰")) ?? "";
+  assert.ok(narrowBottom.includes("272k"), narrowBottom);
+});
+
+test("installCodexEditorUi keeps compact skill count above forty columns", async () => {
+  const lifecycleHandlers = new Map<string, Function[]>();
+  let editorFactory:
+    | ((
+        tui: { requestRender(): void; terminal: { rows: number } },
+        editorTheme: unknown,
+        keybindings: unknown,
+      ) => { render(width: number): string[] })
+    | undefined;
+
+  installCodexEditorUi({
+    getThinkingLevel() {
+      return "low";
+    },
+    getCommands() {
+      return [
+        { source: "skill", name: "skill:one" },
+        { source: "skill", name: "skill:two" },
+      ];
+    },
+    on(event: string, handler: Function) {
+      lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
+    },
+    events: {
+      on() {},
+    },
+  } as never);
+
+  const ctx = {
+    cwd: "/tmp/project/pi-extensions",
+    model: { id: "gpt-5.4-mini" },
+    getContextUsage() {
+      return undefined;
+    },
+    sessionManager: {
+      getBranch() {
+        return [
+          { type: "custom", customType: "pi-mode:tool-set", data: { toolSet: "codex" } },
+          { type: "custom", customType: "pi-mode:load-skills", data: { loadSkills: true } },
+        ];
+      },
+    },
+    ui: {
+      theme: {
+        fg: (_color: string, text: string) => text,
+        bg: (_color: string, text: string) => text,
+        bold: (text: string) => text,
+        strikethrough: (text: string) => text,
+        getFgAnsi: () => "",
+        getBgAnsi: () => "",
+        getColorMode: () => "truecolor",
+      },
+      setEditorComponent(factory: typeof editorFactory) {
+        editorFactory = factory;
+      },
+      setFooter(factory: Function) {
+        factory(undefined, undefined, {
+          getGitBranch: () => "mobile-proposal",
+          onBranchChange: () => () => undefined,
+        });
+      },
+      setWidget() {},
+    },
+  };
+
+  for (const handler of lifecycleHandlers.get("session_start") ?? []) {
+    await handler(undefined, ctx as never);
+  }
+
+  assert.ok(editorFactory);
+  const editor = editorFactory!(
+    { requestRender() {}, terminal: { rows: 40 } },
+    { borderColor: (text: string) => text, selectList: {} },
+    { matches: () => false },
+  );
+
+  assert.ok((editor.render(50)[0] ?? "").includes("2 skills"));
+  assert.ok((editor.render(50)[0] ?? "").includes("╴Codex╶"));
+  assert.equal((editor.render(50)[0] ?? "").includes("ctrl+alt+m"), false);
+  assert.ok((editor.render(41)[0] ?? "").includes("2 skills"));
+  assert.equal((editor.render(40)[0] ?? "").includes("2 skills"), false);
 });
 
 test("installCodexEditorUi registers stacked autocomplete providers for $skill and @path", async () => {

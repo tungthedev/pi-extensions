@@ -3,12 +3,12 @@ import type {
   ExtensionContext,
   KeybindingsManager,
   Theme,
-  ThemeColor,
 } from "@mariozechner/pi-coding-agent";
 import type { AutocompleteProvider, EditorTheme, TUI } from "@mariozechner/pi-tui";
 
 import { CustomEditor, copyToClipboard } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { execFileSync } from "node:child_process";
 
 import { ensureSessionFffRuntime, resolveSessionFffRuntimeKey } from "../fff/session-runtime.ts";
 import {
@@ -28,21 +28,21 @@ import {
   shouldTriggerDollarSkillAutocomplete,
   wrapAutocompleteProviderWithDollarSkillSupport,
 } from "./autocomplete-dollar-skill.ts";
-import {
-  DEFAULT_EDITOR_SETTINGS,
-  readEditorSettings,
-  type EditorSettings,
-} from "./config.ts";
+import { DEFAULT_EDITOR_SETTINGS, readEditorSettings, type EditorSettings } from "./config.ts";
 import {
   EDITOR_REMOVE_STATUS_SEGMENT_EVENT,
   EDITOR_SETTINGS_CHANGED_EVENT,
   EDITOR_SET_STATUS_SEGMENT_EVENT,
 } from "./events.ts";
 import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
-import { emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
+import {
+  emergencyTerminalModeReset,
+  TerminalSplitCompositor,
+} from "./fixed-editor/terminal-split.ts";
 import {
   formatBottomLeftStatus,
   formatBottomRightStatus,
+  formatCompactMetadataStatus,
   formatEditorBorderLegend,
   formatSkillCountLabel,
   buildBottomBorderLine,
@@ -66,15 +66,46 @@ const RESERVED_SEGMENT_KEYS = new Set([
 ]);
 const HORIZONTAL = "─";
 const MIN_INPUT_ROWS = 2;
+const COMPACT_WIDTH = 60;
+const MIN_SKILL_COUNT_WIDTH = 41;
 
 type AutocompleteKeybindings = Pick<KeybindingsManager, "matches">;
-type FixedEditorCompositorHandle = Pick<TerminalSplitCompositor, "jumpToRootBottom" | "requestRepaint" | "dispose">;
+type FixedEditorCompositorHandle = Pick<
+  TerminalSplitCompositor,
+  "jumpToRootBottom" | "requestRepaint" | "dispose"
+>;
 type Renderable = { render(width: number): string[] };
+
+function readGitChanges(cwd: string): EditorStatusState["gitChanges"] | undefined {
+  try {
+    const output = execFileSync("git", ["diff", "--numstat", "HEAD", "--"], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    let added = 0;
+    let removed = 0;
+    for (const line of output.split("\n")) {
+      const [addedText, removedText] = line.split("\t");
+      const addedCount = Number(addedText);
+      const removedCount = Number(removedText);
+      if (Number.isFinite(addedCount)) added += addedCount;
+      if (Number.isFinite(removedCount)) removed += removedCount;
+    }
+    return added > 0 || removed > 0 ? { added, removed } : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export function findContainerWithChild(
   tui: unknown,
   child: unknown,
-): { container: { children: unknown[] } & Partial<Renderable>; index: number; childIndex: number } | null {
+): {
+  container: { children: unknown[] } & Partial<Renderable>;
+  index: number;
+  childIndex: number;
+} | null {
   const children = (tui as { children?: unknown })?.children;
   if (!Array.isArray(children)) return null;
 
@@ -107,8 +138,9 @@ class CodexBoxedEditor extends CustomEditor {
     private readonly getToolSetLabel: () => string | undefined,
     private readonly getLoadSkillsEnabled: () => boolean | undefined,
     private readonly getSkillCount: () => number | undefined,
-    private readonly getBottomLeftStatus: () => string,
+    private readonly getBottomLeftStatus: (maxWidth: number) => string,
     private readonly getBottomRightStatus: (maxWidth: number) => string,
+    private readonly getCompactMetadataStatus: (maxWidth: number) => string,
     private readonly useLegacyAutocompleteComposition: boolean,
     private readonly pathAutocompleteRuntime?: ReturnType<typeof ensureSessionFffRuntime>,
     private readonly followSubmittedEditorToBottom?: () => void,
@@ -236,42 +268,13 @@ class CodexBoxedEditor extends CustomEditor {
   private styleLegend(legendText: string): string {
     const theme = this.getAppTheme();
     const toolSetLabel = this.getToolSetLabel();
-    if (!toolSetLabel) {
+    if (!toolSetLabel || !legendText.startsWith(toolSetLabel)) {
       return theme.fg("muted", legendText);
     }
 
-    const segments = [
-      { text: " ", color: "muted" as ThemeColor },
-      { text: toolSetLabel, color: "accent" as ThemeColor },
-    ];
-
-    segments.push(
-      { text: " ", color: "muted" as const },
-      { text: "(ctrl+space)", color: "muted" as const },
-    );
-
-    segments.push({ text: " ", color: "muted" as const });
-
-    let remaining = legendText;
-    let styled = "";
-    for (const segment of segments) {
-      if (!remaining) break;
-      const slice = segment.text.slice(0, remaining.length);
-      if (!slice) continue;
-      const isToolSetLabel = segment.text === toolSetLabel;
-      const baseSlice = isToolSetLabel ? theme.bold(slice) : slice;
-      const coloredSlice = theme.fg(segment.color, baseSlice);
-      const renderedSlice =
-        segment.text === "wo. Skills" ? theme.strikethrough(coloredSlice) : coloredSlice;
-      styled += renderedSlice;
-      remaining = remaining.slice(slice.length);
-    }
-
-    if (remaining) {
-      styled += theme.fg("muted", remaining);
-    }
-
-    return styled;
+    const label = legendText.slice(0, toolSetLabel.length);
+    const suffix = legendText.slice(toolSetLabel.length);
+    return theme.fg("accent", theme.bold(label)) + theme.fg("muted", suffix);
   }
 
   private styleRightLegend(labelText: string): string {
@@ -282,9 +285,11 @@ class CodexBoxedEditor extends CustomEditor {
   override render(width: number): string[] {
     const innerWidth = width - 2;
     if (innerWidth < 4) return super.render(width);
+    const compact = width < COMPACT_WIDTH;
 
     const lines = super.render(innerWidth);
     if (lines.length < 2) return lines;
+    const showSkillCount = width >= MIN_SKILL_COUNT_WIDTH;
 
     const bottomIndex = this.findBottomBorderIndex(lines);
     const rendered: string[] = [];
@@ -294,9 +299,9 @@ class CodexBoxedEditor extends CustomEditor {
         buildTopBorderLine(
           this.getAppTheme(),
           width,
-          this.getTopBorderLegend(),
+          compact ? this.getToolSetLabel() : this.getTopBorderLegend(),
           (legendText) => this.styleLegend(legendText),
-          formatSkillCountLabel(this.getSkillCount()),
+          showSkillCount ? formatSkillCountLabel(this.getSkillCount()) : undefined,
           (labelText) => this.styleRightLegend(labelText),
         ),
         width,
@@ -314,12 +319,19 @@ class CodexBoxedEditor extends CustomEditor {
       inputRowCount += 1;
     }
 
+    const bottomRightStatus = compact
+      ? ""
+      : this.getBottomRightStatus(Math.max(0, Math.floor((width - 4) / 2)));
+    const bottomLeftBudget = bottomRightStatus
+      ? Math.max(0, Math.floor((width - 6) / 2))
+      : Math.max(0, width - 4);
+
     rendered.push(
       buildBottomBorderLine(
         this.getAppTheme(),
         width,
-        this.getBottomLeftStatus(),
-        this.getBottomRightStatus(Math.max(0, Math.floor((width - 4) / 2))),
+        this.getBottomLeftStatus(bottomLeftBudget),
+        bottomRightStatus,
         {
           left: "╰",
           right: "╯",
@@ -329,6 +341,11 @@ class CodexBoxedEditor extends CustomEditor {
 
     for (let index = bottomIndex + 1; index < lines.length; index += 1) {
       rendered.push(` ${lines[index] ?? ""} `);
+    }
+
+    if (compact) {
+      const metadata = this.getCompactMetadataStatus(Math.max(0, width - 2));
+      if (metadata) rendered.push(this.normalizeRenderedWidth(`  ${metadata}`, width));
     }
 
     return rendered;
@@ -396,7 +413,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
     }
 
     const tuiChildren = Array.isArray((tui as { children?: unknown }).children)
-      ? ((tui as { children: unknown[] }).children)
+      ? (tui as { children: unknown[] }).children
       : [];
     const statusContainer = tuiChildren[editorContainer.index - 2];
     const widgetContainerAbove = tuiChildren[editorContainer.index - 1];
@@ -465,12 +482,13 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
           editorTheme,
           keybindings,
           () => ctx.ui.theme,
-          () => formatEditorBorderLegend(state.toolSetLabel, state.loadSkillsEnabled),
+          () => formatEditorBorderLegend(state.toolSetLabel, state.modeShortcut),
           () => state.toolSetLabel,
           () => state.loadSkillsEnabled,
           () => state.skillCount,
-          () => formatBottomLeftStatus(state, ctx.ui.theme),
-          (maxWidth) => formatBottomRightStatus(state, maxWidth),
+          (maxWidth) => formatBottomLeftStatus(state, ctx.ui.theme, maxWidth),
+          (maxWidth) => formatBottomRightStatus(state, maxWidth, ctx.ui.theme),
+          (maxWidth) => formatCompactMetadataStatus(state, maxWidth, ctx.ui.theme),
           !useProviderStack,
           fffRuntime,
           followSubmittedEditorToBottom,
@@ -491,6 +509,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
 
       const unsubscribe = footerData.onBranchChange(() => {
         state.gitBranch = footerData.getGitBranch() ?? undefined;
+        state.gitChanges = readGitChanges(state.cwd);
         requestFixedEditorRepaint();
       });
 
@@ -509,6 +528,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
   const syncContext = async (ctx: ExtensionContext) => {
     editorSettings = runtimeSettingsOverride ?? (await readEditorSettings({ cwd: ctx.cwd }));
     syncStateFromContext(state, ctx, pi);
+    state.gitChanges = readGitChanges(ctx.cwd);
     await syncStateFromSettings(state, ctx);
     let repainted = false;
     if (editorSettings.fixedEditor && currentTui) {
