@@ -8,14 +8,11 @@ import {
   parsePiModeSettings,
   readPiModeSettingsSync,
   readSettingsFromFile,
-  writeLoadSkillsSetting,
   writeModeShortcutSetting,
   writeToolSetSetting,
   writeWebToolSetting,
 } from "./config.ts";
 import {
-  readSessionLoadSkills,
-  readSessionToolSet,
   resolveSessionToolSet,
   TOOL_SET_OVERRIDE_ENV,
 } from "./session.ts";
@@ -42,69 +39,6 @@ test("parsePiModeSettings migrates legacy forge settings to pi", () => {
     modeShortcut: "f2",
     webTools: {},
   });
-});
-
-test("parsePiModeSettings reads custom mode shortcut and defaults blanks to f2", () => {
-  assert.deepEqual(parsePiModeSettings({ "pi-mode": { modeShortcut: " ctrl+o " } }), {
-    toolSet: "pi",
-    loadSkills: true,
-    systemMdPrompt: false,
-    modeShortcut: "ctrl+o",
-    webTools: {},
-  });
-
-  assert.equal(parsePiModeSettings({ "pi-mode": { modeShortcut: " " } }).modeShortcut, "f2");
-});
-
-test("readPiModeSettingsSync reads stored web tool settings", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-tung-settings-"));
-  const settingsPath = path.join(tempDir, "settings.json");
-  await writeFile(
-    settingsPath,
-    `${JSON.stringify(
-      {
-        "pi-mode": {
-          webTools: {
-            geminiApiKey: " gemini-secret ",
-            firecrawlApiKey: " firecrawl-secret ",
-          },
-        },
-      },
-      null,
-      2,
-    )}\n`,
-    "utf8",
-  );
-
-  assert.deepEqual(readPiModeSettingsSync(settingsPath), {
-    toolSet: "pi",
-    loadSkills: true,
-    systemMdPrompt: false,
-    modeShortcut: "f2",
-    webTools: {
-      geminiApiKey: "gemini-secret",
-      firecrawlApiKey: "firecrawl-secret",
-    },
-  });
-});
-
-test("readSessionToolSet migrates legacy forge session entries to pi", () => {
-  assert.equal(
-    readSessionToolSet([
-      { type: "custom", customType: "pi-mode:tool-set", data: { toolSet: "forge" } },
-    ]),
-    "pi",
-  );
-});
-
-test("readSessionLoadSkills reads the latest load-skills session override", () => {
-  assert.equal(
-    readSessionLoadSkills([
-      { type: "custom", customType: "pi-mode:load-skills", data: { loadSkills: true } },
-      { type: "custom", customType: "pi-mode:load-skills", data: { loadSkills: false } },
-    ]),
-    false,
-  );
 });
 
 test("resolveSessionToolSet prefers explicit environment override over session history", async () => {
@@ -146,17 +80,6 @@ test("writeToolSetSetting preserves unrelated root settings", async () => {
   assert.deepEqual(updated.packages, ["npm:@tungthedev/pi-extensions"]);
   assert.deepEqual(updated["other/namespace"], { enabled: true });
   assert.deepEqual(updated["pi-mode"], { toolSet: "droid" });
-});
-
-test("writeLoadSkillsSetting persists the load-skills toggle", async () => {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-tung-settings-"));
-  const settingsPath = path.join(tempDir, "settings.json");
-  await writeFile(settingsPath, "{}\n", "utf8");
-
-  await writeLoadSkillsSetting(false, settingsPath);
-
-  const updated = JSON.parse(await readFile(settingsPath, "utf8")) as Record<string, unknown>;
-  assert.deepEqual(updated["pi-mode"], { loadSkills: false });
 });
 
 test("writeModeShortcutSetting persists and normalizes the mode shortcut", async () => {

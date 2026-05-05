@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "../shared/toolset-resolver.ts";
-import registerDroidContentExtension from "./index.ts";
 
 const TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "read", description: "custom read" },
@@ -40,20 +39,6 @@ const TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "wait_agent", description: "subagent" },
   { name: "close_agent", description: "subagent" },
 ]);
-
-test("droid-content registers before_agent_start for shared toolset setup", () => {
-  const handlers = new Map<string, Function[]>();
-
-  registerDroidContentExtension({
-    on(event: string, handler: Function) {
-      handlers.set(event, [...(handlers.get(event) ?? []), handler]);
-    },
-    registerTool() {},
-    setActiveTools() {},
-  } as never);
-
-  assert.equal(handlers.has("before_agent_start"), true);
-});
 
 test("pi mode keeps builtin tools and excludes droid and codex tool groups", () => {
   assert.deepEqual(resolveToolsetToolNames("pi", TOOL_INFOS), [

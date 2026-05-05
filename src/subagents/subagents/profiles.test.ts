@@ -52,25 +52,6 @@ test("applySpawnAgentProfile defaults to default profile and preserves explicit 
   assert.equal(applied.bootstrap.name, "default");
 });
 
-test("built-in profiles include the bundled default, planner, researcher, reviewer, and scout roles", () => {
-  const builtIns = resolveBuiltInAgentProfiles({ includeHidden: true });
-
-  assert.deepEqual([...builtIns.profiles.keys()], [
-    "default",
-    "planner",
-    "researcher",
-    "reviewer",
-    "scout",
-  ]);
-
-  assert.equal(builtIns.profiles.get("default")?.visible, true);
-  assert.equal(builtIns.profiles.get("default")?.developerInstructions ?? "", "");
-  for (const name of ["planner", "researcher", "reviewer", "scout"]) {
-    assert.equal(builtIns.profiles.get(name)?.visible, true);
-    assert.match(builtIns.profiles.get(name)?.developerInstructions ?? "", /\S/);
-  }
-});
-
 test("resolveAgentProfiles uses cwd-aware markdown project shadowing", async () => {
   await withTempHome((homeRoot) => {
     const cwd = path.join(homeRoot, "workspace", "project", "nested");

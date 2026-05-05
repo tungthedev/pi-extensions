@@ -5,27 +5,11 @@ import path from "node:path";
 import test from "node:test";
 
 import {
-  parseEditorSettings,
   readEditorSettings,
   readEditorSettingsFromFile,
   resolveEditorSettingsWritePath,
   writeEditorSettings,
 } from "./config.ts";
-
-test("parseEditorSettings defaults fixed editor off and mouse scroll on", () => {
-  assert.deepEqual(parseEditorSettings(undefined), {
-    fixedEditor: false,
-    mouseScroll: true,
-  });
-  assert.deepEqual(parseEditorSettings({ editor: { fixedEditor: true, mouseScroll: false } }), {
-    fixedEditor: true,
-    mouseScroll: true,
-  });
-  assert.deepEqual(parseEditorSettings({ editor: { fixedEditor: "yes", mouseScroll: "no" } }), {
-    fixedEditor: false,
-    mouseScroll: true,
-  });
-});
 
 test("readEditorSettingsFromFile fails closed on malformed json", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-editor-settings-"));

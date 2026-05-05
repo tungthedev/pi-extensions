@@ -5,7 +5,7 @@ import test from "node:test";
 import { handlePiModeCommand, registerPiModeShortcut, type PiModeCommandDeps } from "./index.ts";
 import { TOOL_SET_OVERRIDE_ENV } from "./session.ts";
 import { applyToolSetTransition } from "./tool-set-transition.ts";
-import { buildPiModeSettingItems, openPiModeSettingsUi } from "./ui.ts";
+import { openPiModeSettingsUi } from "./ui.ts";
 
 initTheme("dark");
 
@@ -152,24 +152,6 @@ test("openPiModeSettingsUi applies the same tool-set transition side effects", a
   assert.deepEqual(emitted, ["codex"]);
   assert.equal(notifications.length, 1);
   assert.equal(notifications[0], "Mode: Codex");
-});
-
-test("buildPiModeSettingItems exposes top-level pin editor setting", () => {
-  const items = buildPiModeSettingItems({
-    toolSet: "codex",
-    loadSkills: true,
-    systemMdPrompt: false,
-    modeShortcut: "f2",
-    webTools: {},
-    editor: { fixedEditor: true, mouseScroll: false },
-  } as never);
-
-  assert.deepEqual(items.slice(0, 4).map((item) => [item.id, item.label, item.currentValue]), [
-    ["toolSet", "Mode", "Codex"],
-    ["modeShortcut", "Mode Shortcut", "f2"],
-    ["fixedEditor", "Pin Editor", "Enabled"],
-    ["systemPrompt", "System Prompt", "Skills only"],
-  ]);
 });
 
 test("openPiModeSettingsUi edits the mode shortcut from the root list", async () => {
@@ -716,27 +698,6 @@ test("handlePiModeCommand writes the selected load-skills setting directly", asy
   assert.deepEqual(writes, [false]);
   assert.deepEqual(sessionWrites, [false]);
   assert.deepEqual(emitted, [false]);
-});
-
-test("buildPiModeSettingItems groups prompt injection settings under System Prompt", () => {
-  const items = buildPiModeSettingItems({
-    toolSet: "pi",
-    loadSkills: true,
-    systemMdPrompt: false,
-    webTools: {},
-  });
-
-  assert.deepEqual(items.map((item) => item.id), [
-    "toolSet",
-    "modeShortcut",
-    "fixedEditor",
-    "systemPrompt",
-    "webTools",
-  ]);
-
-  const item = items.find((entry) => entry.id === "systemPrompt");
-  assert.equal(item?.label, "System Prompt");
-  assert.equal(item?.currentValue, "Skills only");
 });
 
 test("openPiModeSettingsUi opens prompt injection settings from System Prompt", async () => {

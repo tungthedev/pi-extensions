@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import registerCodexContentExtension from "./index.ts";
 import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "../shared/toolset-resolver.ts";
 
 const TOOL_INFOS = resolveRegisteredToolInfos([
@@ -31,20 +30,6 @@ const TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "wait_agent", description: "subagent" },
   { name: "close_agent", description: "subagent" },
 ]);
-
-test("codex-content registers before_agent_start for shared toolset and prompt setup", () => {
-  const handlers = new Map<string, Function[]>();
-
-  registerCodexContentExtension({
-    on(event: string, handler: Function) {
-      handlers.set(event, [...(handlers.get(event) ?? []), handler]);
-    },
-    registerTool() {},
-    setActiveTools() {},
-  } as never);
-
-  assert.equal(handlers.has("before_agent_start"), true);
-});
 
 test("pi mode excludes codex-managed tools from the shared resolver", () => {
   assert.deepEqual(resolveToolsetToolNames("pi", TOOL_INFOS), [

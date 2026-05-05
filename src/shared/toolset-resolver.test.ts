@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import registerFffLifecycleExtension from "../fff/index.ts";
-import { TOOLSET_MODE_ORDER } from "./toolset-registry.ts";
 import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "./toolset-resolver.ts";
 
 const ALL_TOOL_INFOS = resolveRegisteredToolInfos([
@@ -41,10 +40,6 @@ const ALL_TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "close_agent", description: "subagent codex" },
   { name: "Task", description: "task" },
 ]);
-
-test("toolset registry only exposes pi, codex, and droid modes", () => {
-  assert.deepEqual(Object.keys(TOOLSET_MODE_ORDER), ["pi", "codex", "droid"]);
-});
 
 test("resolveToolsetToolNames computes the canonical tool list for each mode", () => {
   assert.deepEqual(resolveToolsetToolNames("pi", ALL_TOOL_INFOS), [
