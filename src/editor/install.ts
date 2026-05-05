@@ -7,7 +7,7 @@ import type {
 import type { AutocompleteProvider, EditorTheme, TUI } from "@mariozechner/pi-tui";
 
 import { CustomEditor, copyToClipboard } from "@mariozechner/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { isKeyRelease, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { execFileSync } from "node:child_process";
 
 import { ensureSessionFffRuntime, resolveSessionFffRuntimeKey } from "../fff/session-runtime.ts";
@@ -126,6 +126,35 @@ function isRenderable(value: unknown): value is Renderable {
   return typeof (value as { render?: unknown })?.render === "function";
 }
 
+function hasNonWhitespaceText(text: string): boolean {
+  return text.trim().length > 0;
+}
+
+function isAltSCsiUInput(data: string): boolean {
+  const prefix = "\u001b[";
+  if (!data.startsWith(prefix) || !data.endsWith("u")) return false;
+
+  const body = data.slice(prefix.length, -1);
+  const sections = body.split(";");
+  const keyCode = sections[0]?.split(":")[0];
+  const modifier = sections.at(-1);
+
+  return (keyCode === "83" || keyCode === "115")
+    && (modifier === "3" || modifier?.startsWith("3:") === true);
+}
+
+function isStashShortcutInput(data: string): boolean {
+  if (isKeyRelease(data)) return false;
+
+  return data === "ß"
+    || data === "\x1bs"
+    || data === "\x1bS"
+    || isAltSCsiUInput(data)
+    || data === "\x1b[27;3;115~"
+    || data === "\x1b[27;3;83~"
+    || matchesKey(data, "alt+s");
+}
+
 class CodexBoxedEditor extends CustomEditor {
   private readonly autocompleteKeybindings: AutocompleteKeybindings;
 
@@ -141,6 +170,7 @@ class CodexBoxedEditor extends CustomEditor {
     private readonly useLegacyAutocompleteComposition: boolean,
     private readonly pathAutocompleteRuntime?: ReturnType<typeof ensureSessionFffRuntime>,
     private readonly followSubmittedEditorToBottom?: () => void,
+    private readonly onStashShortcut?: () => void,
   ) {
     super(tui, editorTheme, keybindings);
     this.autocompleteKeybindings = keybindings;
@@ -177,6 +207,11 @@ class CodexBoxedEditor extends CustomEditor {
   }
 
   override handleInput(data: string): void {
+    if (isStashShortcutInput(data)) {
+      this.onStashShortcut?.();
+      return;
+    }
+
     const normalized = normalizeCodexEditorInput(data);
     const shouldFollowSubmittedText =
       this.autocompleteKeybindings.matches(normalized, "app.message.followUp" as never) &&
@@ -390,6 +425,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
   let runtimeSettingsOverride: EditorSettings | null = null;
   let fixedEditorCompositor: FixedEditorCompositorHandle | null = null;
   let fixedEditorTerminalTouched = false;
+  let stashedEditorText: string | null = null;
   const state: EditorStatusState = { cwd: process.cwd() };
 
   const requestFixedEditorRepaint = () => {
@@ -495,6 +531,43 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
   };
   void followSubmittedEditorToBottom;
 
+  const getCurrentEditorText = (ctx: ExtensionContext): string => {
+    return currentEditor?.getExpandedText?.() ?? ctx.ui.getEditorText();
+  };
+
+  const setCurrentEditorText = (ctx: ExtensionContext, text: string): void => {
+    if (currentEditor) {
+      currentEditor.setText(text);
+      return;
+    }
+
+    ctx.ui.setEditorText(text);
+  };
+
+  const stashOrRestoreEditorText = (ctx: ExtensionContext): void => {
+    const rawText = getCurrentEditorText(ctx);
+
+    if (!hasNonWhitespaceText(rawText)) {
+      const restoredText = stashedEditorText;
+      if (restoredText === null) {
+        ctx.ui.notify?.("Nothing to stash", "info");
+        return;
+      }
+
+      setCurrentEditorText(ctx, restoredText);
+      stashedEditorText = null;
+      ctx.ui.notify?.("Stash restored", "info");
+      requestFixedEditorRepaint();
+      return;
+    }
+
+    const hasStash = stashedEditorText !== null;
+    stashedEditorText = rawText;
+    setCurrentEditorText(ctx, "");
+    ctx.ui.notify?.(hasStash ? "Stash updated" : "Text stashed", "info");
+    requestFixedEditorRepaint();
+  };
+
   const applyUi = (ctx: ExtensionContext) => {
     currentCtx = ctx;
     const fffRuntime = ensureSessionFffRuntime(resolveSessionFffRuntimeKey(ctx), ctx.cwd);
@@ -519,6 +592,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
           !useProviderStack,
           fffRuntime,
           followSubmittedEditorToBottom,
+          () => stashOrRestoreEditorText(ctx),
         );
         currentTui = tui;
         currentEditor = editor;
@@ -583,6 +657,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
 
   pi.on("session_start", async (_event, ctx) => {
     runtimeSettingsOverride = null;
+    stashedEditorText = null;
     teardownFixedEditorCompositor({ resetExtendedKeyboardModes: true });
     currentCtx = null;
     currentTui = null;
@@ -592,6 +667,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", () => {
+    stashedEditorText = null;
     teardownFixedEditorCompositor({ resetExtendedKeyboardModes: true });
   });
 
@@ -605,6 +681,26 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
 
   pi.on("agent_end", async (_event, ctx) => {
     await syncContext(ctx);
+    if (stashedEditorText === null) return;
+
+    if (getCurrentEditorText(ctx).trim() === "") {
+      setCurrentEditorText(ctx, stashedEditorText);
+      stashedEditorText = null;
+      ctx.ui.notify?.("Stash restored", "info");
+      requestFixedEditorRepaint();
+      return;
+    }
+
+    ctx.ui.notify?.("Stash preserved - clear editor then Alt+S to restore", "info");
+  });
+
+  const registerShortcut = (pi as { registerShortcut?: ExtensionAPI["registerShortcut"] })
+    .registerShortcut;
+  registerShortcut?.call(pi, "alt+s", {
+    description: "Stash/restore editor text",
+    handler: (ctx) => {
+      stashOrRestoreEditorText(ctx);
+    },
   });
 
   pi.events.on(TOOL_SET_CHANGED_EVENT, (data: unknown) => {

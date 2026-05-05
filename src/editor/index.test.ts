@@ -568,6 +568,109 @@ function createEditorTestContext(cwd: string, uiOverrides: Record<string, unknow
   };
 }
 
+type EditorHarness = {
+  editor: {
+    getText(): string;
+    setText(text: string): void;
+    handleInput(data: string): void;
+  };
+  ctx: ReturnType<typeof createEditorTestContext>;
+  lifecycleHandlers: Map<string, Function[]>;
+  notifications: string[];
+  shortcuts: Map<string, { handler: (ctx: unknown) => Promise<void> | void }>;
+};
+
+async function createStashEditorHarness(): Promise<EditorHarness> {
+  const lifecycleHandlers = new Map<string, Function[]>();
+  const notifications: string[] = [];
+  const shortcuts = new Map<string, { handler: (ctx: unknown) => Promise<void> | void }>();
+  let editorFactory:
+    | ((
+        tui: { requestRender(): void; terminal: { rows: number; write(data: string): void } },
+        editorTheme: unknown,
+        keybindings: unknown,
+      ) => EditorHarness["editor"])
+    | undefined;
+
+  installCodexEditorUi({
+    getThinkingLevel: () => "low",
+    getCommands: () => [],
+    registerCommand() {},
+    registerShortcut(shortcut: string, options: { handler: (ctx: unknown) => Promise<void> | void }) {
+      shortcuts.set(shortcut, options);
+    },
+    on(event: string, handler: Function) {
+      lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
+    },
+    events: { on() {} },
+  } as never);
+
+  const ctx = createEditorTestContext("/tmp/project", {
+    notify(message: string) {
+      notifications.push(message);
+    },
+    setEditorComponent(factory: typeof editorFactory) {
+      editorFactory = factory;
+    },
+  });
+
+  for (const handler of lifecycleHandlers.get("session_start") ?? []) {
+    await handler(undefined, ctx as never);
+  }
+  assert.ok(editorFactory);
+
+  const editor = editorFactory!(
+    { requestRender() {}, terminal: { rows: 40, write() {} } },
+    { borderColor: (text: string) => text, selectList: {} },
+    { matches: () => false },
+  );
+
+  return { editor, ctx, lifecycleHandlers, notifications, shortcuts };
+}
+
+test("editor stash handles macOS option-s input and auto-restores after an agent run", async () => {
+  const { editor, ctx, lifecycleHandlers, notifications } = await createStashEditorHarness();
+
+  editor.setText("long draft");
+  editor.handleInput("ß");
+
+  assert.equal(editor.getText(), "");
+  assert.ok(notifications.includes("Text stashed"));
+
+  editor.setText("quick question");
+  for (const handler of lifecycleHandlers.get("agent_end") ?? []) {
+    await handler(undefined, ctx as never);
+  }
+
+  assert.equal(editor.getText(), "quick question");
+  assert.ok(notifications.includes("Stash preserved - clear editor then Alt+S to restore"));
+
+  editor.setText("");
+  for (const handler of lifecycleHandlers.get("agent_end") ?? []) {
+    await handler(undefined, ctx as never);
+  }
+
+  assert.equal(editor.getText(), "long draft");
+  assert.ok(notifications.includes("Stash restored"));
+});
+
+test("editor stash registered alt-s shortcut shares the active session stash", async () => {
+  const { editor, ctx, notifications, shortcuts } = await createStashEditorHarness();
+  const shortcut = shortcuts.get("alt+s");
+  assert.ok(shortcut);
+
+  editor.setText("draft from shortcut");
+  await shortcut.handler(ctx);
+
+  assert.equal(editor.getText(), "");
+  assert.ok(notifications.includes("Text stashed"));
+
+  await shortcut.handler(ctx);
+
+  assert.equal(editor.getText(), "draft from shortcut");
+  assert.ok(notifications.includes("Stash restored"));
+});
+
 test("installCodexEditorUi does not register an editor command", async () => {
   const lifecycleHandlers = new Map<string, Function[]>();
   let editorFactory:

@@ -7,6 +7,7 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 ### Added
 
 - Added Codex-style task-tree subagents with canonical `/root/...` paths, nested subagent support, and `list_agents` for inspecting live agents.
+- Added session-only editor stash via `Alt+S`.
 
 ### Changed
 
