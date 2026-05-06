@@ -41,6 +41,7 @@ import {
 } from "./fixed-editor/terminal-split.ts";
 import {
   formatBottomLeftStatus,
+  formatCompactBottomLeftStatus,
   formatBottomRightStatus,
   formatCompactMetadataStatus,
   formatEditorBorderLegend,
@@ -67,6 +68,7 @@ const RESERVED_SEGMENT_KEYS = new Set([
 const HORIZONTAL = "─";
 const MIN_INPUT_ROWS = 2;
 const COMPACT_WIDTH = 60;
+const BOTTOM_STATUS_COMPACT_WIDTH = 80;
 const MIN_SKILL_COUNT_WIDTH = 41;
 
 type AutocompleteKeybindings = Pick<KeybindingsManager, "matches">;
@@ -368,6 +370,7 @@ class CodexBoxedEditor extends CustomEditor {
 class EditorBottomStatusWidget {
   constructor(
     private readonly getLeftStatus: (maxWidth: number) => string,
+    private readonly getCompactLeftStatus: (maxWidth: number) => string,
     private readonly getRightStatus: (maxWidth: number) => string,
     private readonly getCompactMetadataStatus: (maxWidth: number) => string,
   ) {}
@@ -401,11 +404,15 @@ class EditorBottomStatusWidget {
   }
 
   render(width: number): string[] {
-    const compact = width < COMPACT_WIDTH;
+    const compact = width < BOTTOM_STATUS_COMPACT_WIDTH;
     const lines: string[] = [];
     if (compact) {
-      const metadata = this.getCompactMetadataStatus(Math.max(0, width - 2));
-      if (metadata) lines.push(this.normalizeRenderedWidth(` ${metadata} `, width));
+      const contentWidth = Math.max(0, width - 2);
+      const metadata = this.getCompactMetadataStatus(Math.max(0, Math.floor((contentWidth - 1) / 2)));
+      const leftBudget = metadata ? Math.max(0, contentWidth - visibleWidth(metadata) - 1) : contentWidth;
+      const leftStatus = this.getCompactLeftStatus(leftBudget);
+      const line = this.renderStatusLine(width, leftStatus, metadata);
+      if (line) lines.push(line);
       return lines;
     }
 
@@ -610,6 +617,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
       () =>
         new EditorBottomStatusWidget(
           (maxWidth) => formatBottomLeftStatus(state, ctx.ui.theme, maxWidth),
+          (maxWidth) => formatCompactBottomLeftStatus(state, ctx.ui.theme, maxWidth),
           (maxWidth) => formatBottomRightStatus(state, maxWidth, ctx.ui.theme),
           (maxWidth) => formatCompactMetadataStatus(state, maxWidth, ctx.ui.theme),
         ),
@@ -673,6 +681,11 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
 
   pi.on("model_select", async (_event, ctx) => {
     await syncContext(ctx);
+  });
+
+  pi.on("thinking_level_select", (event) => {
+    state.thinkingLevel = event.level;
+    requestFixedEditorRepaint();
   });
 
   pi.on("tool_execution_end", async (_event, ctx) => {

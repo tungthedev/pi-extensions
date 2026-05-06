@@ -163,6 +163,37 @@ function formatUsagePercent(percent: number): string {
   return `${Math.round(clamp(percent, 0, 100))}%`;
 }
 
+function formatThinkingGlyph(thinkingLevel?: string, theme?: Theme): string | undefined {
+  const level = thinkingLevel && thinkingLevel !== "off" ? thinkingLevel : "off";
+  const glyph =
+    level === "low" ? "◔" : level === "medium" ? "◑" : level === "high" ? "◕" : level === "xhigh" ? "●" : "○";
+  return colorThinkingLevel(level, glyph, theme);
+}
+
+function colorThinkingLevel(level: string, text: string, theme?: Theme): string {
+  if (!theme) return text;
+  if (level === "off") return theme.fg("dim", text);
+  if (level === "low") return theme.fg("muted", text);
+  if (level === "medium") return theme.fg("accent", text);
+  if (level === "xhigh") return theme.fg("error", theme.bold(text));
+  return theme.fg("warning", text);
+}
+
+function compactModelId(modelId: string, maxWidth: number): string {
+  if (visibleWidth(modelId) <= maxWidth) return modelId;
+  const stripped = modelId.replace(/^(gpt-|claude-)/i, "");
+  return truncateToWidth(stripped, maxWidth, "");
+}
+
+function formatCompactUsageCell(usage?: EditorStatusState["usage"], theme?: Theme): string | undefined {
+  if (!usage || usage.percent == null || !usage.contextWindow) return undefined;
+  const glyphs = ["▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
+  const percent = clamp(usage.percent, 0, 100);
+  const glyph = glyphs[Math.min(glyphs.length - 1, Math.floor((percent / 100) * glyphs.length))] ?? "▏";
+  const coloredGlyph = theme ? theme.fg(usageFillColor(percent), glyph) : glyph;
+  return `${coloredGlyph} ${formatCompactNumber(usage.contextWindow)}`;
+}
+
 function formatGitChanges(changes?: EditorStatusState["gitChanges"], theme?: Theme): string | undefined {
   if (!changes || (changes.added <= 0 && changes.removed <= 0)) return undefined;
   const added = `+${Math.max(0, changes.added)}`;
@@ -275,7 +306,9 @@ export function formatLeftStatus(state: EditorStatusState, theme?: Theme): strin
   const modelPart = state.modelId
     ? [
         state.modelId,
-        state.thinkingLevel && state.thinkingLevel !== "off" ? state.thinkingLevel : undefined,
+        state.thinkingLevel && state.thinkingLevel !== "off"
+          ? colorThinkingLevel(state.thinkingLevel, state.thinkingLevel, theme)
+          : undefined,
       ]
         .filter((part): part is string => Boolean(part))
         .join(" ")
@@ -313,7 +346,9 @@ export function formatBottomLeftStatus(
   const modelPart = state.modelId
     ? [
         state.modelId,
-        state.thinkingLevel && state.thinkingLevel !== "off" ? state.thinkingLevel : undefined,
+        state.thinkingLevel && state.thinkingLevel !== "off"
+          ? colorThinkingLevel(state.thinkingLevel, state.thinkingLevel, theme)
+          : undefined,
       ]
         .filter((part): part is string => Boolean(part))
         .join(" ")
@@ -331,18 +366,30 @@ export function formatBottomLeftStatus(
   return truncateToWidth(usagePart, maxWidth, "");
 }
 
-export function formatCompactBottomLeftStatus(state: EditorStatusState, theme?: Theme): string {
-  const modelPart = state.modelId
-    ? [
-        state.modelId,
-        state.thinkingLevel && state.thinkingLevel !== "off" ? state.thinkingLevel : undefined,
-      ]
-        .filter((part): part is string => Boolean(part))
-        .join(" ")
-    : undefined;
-  const usagePart = formatCompactUsageSummary(state.usage);
+export function formatCompactBottomLeftStatus(
+  state: EditorStatusState,
+  theme?: Theme,
+  maxWidth = Number.POSITIVE_INFINITY,
+): string {
+  const thinkingPart = formatThinkingGlyph(state.thinkingLevel, theme);
+  const usagePart = formatCompactUsageCell(state.usage, theme);
   const separator = theme ? colorBorder(theme, STATUS_SEPARATOR) : STATUS_SEPARATOR;
-  return [modelPart, usagePart].filter((part): part is string => Boolean(part)).join(separator);
+
+  const renderModelPart = (budget: number): string => {
+    const model = state.modelId ? compactModelId(state.modelId, Math.max(0, budget - 2)) : "";
+    return [thinkingPart, model].filter((part): part is string => Boolean(part)).join(" ");
+  };
+
+  const modelPart = renderModelPart(Number.POSITIVE_INFINITY);
+  const full = [modelPart, usagePart].filter((part): part is string => Boolean(part)).join(separator);
+  if (visibleWidth(full) <= maxWidth || !usagePart) return full;
+
+  const usageWidth = visibleWidth(usagePart);
+  const separatorWidth = visibleWidth(separator);
+  const modelBudget = Math.max(0, maxWidth - usageWidth - separatorWidth);
+  const renderedModel = renderModelPart(modelBudget);
+  if (renderedModel) return `${renderedModel}${separator}${usagePart}`;
+  return truncateToWidth(usagePart, maxWidth, "");
 }
 
 function basenamePath(value: string): string {
@@ -442,7 +489,7 @@ export function buildTopBorderLine(
     ? colorBorder(theme, HORIZONTAL_RIGHT_HALF) + styleRightLabel(rightText) + colorBorder(theme, HORIZONTAL_LEFT_HALF)
     : "";
   const leftEdge = legendBlock ? "" : colorBorder(theme, HORIZONTAL);
-  const rightEdge = colorBorder(theme, HORIZONTAL.repeat(rightBlock ? 2 : 1));
+  const rightEdge = rightBlock ? "" : colorBorder(theme, HORIZONTAL);
   const middleFill = Math.max(
     0,
     width - visibleWidth(leftEdge) - visibleWidth(legendBlock) - visibleWidth(rightBlock) - visibleWidth(rightEdge),

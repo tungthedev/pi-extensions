@@ -21,7 +21,7 @@ import {
   wrapAutocompleteProviderWithDollarSkillSupport,
 } from "./index.ts";
 import { findContainerWithChild } from "./install.ts";
-import { formatBottomLeftStatus } from "./status-format.ts";
+import { formatBottomLeftStatus, formatCompactBottomLeftStatus } from "./status-format.ts";
 
 test("formatBottomLeftStatus separates model and usage with half-dashes", () => {
   const status = formatBottomLeftStatus(
@@ -33,15 +33,33 @@ test("formatBottomLeftStatus separates model and usage with half-dashes", () => 
     },
     {
       bg: (_color: string, text: string) => text,
-      fg: (color: string, text: string) => (color === "muted" ? `<muted>${text}</muted>` : text),
+      fg: (color: string, text: string) =>
+        color === "muted" ? `<muted>${text}</muted>` : color === "accent" ? `<accent>${text}</accent>` : text,
       getBgAnsi: () => "\u001b[48;5;8m",
       getFgAnsi: () => "\u001b[38;5;15m",
       getColorMode: () => "256color",
     } as never,
   );
 
-  assert.ok(status.startsWith("gpt-5.5 medium<muted>╶╴</muted>"));
+  assert.ok(status.startsWith("gpt-5.5 <accent>medium</accent><muted>╶╴</muted>"));
   assert.ok(status.includes("\u001b[48;"));
+});
+
+test("formatCompactBottomLeftStatus renders thinking, model, and compact usage", () => {
+  const status = formatCompactBottomLeftStatus(
+    {
+      cwd: "/tmp/project",
+      modelId: "gpt-5.5",
+      thinkingLevel: "medium",
+      usage: { tokens: 122400, percent: 45, contextWindow: 272000 },
+    },
+    {
+      fg: (color: string, text: string) => (color === "muted" ? `<muted>${text}</muted>` : text),
+      bold: (text: string) => text,
+    } as never,
+  );
+
+  assert.ok(status.startsWith("◑ gpt-5.5<muted>╶╴</muted>▌ 272k"), status);
 });
 
 test("formatBottomLeftStatus preserves usage when width is tight", () => {
