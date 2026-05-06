@@ -1,7 +1,7 @@
 {
   "name": "@tungthedev/pi-extensions",
-  "version": "2.4.0",
-  "description": "A Pi package containing editor, mermaid, workspace, web, skill, pi-modes, and ext-manager extensions.",
+  "version": "2.5.0",
+  "description": "A Pi package containing editor, mermaid, workspace, web, skill, boomerang, pi-modes, and ext-manager extensions.",
   "keywords": [
     "codex",
     "droid",
@@ -50,6 +50,7 @@
     "openai": "6.26.0"
   },
   "devDependencies": {
+    "@mariozechner/pi-agent-core": "0.72.1",
     "@mariozechner/pi-ai": "0.72.1",
     "@mariozechner/pi-coding-agent": "0.72.1",
     "@mariozechner/pi-tui": "0.72.1",
@@ -60,6 +61,7 @@
     "typescript": "^5.7.3"
   },
   "peerDependencies": {
+    "@mariozechner/pi-agent-core": "*",
     "@mariozechner/pi-ai": "*",
     "@mariozechner/pi-coding-agent": "*",
     "@mariozechner/pi-tui": "*",
@@ -76,6 +78,7 @@
       "./extensions/mermaid.ts",
       "./extensions/web.ts",
       "./extensions/skill.ts",
+      "./extensions/boomerang.ts",
       "./extensions/workspace.ts",
       "./extensions/pi-modes.ts",
       "./extensions/ext-manager.ts",

@@ -2,6 +2,12 @@
 
 All notable changes to `@tungthedev/pi-extensions` will be documented in this file.
 
+## [2.5.0] - 2026-05-06
+
+### Added
+
+- Added `/boomerang` mode inspired from [nicobailon/pi-boomerang](https://github.com/nicobailon/pi-boomerang)
+
 ## [2.4.0] - 2026-05-05
 
 ### Added

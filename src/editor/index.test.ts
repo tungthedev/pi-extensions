@@ -21,7 +21,34 @@ import {
   wrapAutocompleteProviderWithDollarSkillSupport,
 } from "./index.ts";
 import { findContainerWithChild } from "./install.ts";
-import { formatBottomLeftStatus, formatCompactBottomLeftStatus } from "./status-format.ts";
+import {
+  buildTopBorderLineFromItems,
+  formatBottomLeftStatus,
+  formatCompactBottomLeftStatus,
+} from "./status-format.ts";
+
+const BOOMERANG_ICON = String.fromCodePoint(0x1fa83);
+
+test("buildTopBorderLineFromItems styles right item separator as border text", () => {
+  const theme = {
+    fg: (color: string, text: string) => {
+      const code = color === "muted" ? 90 : color === "text" ? 37 : color === "accent" ? 36 : 39;
+      return `\u001b[${code}m${text}\u001b[0m`;
+    },
+    bold: (text: string) => text,
+  };
+
+  const line = buildTopBorderLineFromItems(theme as never, {
+    width: 48,
+    leftItems: ["Codex", "(ctrl+alt+m)"],
+    rightItems: [BOOMERANG_ICON, "2 skills"],
+    styleLeftItem: (item, index) => theme.fg(index === 0 ? "accent" : "muted", item),
+    styleRightItem: (item) => theme.fg("text", item),
+  });
+
+  assert.ok(line.includes(`\u001b[37m${BOOMERANG_ICON}\u001b[0m\u001b[90m╶╴\u001b[0m\u001b[37m2 skills\u001b[0m`));
+  assert.equal(visibleWidth(line), 48);
+});
 
 test("formatBottomLeftStatus separates model and usage with half-dashes", () => {
   const status = formatBottomLeftStatus(
@@ -1423,6 +1450,7 @@ test("installCodexEditorUi renders compact repo metadata below narrow editor", a
 
 test("installCodexEditorUi keeps compact skill count above forty columns", async () => {
   const lifecycleHandlers = new Map<string, Function[]>();
+  const eventHandlers = new Map<string, Function>();
   let editorFactory:
     | ((
         tui: { requestRender(): void; terminal: { rows: number } },
@@ -1445,7 +1473,9 @@ test("installCodexEditorUi keeps compact skill count above forty columns", async
       lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
     },
     events: {
-      on() {},
+      on(event: string, handler: Function) {
+        eventHandlers.set(event, handler);
+      },
     },
   } as never);
 
@@ -1465,7 +1495,10 @@ test("installCodexEditorUi keeps compact skill count above forty columns", async
     },
     ui: {
       theme: {
-        fg: (_color: string, text: string) => text,
+        fg: (color: string, text: string) => {
+          const code = color === "muted" ? 90 : color === "text" ? 37 : 39;
+          return `\u001b[${code}m${text}\u001b[0m`;
+        },
         bg: (_color: string, text: string) => text,
         bold: (text: string) => text,
         strikethrough: (text: string) => text,
@@ -1498,8 +1531,21 @@ test("installCodexEditorUi keeps compact skill count above forty columns", async
   );
 
   assert.ok((editor.render(50)[0] ?? "").includes("2 skills"));
-  assert.ok((editor.render(50)[0] ?? "").includes("╴Codex╶"));
+  assert.ok((editor.render(50)[0] ?? "").includes("Codex"));
   assert.equal((editor.render(50)[0] ?? "").includes("ctrl+alt+m"), false);
+  eventHandlers.get(EDITOR_SET_STATUS_SEGMENT_EVENT)?.({
+    key: "boomerang",
+    text: BOOMERANG_ICON,
+    align: "right",
+    priority: -1,
+  });
+  assert.ok(
+    (editor.render(50)[0] ?? "").includes(
+      `\u001b[37m${BOOMERANG_ICON}\u001b[0m\u001b[90m╶╴\u001b[0m\u001b[37m2 skills\u001b[0m`,
+    ),
+  );
+  eventHandlers.get(EDITOR_REMOVE_STATUS_SEGMENT_EVENT)?.({ key: "boomerang" });
+  assert.equal((editor.render(50)[0] ?? "").includes(BOOMERANG_ICON), false);
   assert.ok((editor.render(41)[0] ?? "").includes("2 skills"));
   assert.equal((editor.render(40)[0] ?? "").includes("2 skills"), false);
 });

@@ -44,9 +44,8 @@ import {
   formatCompactBottomLeftStatus,
   formatBottomRightStatus,
   formatCompactMetadataStatus,
-  formatEditorBorderLegend,
   formatSkillCountLabel,
-  buildTopBorderLine,
+  buildTopBorderLineFromItems,
 } from "./status-format.ts";
 import {
   syncStateFromContext,
@@ -165,10 +164,10 @@ class CodexBoxedEditor extends CustomEditor {
     editorTheme: EditorTheme,
     keybindings: KeybindingsManager,
     private readonly getAppTheme: () => Theme,
-    private readonly getTopBorderLegend: () => string | undefined,
-    private readonly getToolSetLabel: () => string | undefined,
+    private readonly getTopLeftItems: (compact: boolean) => string[],
     private readonly getLoadSkillsEnabled: () => boolean | undefined,
     private readonly getSkillCount: () => number | undefined,
+    private readonly getTopRightItems: () => string[],
     private readonly useLegacyAutocompleteComposition: boolean,
     private readonly pathAutocompleteRuntime?: ReturnType<typeof ensureSessionFffRuntime>,
     private readonly followSubmittedEditorToBottom?: () => void,
@@ -303,21 +302,14 @@ class CodexBoxedEditor extends CustomEditor {
     return ` ${this.padRenderedWidth(line, contentWidth)} `;
   }
 
-  private styleLegend(legendText: string): string {
+  private styleLeftLegendItem(item: string, index: number): string {
     const theme = this.getAppTheme();
-    const toolSetLabel = this.getToolSetLabel();
-    if (!toolSetLabel || !legendText.startsWith(toolSetLabel)) {
-      return theme.fg("muted", legendText);
-    }
-
-    const label = legendText.slice(0, toolSetLabel.length);
-    const suffix = legendText.slice(toolSetLabel.length);
-    return theme.fg("accent", theme.bold(label)) + theme.fg("muted", suffix);
+    return index === 0 ? theme.fg("accent", theme.bold(item)) : theme.fg("muted", item);
   }
 
-  private styleRightLegend(labelText: string): string {
+  private styleRightLegendItem(item: string): string {
     const loadSkillsEnabled = this.getLoadSkillsEnabled();
-    return this.getAppTheme().fg(loadSkillsEnabled ? "text" : "dim", labelText);
+    return this.getAppTheme().fg(loadSkillsEnabled ? "text" : "dim", item);
   }
 
   override render(width: number): string[] {
@@ -334,13 +326,15 @@ class CodexBoxedEditor extends CustomEditor {
 
     rendered.push(
       this.normalizeRenderedWidth(
-        buildTopBorderLine(
+        buildTopBorderLineFromItems(
           this.getAppTheme(),
-          width,
-          compact ? this.getToolSetLabel() : this.getTopBorderLegend(),
-          (legendText) => this.styleLegend(legendText),
-          showSkillCount ? formatSkillCountLabel(this.getSkillCount()) : undefined,
-          (labelText) => this.styleRightLegend(labelText),
+          {
+            width,
+            leftItems: this.getTopLeftItems(compact),
+            rightItems: showSkillCount ? this.getTopRightItems() : [],
+            styleLeftItem: (item, index) => this.styleLeftLegendItem(item, index),
+            styleRightItem: (item) => this.styleRightLegendItem(item),
+          },
         ),
         width,
       ),
@@ -433,6 +427,7 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
   let fixedEditorCompositor: FixedEditorCompositorHandle | null = null;
   let fixedEditorTerminalTouched = false;
   let stashedEditorText: string | null = null;
+  const externalStatusSegments = new Map<string, SetStatusSegmentPayload>();
   const state: EditorStatusState = { cwd: process.cwd() };
 
   const requestFixedEditorRepaint = () => {
@@ -551,6 +546,23 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
     ctx.ui.setEditorText(text);
   };
 
+  const getTopLeftItems = (compact: boolean): string[] => {
+    return [
+      state.toolSetLabel,
+      !compact && state.modeShortcut ? `(${state.modeShortcut})` : undefined,
+    ].filter((item): item is string => Boolean(item));
+  };
+
+  const getTopRightItems = (): string[] => {
+    const statusParts = [...externalStatusSegments.values()]
+      .filter((segment) => (segment.align ?? "right") === "right")
+      .sort((left, right) => (left.priority ?? 0) - (right.priority ?? 0))
+      .map((segment) => segment.text.trim())
+      .filter(Boolean);
+    const skillLabel = formatSkillCountLabel(state.skillCount);
+    return skillLabel ? [...statusParts, skillLabel] : statusParts;
+  };
+
   const stashOrRestoreEditorText = (ctx: ExtensionContext): void => {
     const rawText = getCurrentEditorText(ctx);
 
@@ -592,10 +604,10 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
           editorTheme,
           keybindings,
           () => ctx.ui.theme,
-          () => formatEditorBorderLegend(state.toolSetLabel, state.modeShortcut),
-          () => state.toolSetLabel,
+          getTopLeftItems,
           () => state.loadSkillsEnabled,
           () => state.skillCount,
+          getTopRightItems,
           !useProviderStack,
           fffRuntime,
           followSubmittedEditorToBottom,
@@ -751,12 +763,19 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
     const payload = data as SetStatusSegmentPayload;
     if (!payload?.key || typeof payload.text !== "string") return;
     if (RESERVED_SEGMENT_KEYS.has(payload.key)) return;
+    externalStatusSegments.set(payload.key, {
+      key: payload.key,
+      text: payload.text,
+      align: payload.align,
+      priority: payload.priority,
+    });
     requestFixedEditorRepaint();
   });
 
   pi.events.on(EDITOR_REMOVE_STATUS_SEGMENT_EVENT, (data: unknown) => {
     const payload = data as RemoveStatusSegmentPayload;
     if (!payload?.key || RESERVED_SEGMENT_KEYS.has(payload.key)) return;
+    externalStatusSegments.delete(payload.key);
     requestFixedEditorRepaint();
   });
 }

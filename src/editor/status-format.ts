@@ -504,6 +504,79 @@ export function buildTopBorderLine(
   );
 }
 
+export type TopBorderLineItemOptions = {
+  width: number;
+  leftItems?: Array<string | undefined | null | false>;
+  rightItems?: Array<string | undefined | null | false>;
+  leftSeparator?: string;
+  rightSeparator?: string;
+  styleLeftItem?: (item: string, index: number) => string;
+  styleRightItem?: (item: string, index: number) => string;
+  styleSeparator?: (separator: string) => string;
+};
+
+function presentItems(items?: Array<string | undefined | null | false>): string[] {
+  return (items ?? []).filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+function joinStyledItems(
+  items: string[],
+  separator: string,
+  styleItem: (item: string, index: number) => string,
+  styleSeparator: (separator: string) => string,
+): string {
+  return items.map((item, index) => styleItem(item, index)).join(styleSeparator(separator));
+}
+
+export function buildTopBorderLineFromItems(
+  theme: Theme,
+  options: TopBorderLineItemOptions,
+): string {
+  const width = options.width;
+  const innerWidth = Math.max(0, width - 2);
+  const styleSeparator = options.styleSeparator ?? ((separator: string) => colorBorder(theme, separator));
+  const leftItems = presentItems(options.leftItems);
+  const rightItems = presentItems(options.rightItems);
+  const leftContent = joinStyledItems(
+    leftItems,
+    options.leftSeparator ?? " ",
+    options.styleLeftItem ?? ((item) => item),
+    styleSeparator,
+  );
+  const rightContent = joinStyledItems(
+    rightItems,
+    options.rightSeparator ?? STATUS_SEPARATOR,
+    options.styleRightItem ?? ((item) => item),
+    styleSeparator,
+  );
+  const rightText = rightContent ? truncateToWidth(rightContent, Math.max(0, innerWidth - 1), "") : "";
+
+  if (!leftContent && !rightText) {
+    return colorBorder(theme, HORIZONTAL.repeat(width));
+  }
+
+  const leftBudget = Math.max(0, innerWidth - visibleWidth(rightText) - 2);
+  const leftText = leftContent ? truncateToWidth(leftContent, leftBudget, "") : "";
+  if (!leftText && !rightText) {
+    return colorBorder(theme, HORIZONTAL.repeat(width));
+  }
+
+  const leftBlock = leftText
+    ? colorBorder(theme, HORIZONTAL_RIGHT_HALF) + leftText + colorBorder(theme, HORIZONTAL_LEFT_HALF)
+    : "";
+  const rightBlock = rightText
+    ? colorBorder(theme, HORIZONTAL_RIGHT_HALF) + rightText + colorBorder(theme, HORIZONTAL_LEFT_HALF)
+    : "";
+  const leftEdge = leftBlock ? "" : colorBorder(theme, HORIZONTAL);
+  const rightEdge = rightBlock ? "" : colorBorder(theme, HORIZONTAL);
+  const middleFill = Math.max(
+    0,
+    width - visibleWidth(leftEdge) - visibleWidth(leftBlock) - visibleWidth(rightBlock) - visibleWidth(rightEdge),
+  );
+
+  return leftEdge + leftBlock + colorBorder(theme, HORIZONTAL.repeat(middleFill)) + rightBlock + rightEdge;
+}
+
 export function buildBottomBorderLine(
   theme: Theme,
   width: number,

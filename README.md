@@ -1,6 +1,6 @@
 # There are many Pi extensions, but this one is mine.
 
-`@tungthedev/pi-extensions` is a bundled Pi package that upgrades the default Pi experience with a better editor, inline Mermaid rendering, web research tools, skill loading, workspace tooling, tool-set switching for Pi/Codex/Droid modes, and a TUI-first subagent manager.
+`@tungthedev/pi-extensions` is a bundled Pi package that upgrades the default Pi experience with a better editor, inline Mermaid rendering, web research tools, skill loading, boomerang context summarization, tool-set/system prompt switching for Pi/Codex/Droid modes, and a TUI-first subagent manager.
 
 The package currently ships these extensions:
 
@@ -8,6 +8,7 @@ The package currently ships these extensions:
 - `mermaid` for inline Mermaid rendering and a full diagram viewer
 - `web` for `WebSearch`, `WebSummary`, and `FetchUrl`
 - `skill` for loading local Pi skills with the `skill` tool
+- `boomerang` for autonomous task execution with context summarization
 - `pi-modes` for Codex/Droid tool-set switching, prompts, and subagents
 - `ext-manager` for managing extensions from inside Pi
 - `openai-responses-image-patch` for preserving OpenAI Responses generated images
@@ -86,6 +87,16 @@ Or via `/pi-mode` > Web Tools config:
 ### Skills
 
 The `skill` extension adds a global `skill` tool that resolves content from loaded Pi skills and returns the skill instructions directly to the agent.
+
+### Boomerang
+
+The `boomerang` extension adds `/boomerang`, `/boomerang-cancel`, and `ctrl+alt+b` for running autonomous tasks and returning future context to compact handoff summaries. `ctrl+alt+b` cycles auto-boomerang through off, one-shot, always-on, and back to off.
+
+Examples:
+
+```bash
+/boomerang Fix the login bug
+```
 
 ### Pi Modes And Subagents
 
