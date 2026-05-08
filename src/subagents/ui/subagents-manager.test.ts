@@ -9,6 +9,8 @@ import { handleDetailInput, renderDetail } from "./subagents-detail.js";
 import { DEFAULT_MODEL_HINT, MANUAL_MODEL_HINT, getVisibleModelOptions, validateManualModelInput } from "./subagents-edit.js";
 import { formatScopeOptionLabel, resolveCreateCancelTarget, resolveEditTarget, openSubagentsManager } from "./subagents-manager.js";
 
+const ANSI_SGR_PATTERN = new RegExp(String.raw`\x1B\[[0-9;]*m`, "g");
+
 function createRole(overrides: Partial<LayeredRoleRecord>): LayeredRoleRecord {
   return {
     name: "reviewer",
@@ -80,7 +82,7 @@ test("list render keeps the description column aligned when the theme emits ansi
 
   const lines = renderList({ cursor: 2, scrollOffset: 0, query: "" }, entries, 80, theme);
   const defaultLine = lines[6] ?? "";
-  const plainLine = defaultLine.replace(/\u001b\[[0-9;]*m/g, "");
+  const plainLine = defaultLine.replace(ANSI_SGR_PATTERN, "");
 
   assert.match(plainLine, /^→ default 🔒\s+Runtime fallback$/);
   assert.equal(visibleWidth(defaultLine), visibleWidth(plainLine));
@@ -105,7 +107,7 @@ test("list render uses split active styling for selected role rows", () => {
   assert.equal(calls.some((entry) => entry.color === "muted" && entry.text === "→ "), true);
   assert.equal(calls.some((entry) => entry.color === "accent" && entry.text === "reviewer"), true);
   assert.equal(calls.some((entry) => entry.color === "accent" && entry.text === "[builtin]"), false);
-  assert.equal(lines.some((line) => /reviewer \[builtin\]/.test(line.replace(/\u001b\[[0-9;]*m/g, ""))), false);
+  assert.equal(lines.some((line) => /reviewer \[builtin\]/.test(line.replace(ANSI_SGR_PATTERN, ""))), false);
 });
 
 

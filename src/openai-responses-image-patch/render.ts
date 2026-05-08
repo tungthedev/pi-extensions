@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
-import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Box, Image, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 
 import type { GeneratedImageDetails } from "./types.js";

@@ -314,8 +314,8 @@ export function formatFindFilesText(
 ): string {
   if (items.length === 0) {
     return options.pageIndex > 0
-      ? `0 more results for \"${query}\".`
-      : `0 results for \"${query}\"${options.totalFiles ? ` (${options.totalFiles} indexed)` : ""}`;
+      ? `0 more results for "${query}".`
+      : `0 results for "${query}"${options.totalFiles ? ` (${options.totalFiles} indexed)` : ""}`;
   }
 
   const lines: string[] = [];

@@ -323,7 +323,6 @@ class SubagentsManagerComponent {
     const innerWidth = Math.max(20, this.width - 2);
     const lines = [renderHeader("Model & thinking", this.width), ""];
     const modelHeader = "Model:";
-    const thinkingHeader = `Thinking: ${draft.thinking}`;
 
     lines.push(draft.modelFocus === "model" ? renderActiveCursorLabel(this.ctx.ui.theme, modelHeader) : `  ${modelHeader}`);
     lines.push(...editorLines(draft.modelEditor, innerWidth, 1));

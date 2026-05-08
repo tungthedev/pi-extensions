@@ -15,7 +15,7 @@ import {
   RuntimeInitializationError,
 } from "./errors.js";
 import { buildGrepText, cropMatchLine, formatFindFilesText } from "./format.js";
-import { errResult, okVoid, propagateError, toVoidResult, type AppResult } from "./result-utils.js";
+import { errResult, propagateError, toVoidResult, type AppResult } from "./result-utils.js";
 import { getFffRootDir, getProjectDatabasePaths, resolveProjectRoot } from "./runtime-paths.js";
 import {
   AUTO_EXPAND_AFTER_CONTEXT,
@@ -168,7 +168,7 @@ function globToRegExp(glob: string): RegExp | null {
       pattern += "[^/]";
       continue;
     }
-    pattern += /[\\^$+?.()|{}\[\]]/.test(char) ? `\\${char}` : char;
+    pattern += /[\\^$+?.()|{}[\]]/.test(char) ? `\\${char}` : char;
   }
   pattern += "$";
 
@@ -567,7 +567,7 @@ export class FffRuntime {
       return errResult(
         new MissingPathError({
           query: normalizedQuery,
-          reason: `No files matched \"${normalizedQuery}\".`,
+          reason: `No files matched "${normalizedQuery}".`,
         }),
       );
     }
@@ -762,7 +762,7 @@ export class FffRuntime {
         });
         return {
           items: broadenedItems,
-          formatted: `0 matches for \"${request.pattern}\". Auto-broadened to \"${broadened}\":\n${built.text}`,
+          formatted: `0 matches for "${request.pattern}". Auto-broadened to "${broadened}":\n${built.text}`,
           truncation: built.truncation,
           matchLimitReached: built.matchLimitReached,
           linesTruncated: built.linesTruncated,
@@ -869,7 +869,7 @@ export class FffRuntime {
       });
       return {
         items: fallbackItems,
-        formatted: `0 multi-pattern matches. Plain grep fallback for \"${pattern}\":\n${built.text}`,
+        formatted: `0 multi-pattern matches. Plain grep fallback for "${pattern}":\n${built.text}`,
         truncation: built.truncation,
         matchLimitReached: built.matchLimitReached,
         linesTruncated: built.linesTruncated,

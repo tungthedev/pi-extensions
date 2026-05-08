@@ -1,6 +1,5 @@
 import type {
   FileFinder,
-  GrepCursor,
   GrepMatch,
   GrepResult,
   Result,
@@ -311,7 +310,7 @@ test("grepSearch auto-broadens empty multi-word queries", async () => {
   assert.equal(result.isOk(), true);
   if (result.isErr()) assert.fail(result.error.message);
   assert.deepEqual(calls, ["alpha beta", "beta"]);
-  assert.match(result.value.formatted, /Auto-broadened to \"beta\"/);
+  assert.match(result.value.formatted, /Auto-broadened to "beta"/);
 });
 
 test("grepSearch falls back to fuzzy search when exact search finds nothing", async () => {
