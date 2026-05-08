@@ -1,25 +1,18 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { applyResolvedToolset } from "../shared/toolset-resolver.ts";
-import { registerDroidSystemPrompt } from "./system-prompt.ts";
-import { registerDroidEasyTools } from "./tools/index.ts";
+import { registerDroidSystemPrompt } from "./system-prompt.js";
+import { registerDroidEasyTools } from "./tools/index.js";
 
-async function applyDroidTools(
+export { DROID_CONTENT_TOOL_NAMES } from "./metadata.js";
+
+export interface DroidContentOptions {}
+
+export function registerDroidContentExtension(
   pi: ExtensionAPI,
-  ctx: Pick<ExtensionContext, "sessionManager">,
-): Promise<void> {
-  await applyResolvedToolset(pi, ctx.sessionManager);
-}
-
-export default function registerDroidContentExtension(pi: ExtensionAPI) {
+  _options: DroidContentOptions = {},
+) {
   registerDroidEasyTools(pi);
   registerDroidSystemPrompt(pi);
-
-  pi.on("session_start", async (_event, ctx) => {
-    await applyDroidTools(pi, ctx);
-  });
-
-  pi.on("before_agent_start", async (_event, ctx) => {
-    await applyDroidTools(pi, ctx);
-  });
 }
+
+export default registerDroidContentExtension;

@@ -3,18 +3,18 @@ import type { Dirent } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
-import type { InstalledPackage, PackageExtensionEntry } from "../types.ts";
+import type { InstalledPackage, PackageExtensionEntry } from "../types.js";
 
-import { fileExists } from "../shared/fs.ts";
-import { readSummary } from "../shared/summary.ts";
+import { fileExists } from "../shared/fs.js";
+import { readSummary } from "../shared/summary.js";
 import {
   hasGlobMagic,
   isExtensionEntrypointPath,
   isSafeRelativePath,
   matchesFilterPattern,
   normalizeRelativePath,
-} from "./filters.ts";
-import { getPackageExtensionState } from "./settings.ts";
+} from "./filters.js";
+import { getPackageExtensionState } from "./settings.js";
 
 interface PackageManifest {
   name?: string;

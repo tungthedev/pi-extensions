@@ -1,8 +1,8 @@
 import type { AgentToolResult, Theme } from "@mariozechner/pi-coding-agent";
 import type { Text } from "@mariozechner/pi-tui";
 
-import { firstLine, firstText, isErrorText, shortenPath } from "../shared/text.ts";
-import { accentSuffix, detailLine, renderLines, titleLine } from "./common.ts";
+import { firstLine, firstText, isErrorText, shortenPath } from "../shared/text.js";
+import { accentSuffix, detailLine, renderLines, titleLine } from "./common.js";
 
 function lineCountText(content: unknown): string | undefined {
   if (typeof content !== "string") return undefined;

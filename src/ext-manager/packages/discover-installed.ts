@@ -3,7 +3,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { InstalledPackage, Scope } from "../types.ts";
+import type { InstalledPackage, Scope } from "../types.js";
 
 export function normalizeSource(source: string): string {
   return source

@@ -7,10 +7,10 @@ import {
   detectSupportedImageMimeTypeFromFile,
   formatDimensionNote,
   resizeImage,
-} from "../image-utils.ts";
-import { renderToolCall } from "../renderers/common.ts";
-import { shortenPath } from "../shared/text.ts";
-import { resolveAbsolutePath } from "./runtime.ts";
+} from "../image-utils.js";
+import { renderToolCall } from "../renderers/common.js";
+import { shortenPath } from "../shared/text.js";
+import { resolveAbsolutePath } from "./runtime.js";
 
 type ViewImageDetail = "original" | undefined;
 

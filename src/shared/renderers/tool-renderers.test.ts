@@ -11,7 +11,7 @@ import {
   summarizeFindCount,
   summarizeGrepResult,
   summarizeMatchingFileCount,
-} from "./tool-renderers.ts";
+} from "./tool-renderers.js";
 
 const theme = {
   fg: (_color: string, text: string) => text,

@@ -3,7 +3,7 @@
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import registerEditorExtension from "../src/editor/index.ts";
+import registerEditorExtension from "../src/editor/index.js";
 
 export default function editor(pi: ExtensionAPI): void {
   registerEditorExtension(pi);

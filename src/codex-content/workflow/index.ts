@@ -1,8 +1,8 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { registerTodoTools } from "../../todos/index.ts";
-import { registerRequestUserInputTool } from "./request-user-input.ts";
-import { CODEX_WORKFLOW_TOOL_NAMES } from "./types.ts";
+import { registerTodoTools } from "../../todos/index.js";
+import { registerRequestUserInputTool } from "./request-user-input.js";
+import { CODEX_WORKFLOW_TOOL_NAMES } from "./types.js";
 
 export { CODEX_WORKFLOW_TOOL_NAMES };
 

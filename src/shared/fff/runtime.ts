@@ -13,10 +13,10 @@ import {
   InvalidGrepCursorError,
   MissingPathError,
   RuntimeInitializationError,
-} from "./errors.ts";
-import { buildGrepText, cropMatchLine, formatFindFilesText } from "./format.ts";
-import { errResult, okVoid, propagateError, toVoidResult, type AppResult } from "./result-utils.ts";
-import { getFffRootDir, getProjectDatabasePaths, resolveProjectRoot } from "./runtime-paths.ts";
+} from "./errors.js";
+import { buildGrepText, cropMatchLine, formatFindFilesText } from "./format.js";
+import { errResult, okVoid, propagateError, toVoidResult, type AppResult } from "./result-utils.js";
+import { getFffRootDir, getProjectDatabasePaths, resolveProjectRoot } from "./runtime-paths.js";
 import {
   AUTO_EXPAND_AFTER_CONTEXT,
   DEFAULT_FILE_CANDIDATE_LIMIT,
@@ -48,7 +48,7 @@ import {
   type Score,
   type SingleGrepRequest,
   type StoredGrepContinuation,
-} from "./types.ts";
+} from "./types.js";
 
 async function getPathType(filePath: string): Promise<"file" | "directory" | null> {
   try {
@@ -644,7 +644,7 @@ export class FffRuntime {
     limit?: number;
     cursor?: string;
     includeCursorHint?: boolean;
-    outputMode?: import("./types.ts").GrepOutputMode;
+    outputMode?: import("./types.js").GrepOutputMode;
   }): Promise<GrepSearchResult> {
     return this.runGrep({
       kind: "multi",

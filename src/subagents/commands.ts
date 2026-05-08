@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 
-import { openSubagentsManager } from "./ui/subagents-manager.ts";
+import { openSubagentsManager } from "./ui/subagents-manager.js";
 
 function sendCommandMessage(
   pi: Pick<ExtensionAPI, "sendMessage">,

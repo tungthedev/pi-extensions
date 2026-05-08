@@ -7,7 +7,7 @@ import {
   resolveTaskTarget,
   validateAgentTarget,
   validateTaskSegment,
-} from "./task-paths.ts";
+} from "./task-paths.js";
 
 test("resolveTaskTarget accepts canonical and relative targets", () => {
   assert.equal(buildChildTaskPath("/root/researcher", "reviewer"), "/root/researcher/reviewer");

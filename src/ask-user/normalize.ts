@@ -5,7 +5,7 @@ import type {
   RequestOption,
   RequestQuestion,
   RequestQuestionInput,
-} from "./types.ts";
+} from "./types.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 

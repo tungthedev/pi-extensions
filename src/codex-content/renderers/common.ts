@@ -1,1 +1,1 @@
-export * from "../../shared/renderers/common.ts";
+export * from "../../shared/renderers/common.js";

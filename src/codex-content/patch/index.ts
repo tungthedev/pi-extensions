@@ -1,7 +1,7 @@
-export { applyPatch } from "./apply.ts";
-export { ApplyPatchError, applyFailed, invalidHunk, invalidPatch } from "./types.ts";
-export { seekSequence } from "./matching.ts";
-export { parsePatch } from "./parser.ts";
+export { applyPatch } from "./apply.js";
+export { ApplyPatchError, applyFailed, invalidHunk, invalidPatch } from "./types.js";
+export { seekSequence } from "./matching.js";
+export { parsePatch } from "./parser.js";
 export type {
   AddFileHunk,
   AffectedPaths,
@@ -13,4 +13,4 @@ export type {
   PatchHunk,
   UpdateFileChunk,
   UpdateFileHunk,
-} from "./types.ts";
+} from "./types.js";

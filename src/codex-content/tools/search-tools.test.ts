@@ -11,12 +11,12 @@ import { Box } from "@mariozechner/pi-tui";
 import {
   resetSessionFffRuntimesForTests,
   setSessionFffRuntimeForTests,
-} from "../../fff/session-runtime.ts";
-import { FffRuntime } from "../../shared/fff/runtime.ts";
-import { findMatchingFiles } from "./find-files.ts";
-import { registerFindFilesTool } from "./find-files.ts";
-import { findContentMatches, registerGrepFilesTool } from "./grep-files.ts";
-import { registerListDirTool } from "./list-dir.ts";
+} from "../../fff/session-runtime.js";
+import { FffRuntime } from "../../shared/fff/runtime.js";
+import { findMatchingFiles } from "./find-files.js";
+import { registerFindFilesTool } from "./find-files.js";
+import { findContentMatches, registerGrepFilesTool } from "./grep-files.js";
+import { registerListDirTool } from "./list-dir.js";
 
 async function withTempDir(run: (dir: string) => Promise<void>) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "codex-tools-"));

@@ -17,8 +17,8 @@ import type {
   GrepSearchError,
   PathResolutionError,
   RelatedFilesError,
-} from "./errors.ts";
-import type { AppResult } from "./result-utils.ts";
+} from "./errors.js";
+import type { AppResult } from "./result-utils.js";
 
 export const DEFAULT_FILE_CANDIDATE_LIMIT = 8;
 export const DEFAULT_GREP_LIMIT = 100;

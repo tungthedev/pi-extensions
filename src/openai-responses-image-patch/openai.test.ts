@@ -6,7 +6,7 @@ import {
   buildOpenAIResponsesParams,
   convertResponsesMessages,
   convertResponsesTools,
-} from "./openai.ts";
+} from "./openai.js";
 
 function model(overrides: Partial<Model<"openai-responses">> = {}): Model<"openai-responses"> {
   return {

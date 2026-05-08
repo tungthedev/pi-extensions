@@ -1,10 +1,10 @@
 import type { AgentToolResult, Theme } from "@mariozechner/pi-coding-agent";
 import type { Text } from "@mariozechner/pi-tui";
 
-import type { RequestAnswer, RequestUserInputDetails } from "../workflow/types.ts";
+import type { RequestAnswer, RequestUserInputDetails } from "../workflow/types.js";
 
-import { firstLine, firstText, shortenText } from "../shared/text.ts";
-import { detailLine, expandHintLine, renderLines, titleLine } from "./common.ts";
+import { firstLine, firstText, shortenText } from "../shared/text.js";
+import { detailLine, expandHintLine, renderLines, titleLine } from "./common.js";
 
 const COLLAPSED_INLINE_TEXT_MAX = 90;
 const EXPANDED_INLINE_TEXT_MAX = 140;

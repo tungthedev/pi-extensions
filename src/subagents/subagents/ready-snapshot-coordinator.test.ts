@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createReadySnapshotCoordinator } from "./ready-snapshot-coordinator.ts";
-import { createSubagentRuntimeStore } from "./runtime-store.ts";
-import type { AgentSnapshot, DurableChildRecord, LiveChildAttachment } from "./types.ts";
+import { createReadySnapshotCoordinator } from "./ready-snapshot-coordinator.js";
+import { createSubagentRuntimeStore } from "./runtime-store.js";
+import type { AgentSnapshot, DurableChildRecord, LiveChildAttachment } from "./types.js";
 
 function createRecord(overrides: Partial<DurableChildRecord> = {}): DurableChildRecord {
   return {

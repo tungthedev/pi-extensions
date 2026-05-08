@@ -1,8 +1,8 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { resolveSessionToolSet } from "../settings/session.ts";
-import { TOOLSET_CONFLICT_RULES, TOOLSET_CONTRIBUTIONS, TOOLSET_MODE_ORDER } from "./toolset-registry.ts";
-import type { RegisteredToolInfo, ResolvedToolsetEntry, ToolsetModeId } from "./toolset-types.ts";
+import { resolveSessionToolSet } from "../settings/session.js";
+import { TOOLSET_CONFLICT_RULES, TOOLSET_CONTRIBUTIONS, TOOLSET_MODE_ORDER } from "./toolset-registry.js";
+import type { RegisteredToolInfo, ResolvedToolsetEntry, ToolsetModeId } from "./toolset-types.js";
 
 export function resolveRegisteredToolInfos(
   tools: Array<{ name: string; description?: string }>,

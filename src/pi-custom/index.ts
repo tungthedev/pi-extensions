@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
 import type { ReadToolInput } from "@mariozechner/pi-coding-agent";
 
 import {
@@ -13,9 +13,9 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { Box, Container, Text, type Component } from "@mariozechner/pi-tui";
 
-import { executePiFindWithFff } from "../shared/fff/adapters/pi-find.ts";
-import { executePiGrepWithFff } from "../shared/fff/adapters/pi-grep.ts";
-import { resolveReadToolInput } from "../shared/fff/adapters/read.ts";
+import { executePiFindWithFff } from "../shared/fff/adapters/pi-find.js";
+import { executePiGrepWithFff } from "../shared/fff/adapters/pi-grep.js";
+import { resolveReadToolInput } from "../shared/fff/adapters/read.js";
 import {
   buildHiddenCollapsedRenderer,
   buildSelfShellRenderer,
@@ -25,8 +25,7 @@ import {
   formatPatternInPathDetail,
   formatReadCallDetail,
   formatWriteCallDetail,
-} from "../shared/renderers/tool-renderers.ts";
-import { applyResolvedToolset } from "../shared/toolset-resolver.ts";
+} from "../shared/renderers/tool-renderers.js";
 
 const READ_DESCRIPTION =
   "Read the contents of a file. Accepts absolute paths, cwd-relative paths, @-prefixed paths, and ~ home-directory paths. Supports text files and images (jpg, png, gif, webp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset/limit until complete.";
@@ -141,13 +140,6 @@ function isHiddenReadResult(
   return !options.expanded && !context.isError && component instanceof Container;
 }
 
-async function syncReadToolSet(
-  pi: ExtensionAPI,
-  ctx: Pick<ExtensionContext, "sessionManager">,
-): Promise<void> {
-  await applyResolvedToolset(pi, ctx.sessionManager);
-}
-
 export default function registerPiCustomExtension(pi: ExtensionAPI): void {
   const nativeReadDefinition = createReadToolDefinition(process.cwd());
   const nativeWrite = createWriteTool(process.cwd());
@@ -213,14 +205,6 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
     stateKey: "listRenderState",
     renderCall: listBaseRenderer.renderCall,
     renderResult: listBaseRenderer.renderResult,
-  });
-
-  pi.on("session_start", async (_event, ctx) => {
-    await syncReadToolSet(pi, ctx);
-  });
-
-  pi.on("before_agent_start", async (_event, ctx) => {
-    await syncReadToolSet(pi, ctx);
   });
 
   pi.registerTool({

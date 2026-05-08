@@ -6,7 +6,7 @@ import {
   createEmptyTodoSnapshot,
   restoreTodoSnapshot,
   type TodoWriteDetails,
-} from "./todo-state.ts";
+} from "./todo-state.js";
 
 test("applyTodoUpdates creates, updates, and removes todo items by content", () => {
   let snapshot = createEmptyTodoSnapshot();

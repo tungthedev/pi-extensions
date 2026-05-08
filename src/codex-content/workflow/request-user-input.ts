@@ -2,9 +2,9 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { Type } from "typebox";
 
-import { executeAskUserRequest, RequestQuestionSchema } from "../../ask-user/index.ts";
-import { renderFallbackResult, renderToolCall } from "../renderers/common.ts";
-import { renderRequestUserInputResult } from "../renderers/request-user-input.ts";
+import { executeAskUserRequest, RequestQuestionSchema } from "../../ask-user/index.js";
+import { renderFallbackResult, renderToolCall } from "../renderers/common.js";
+import { renderRequestUserInputResult } from "../renderers/request-user-input.js";
 
 export function registerRequestUserInputTool(pi: ExtensionAPI): void {
   pi.registerTool({

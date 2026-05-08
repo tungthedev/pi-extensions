@@ -6,7 +6,7 @@ import {
   shouldUseFffForDiscovery,
   shouldUseLegacyCodexFind,
   shouldUseLegacyDroidGlob,
-} from "./query-classifier.ts";
+} from "./query-classifier.js";
 
 test("classifier routes fuzzy discovery queries to FFF and strict glob queries to legacy search", () => {
   assert.equal(shouldUseFffForDiscovery({ pattern: "readme editor" }), true);

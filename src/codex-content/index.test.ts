@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "../shared/toolset-resolver.ts";
+import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "../shared/toolset-resolver.js";
 
 const TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "read", description: "custom read" },

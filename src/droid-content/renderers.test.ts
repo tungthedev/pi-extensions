@@ -6,9 +6,9 @@ import test from "node:test";
 
 import { Box } from "@mariozechner/pi-tui";
 
-import { registerDroidGlobTool } from "./tools/glob.ts";
-import { registerDroidGrepTool } from "./tools/grep.ts";
-import { registerDroidListDirectoryTool } from "./tools/list-directory.ts";
+import { registerDroidGlobTool } from "./tools/glob.js";
+import { registerDroidGrepTool } from "./tools/grep.js";
+import { registerDroidListDirectoryTool } from "./tools/list-directory.js";
 
 const theme = {
   fg: (_color: string, text: string) => text,

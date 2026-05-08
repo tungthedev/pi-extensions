@@ -1,6 +1,6 @@
-import type { ExtensionManagerController } from "../controller/index.ts";
-import { createManagedEntriesView } from "../controller/entry-model.ts";
-import type { PaletteView } from "../types.ts";
+import type { ExtensionManagerController } from "../controller/index.js";
+import { createManagedEntriesView } from "../controller/entry-model.js";
+import type { PaletteView } from "../types.js";
 
 export function buildLocalScopeView(
   scope: "global" | "project",

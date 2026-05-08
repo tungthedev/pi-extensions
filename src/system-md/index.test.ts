@@ -8,7 +8,7 @@ import {
   handleSystemMdBeforeAgentStart,
   resolveSystemMdPath,
   type SystemMdPromptDeps,
-} from "./index.ts";
+} from "./index.js";
 
 test("resolveSystemMdPath prefers the git root when available", async () => {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "pi-system-md-"));

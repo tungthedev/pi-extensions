@@ -1,11 +1,11 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { SUBAGENT_ACTIVITY_WIDGET_KEY, SubagentActivityWidget } from "./activity-widget.ts";
-import { notifyLegacyRoleWarnings } from "./legacy-role-warnings.ts";
-import { clearResolvedAgentProfilesCache } from "./profiles.ts";
-import { resolveRoleSet } from "./roles-discovery.ts";
-import type { SessionEntryLike } from "./types.ts";
-import type { SubagentRuntimeStore } from "./runtime-store.ts";
+import { SUBAGENT_ACTIVITY_WIDGET_KEY, SubagentActivityWidget } from "./activity-widget.js";
+import { notifyLegacyRoleWarnings } from "./legacy-role-warnings.js";
+import { clearResolvedAgentProfilesCache } from "./profiles.js";
+import { resolveRoleSet } from "./roles-discovery.js";
+import type { SessionEntryLike } from "./types.js";
+import type { SubagentRuntimeStore } from "./runtime-store.js";
 
 export type SessionEventsDeps = {
   store: SubagentRuntimeStore;

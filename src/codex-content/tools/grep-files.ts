@@ -5,25 +5,25 @@ import { Type } from "typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { executeCodexGrepFilesWithFff } from "../../shared/fff/adapters/codex-grep-files.ts";
+import { executeCodexGrepFilesWithFff } from "../../shared/fff/adapters/codex-grep-files.js";
 import {
   buildHiddenCollapsedRenderer,
   buildSelfShellRenderer,
   formatPatternInPathDetail,
-} from "../../shared/renderers/tool-renderers.ts";
+} from "../../shared/renderers/tool-renderers.js";
 import {
   normalizeCommandOutputPaths,
   statSortedFileMatches,
   type StatSortedMatches,
   type TimedFileMatch,
-} from "./file-match-utils.ts";
+} from "./file-match-utils.js";
 import {
   execCommand,
   normalizeRipgrepGlob,
   resolvePiToolPath,
   resolveAbsolutePathWithVariants,
   trimToBudget,
-} from "./runtime.ts";
+} from "./runtime.js";
 
 export type GrepFilesMatch = TimedFileMatch;
 

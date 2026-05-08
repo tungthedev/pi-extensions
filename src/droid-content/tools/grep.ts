@@ -3,20 +3,20 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createGrepToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 
-import { executeDroidGrepWithFff } from "../../shared/fff/adapters/droid-grep.ts";
+import { executeDroidGrepWithFff } from "../../shared/fff/adapters/droid-grep.js";
 import {
   buildHiddenCollapsedRenderer,
   buildSelfShellRenderer,
   decorateGrepResultWithStats,
   formatPatternInPathDetail,
-} from "../../shared/renderers/tool-renderers.ts";
+} from "../../shared/renderers/tool-renderers.js";
 import {
   execCommand,
   normalizeRipgrepGlob,
   resolveAbsolutePathWithVariants,
   resolvePiToolPath,
   trimToBudget,
-} from "../../shared/runtime-paths.ts";
+} from "../../shared/runtime-paths.js";
 
 const DROID_GREP_DESCRIPTION = `High-performance file content search using ripgrep. Wrapper around ripgrep with comprehensive parameter support.
 

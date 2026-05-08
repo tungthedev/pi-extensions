@@ -1,11 +1,11 @@
 import fs from "node:fs";
 
-import type { AgentProfileConfig, ResolvedAgentProfiles } from "./profiles-types.ts";
+import type { AgentProfileConfig, ResolvedAgentProfiles } from "./profiles-types.js";
 import {
   matchTomlString,
   matchTomlStringArray,
   matchTomlTripleQuotedString,
-} from "../../shared/toml-lite.ts";
+} from "../../shared/toml-lite.js";
 
 type BuiltInProfileDeclaration = {
   name: string;

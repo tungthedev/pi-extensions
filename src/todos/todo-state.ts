@@ -31,4 +31,4 @@ export {
   formatTodoSummary,
   normalizeTodoContent,
   restoreTodoSnapshot,
-} from "./store.ts";
+} from "./store.js";

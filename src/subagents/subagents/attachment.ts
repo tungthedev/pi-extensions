@@ -4,8 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 
-import type { ChildProfileBootstrap } from "./profiles-apply.ts";
-import type { RpcLiveChildAttachment } from "./types.ts";
+import type { ChildProfileBootstrap } from "./profiles-apply.js";
+import type { RpcLiveChildAttachment } from "./types.js";
 
 import {
   EXTENSION_ENTRY,
@@ -14,7 +14,7 @@ import {
   SUBAGENT_CHILD_ENV,
   SUBAGENT_TASK_PATH_ENV,
   TOOL_SET_OVERRIDE_ENV,
-} from "./types.ts";
+} from "./types.js";
 
 export function resolveChildSessionDir(
   env: NodeJS.ProcessEnv = process.env,

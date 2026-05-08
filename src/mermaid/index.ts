@@ -2,15 +2,15 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 
 import { Box, truncateToWidth } from "@mariozechner/pi-tui";
 
-import type { RenderCache } from "./render.ts";
-import type { DiagramEntry } from "./session-index.ts";
+import type { RenderCache } from "./render.js";
+import type { DiagramEntry } from "./session-index.js";
 
-import { extractMermaidBlocks, captureContextSlice, extractText } from "./extract.ts";
-import { createCache, pickBestPreset, hashCode } from "./render.ts";
-import { indexSessionDiagrams } from "./session-index.ts";
-import { openMermaidViewer } from "./viewer.ts";
+import { extractMermaidBlocks, captureContextSlice, extractText } from "./extract.js";
+import { createCache, pickBestPreset, hashCode } from "./render.js";
+import { indexSessionDiagrams } from "./session-index.js";
+import { openMermaidViewer } from "./viewer.js";
 
-export type { DiagramEntry } from "./session-index.ts";
+export type { DiagramEntry } from "./session-index.js";
 
 export default function mermaidInlineExtension(pi: ExtensionAPI) {
   const CUSTOM_TYPE = "mermaid-inline";

@@ -11,11 +11,11 @@ import {
   writeModeShortcutSetting,
   writeToolSetSetting,
   writeWebToolSetting,
-} from "./config.ts";
+} from "./config.js";
 import {
   resolveSessionToolSet,
   TOOL_SET_OVERRIDE_ENV,
-} from "./session.ts";
+} from "./session.js";
 
 test("readSettingsFromFile fails closed on malformed json", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-tung-settings-"));

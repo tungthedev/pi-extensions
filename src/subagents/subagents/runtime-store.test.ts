@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createSubagentRuntimeStore } from "./runtime-store.ts";
-import type { DurableChildRecord } from "./types.ts";
+import { createSubagentRuntimeStore } from "./runtime-store.js";
+import type { DurableChildRecord } from "./types.js";
 
 function createRecord(overrides: Partial<DurableChildRecord> = {}): DurableChildRecord {
   return {

@@ -4,17 +4,17 @@ import type {
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 
-import { readSettings, type PiModeSettings } from "../settings/config.ts";
-import { composeCustomPromptWithPiSections } from "../shared/custom-prompt.ts";
-import { resolvePromptOptionsCwd } from "../shared/system-prompt-options.ts";
+import { readSettings, type PiModeSettings } from "../settings/config.js";
+import { composeCustomPromptWithPiSections } from "../shared/custom-prompt.js";
+import { resolvePromptOptionsCwd } from "../shared/system-prompt-options.js";
 import {
   buildSystemMdPrompt,
   readSystemMdPrompt,
   resolveSystemMdPrompt,
   resolveSystemMdPath,
-} from "./state.ts";
+} from "./state.js";
 
-export { buildSystemMdPrompt, readSystemMdPrompt, resolveSystemMdPath } from "./state.ts";
+export { buildSystemMdPrompt, readSystemMdPrompt, resolveSystemMdPath } from "./state.js";
 
 export type SystemMdPromptDeps = {
   readSettings: () => Promise<PiModeSettings>;
@@ -49,6 +49,10 @@ export function registerSystemMdPrompt(
   );
 }
 
-export default function registerSystemMdExtension(pi: ExtensionAPI): void {
+export interface SystemMdOptions {}
+
+export function registerSystemMdExtension(pi: ExtensionAPI, _options: SystemMdOptions = {}): void {
   registerSystemMdPrompt(pi);
 }
+
+export default registerSystemMdExtension;

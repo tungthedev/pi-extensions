@@ -4,13 +4,13 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-import type { LocalExtensionEntry, Scope } from "../types.ts";
+import type { LocalExtensionEntry, Scope } from "../types.js";
 
 import {
   probeExtensionDirectory,
   probeExtensionFile,
   shortenHomePath,
-} from "./probe.ts";
+} from "./probe.js";
 
 interface RootConfig {
   root: string;

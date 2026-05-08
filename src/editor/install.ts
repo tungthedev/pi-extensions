@@ -10,35 +10,35 @@ import { CustomEditor, copyToClipboard } from "@mariozechner/pi-coding-agent";
 import { isKeyRelease, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { execFileSync } from "node:child_process";
 
-import { ensureSessionFffRuntime, resolveSessionFffRuntimeKey } from "../fff/session-runtime.ts";
+import { ensureSessionFffRuntime, resolveSessionFffRuntimeKey } from "../fff/session-runtime.js";
 import {
   LOAD_SKILLS_CHANGED_EVENT,
   TOOL_SET_CHANGED_EVENT,
   formatToolSetLabel,
   type LoadSkillsChangedPayload,
   type ToolSetChangedPayload,
-} from "../settings/config.ts";
+} from "../settings/config.js";
 import {
   shouldTriggerAtPathAutocomplete,
   wrapAutocompleteProviderWithAtPathSupport,
-} from "../shared/fff/editor/autocomplete-at-path.ts";
-import { composeAutocompleteProvider } from "../shared/fff/editor/autocomplete-compose.ts";
+} from "../shared/fff/editor/autocomplete-at-path.js";
+import { composeAutocompleteProvider } from "../shared/fff/editor/autocomplete-compose.js";
 import {
   normalizeCodexEditorInput,
   shouldTriggerDollarSkillAutocomplete,
   wrapAutocompleteProviderWithDollarSkillSupport,
-} from "./autocomplete-dollar-skill.ts";
-import { DEFAULT_EDITOR_SETTINGS, readEditorSettings, type EditorSettings } from "./config.ts";
+} from "./autocomplete-dollar-skill.js";
+import { DEFAULT_EDITOR_SETTINGS, readEditorSettings, type EditorSettings } from "./config.js";
 import {
   EDITOR_REMOVE_STATUS_SEGMENT_EVENT,
   EDITOR_SETTINGS_CHANGED_EVENT,
   EDITOR_SET_STATUS_SEGMENT_EVENT,
-} from "./events.ts";
-import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
+} from "./events.js";
+import { renderFixedEditorCluster } from "./fixed-editor/cluster.js";
 import {
   emergencyTerminalModeReset,
   TerminalSplitCompositor,
-} from "./fixed-editor/terminal-split.ts";
+} from "./fixed-editor/terminal-split.js";
 import {
   formatBottomLeftStatus,
   formatCompactBottomLeftStatus,
@@ -46,19 +46,19 @@ import {
   formatCompactMetadataStatus,
   formatSkillCountLabel,
   buildTopBorderLineFromItems,
-} from "./status-format.ts";
+} from "./status-format.js";
 import {
   syncStateFromContext,
   syncStateFromSettings,
   type EditorStatusState,
-} from "./status-state.ts";
+} from "./status-state.js";
 import {
   EDITOR_BASE_LEFT_SEGMENT_KEY,
   EDITOR_BASE_RIGHT_SEGMENT_KEY,
   EDITOR_STATUS_WIDGET_KEY,
   type RemoveStatusSegmentPayload,
   type SetStatusSegmentPayload,
-} from "./types.ts";
+} from "./types.js";
 
 const RESERVED_SEGMENT_KEYS = new Set([
   EDITOR_BASE_LEFT_SEGMENT_KEY,

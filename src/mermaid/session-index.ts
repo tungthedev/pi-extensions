@@ -1,5 +1,5 @@
-import { captureContextSlice, extractMermaidBlocks, extractText } from "./extract.ts";
-import { hashCode } from "./render.ts";
+import { captureContextSlice, extractMermaidBlocks, extractText } from "./extract.js";
+import { hashCode } from "./render.js";
 
 export type DiagramEntry = {
   id: string;

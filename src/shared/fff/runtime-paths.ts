@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { getPiAgentDir } from "../runtime-paths.ts";
+import { getPiAgentDir } from "../runtime-paths.js";
 
 function stableProjectKey(projectRoot: string): string {
   return createHash("sha1").update(resolve(projectRoot)).digest("hex").slice(0, 12);

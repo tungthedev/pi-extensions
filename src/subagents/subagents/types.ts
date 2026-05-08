@@ -27,18 +27,28 @@ export const CODEX_SUBAGENT_TOOL_NAMES = SUBAGENT_TOOL_NAMES;
 export const CODEX_SUBAGENT_RESERVED_TOOL_NAMES = SUBAGENT_RESERVED_TOOL_NAMES;
 
 export const PROJECT_ROOT = process.env.PI_SUBAGENT_PROJECT_ROOT || process.cwd();
-const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
-export const EXTENSION_ENTRY = path.join(EXTENSION_DIR, "..", "child-entry.ts");
-export const INTERACTIVE_EXTENSION_ENTRY = path.join(
-  EXTENSION_DIR,
-  "..",
-  "interactive-child-entry.ts",
-);
-export const INTERACTIVE_LAUNCHER_ENTRY = path.join(
-  EXTENSION_DIR,
-  "..",
-  "interactive-launcher.mjs",
-);
+export function resolveSubagentRuntimeEntries(moduleUrl = import.meta.url): {
+  extensionEntry: string;
+  interactiveExtensionEntry: string;
+  interactiveLauncherEntry: string;
+} {
+  const extensionDir = path.dirname(fileURLToPath(moduleUrl));
+  const entryExtension = moduleUrl.endsWith(".js") ? ".js" : ".ts";
+  return {
+    extensionEntry: path.join(extensionDir, "..", `child-entry${entryExtension}`),
+    interactiveExtensionEntry: path.join(
+      extensionDir,
+      "..",
+      `interactive-child-entry${entryExtension}`,
+    ),
+    interactiveLauncherEntry: path.join(extensionDir, "..", "interactive-launcher.mjs"),
+  };
+}
+
+const RUNTIME_ENTRIES = resolveSubagentRuntimeEntries();
+export const EXTENSION_ENTRY = RUNTIME_ENTRIES.extensionEntry;
+export const INTERACTIVE_EXTENSION_ENTRY = RUNTIME_ENTRIES.interactiveExtensionEntry;
+export const INTERACTIVE_LAUNCHER_ENTRY = RUNTIME_ENTRIES.interactiveLauncherEntry;
 export const RPC_COMMAND_TIMEOUT_MS = 5_000;
 export const CHILD_EXIT_GRACE_MS = 1_000;
 export const SUBAGENT_ENTRY_TYPES = {

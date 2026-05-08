@@ -1,8 +1,8 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 
-import { ExtensionManagerController } from "./controller/index.ts";
-import { handleManagerAction, openManagerOverlay } from "./views/actions.ts";
-import { buildRootView } from "./views/root.ts";
+import { ExtensionManagerController } from "./controller/index.js";
+import { handleManagerAction, openManagerOverlay } from "./views/actions.js";
+import { buildRootView } from "./views/root.js";
 
 async function runExtensionManager(pi: ExtensionAPI, ctx: ExtensionCommandContext): Promise<void> {
   if (!ctx.hasUI) {

@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { createFetchUrlTool } from "./web-fetch/index.ts";
-import { createWebSearchTool, createWebSummaryTool } from "./web-search/index.ts";
+import { createFetchUrlTool } from "./web-fetch/index.js";
+import { createWebSearchTool, createWebSummaryTool } from "./web-search/index.js";
 
 export {
   createDroidWebSearchTool,
@@ -10,10 +10,10 @@ export {
   createWebSummaryTool,
   resolveGeminiApiKey,
   resolveWebSearchProvider,
-} from "./web-search/index.ts";
-export { createFetchUrlTool } from "./web-fetch/index.ts";
-export { createUnavailableFetchUrlTool } from "./web-fetch/index.ts";
-export { resolveWebFetchProvider } from "./web-fetch/index.ts";
+} from "./web-search/index.js";
+export { createFetchUrlTool } from "./web-fetch/index.js";
+export { createUnavailableFetchUrlTool } from "./web-fetch/index.js";
+export { resolveWebFetchProvider } from "./web-fetch/index.js";
 
 export default function registerWebExtension(pi: ExtensionAPI): void {
   pi.registerTool(createWebSearchTool());

@@ -3,7 +3,7 @@
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import registerMermaidExtension from "../src/mermaid/index.ts";
+import registerMermaidExtension from "../src/mermaid/index.js";
 
 export default function mermaid(pi: ExtensionAPI): void {
   registerMermaidExtension(pi);

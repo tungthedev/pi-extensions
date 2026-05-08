@@ -1,7 +1,7 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import { matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
-import type { LayeredRoleRecord } from "../subagents/roles-types.ts";
+import type { LayeredRoleRecord } from "../subagents/roles-types.js";
 
 export type SubagentsListState = {
   cursor: number;

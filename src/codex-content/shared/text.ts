@@ -1,1 +1,1 @@
-export * from "../../shared/text.ts";
+export * from "../../shared/text.js";

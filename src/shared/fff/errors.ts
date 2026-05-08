@@ -1,6 +1,6 @@
 import { TaggedError } from "better-result";
 
-import type { FffFileCandidate } from "./types.ts";
+import type { FffFileCandidate } from "./types.js";
 
 function messageFromCause(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);

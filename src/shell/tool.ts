@@ -13,7 +13,7 @@ import { createWriteStream, type WriteStream } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { resolveAbsolutePath } from "../shared/runtime-paths.ts";
+import { resolveAbsolutePath } from "../shared/runtime-paths.js";
 import {
   executeShellCommand,
   getShellEnv,
@@ -21,7 +21,7 @@ import {
   resolveShellInvocation,
   splitLeadingCdCommand,
   stripTrailingBackgroundOperator,
-} from "./runtime.ts";
+} from "./runtime.js";
 
 type ShellParams = {
   command?: string;

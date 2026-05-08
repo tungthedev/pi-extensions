@@ -1,12 +1,12 @@
-import { FinderOperationError, RuntimeInitializationError } from "../errors.ts";
-import { shouldUseLegacyDroidGlob } from "../query-classifier.ts";
+import { FinderOperationError, RuntimeInitializationError } from "../errors.js";
+import { shouldUseLegacyDroidGlob } from "../query-classifier.js";
 import {
   buildScopedDiscoveryQuery,
   formatAbsolutePathList,
   getFffRuntime,
   resolveAdapterPath,
   type FffAdapterContext,
-} from "./common.ts";
+} from "./common.js";
 
 type DroidGlobParams = {
   patterns: string | string[];

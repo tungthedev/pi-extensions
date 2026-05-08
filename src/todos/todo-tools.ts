@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 
-import { buildSelfShellRenderer } from "../shared/renderers/tool-renderers.ts";
+import { buildSelfShellRenderer } from "../shared/renderers/tool-renderers.js";
 import {
   applyTodoUpdates,
   createEmptyTodoSnapshot,
@@ -12,10 +12,10 @@ import {
   type TodoSnapshot,
   type TodoUpdate,
   type TodoWriteDetails,
-} from "./todo-state.ts";
-import { restoreTodoSnapshotFromHistory } from "./session-replay.ts";
-import { renderTodoLines } from "./todo-render.ts";
-import { syncTodoUi } from "./todo-widget.ts";
+} from "./todo-state.js";
+import { restoreTodoSnapshotFromHistory } from "./session-replay.js";
+import { renderTodoLines } from "./todo-render.js";
+import { syncTodoUi } from "./todo-widget.js";
 
 export type RegisterTodoToolsOptions = {
   writeToolName: string;

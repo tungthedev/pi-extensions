@@ -1,4 +1,4 @@
-import type { DurableChildRecord } from "./types.ts";
+import type { DurableChildRecord } from "./types.js";
 
 export type CompletionState = {
   signature?: string;

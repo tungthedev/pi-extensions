@@ -5,24 +5,24 @@ import { Type } from "typebox";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { executeCodexFindFilesWithFff } from "../../shared/fff/adapters/codex-find-files.ts";
+import { executeCodexFindFilesWithFff } from "../../shared/fff/adapters/codex-find-files.js";
 import {
   buildHiddenCollapsedRenderer,
   buildSelfShellRenderer,
   formatPatternInPathDetail,
-} from "../../shared/renderers/tool-renderers.ts";
+} from "../../shared/renderers/tool-renderers.js";
 import {
   normalizeCommandOutputPaths,
   statSortedFileMatches,
   type TimedFileMatch,
-} from "./file-match-utils.ts";
+} from "./file-match-utils.js";
 import {
   execCommand,
   normalizeRipgrepGlob,
   resolvePiToolPath,
   resolveAbsolutePath,
   trimToBudget,
-} from "./runtime.ts";
+} from "./runtime.js";
 
 export type FindFilesMatch = TimedFileMatch;
 

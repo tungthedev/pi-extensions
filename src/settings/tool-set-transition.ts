@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import { formatToolSetLabel, type ToolSetPack } from "./config.ts";
+import { formatToolSetLabel, type ToolSetPack } from "./config.js";
 
 export type ToolSetTransitionDeps = {
   writeToolSet: (value: ToolSetPack) => Promise<void>;

@@ -1,1 +1,1 @@
-export { applyPatch, ApplyPatchError } from "../../codex-content/apply-patch.ts";
+export { applyPatch, ApplyPatchError } from "../../codex-content/apply-patch.js";

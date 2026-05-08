@@ -9,8 +9,8 @@ import {
   buildSpawnAgentTypeDescription,
   clearResolvedAgentProfilesCache,
   resolveAgentProfiles,
-} from "./profiles.ts";
-import { saveRole } from "./roles-storage.ts";
+} from "./profiles.js";
+import { saveRole } from "./roles-storage.js";
 
 function withTempHome(testBody: (root: string) => void | Promise<void>) {
   const root = mkdtempSync(path.join(tmpdir(), "subagent-profiles-"));

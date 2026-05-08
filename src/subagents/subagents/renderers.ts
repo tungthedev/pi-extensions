@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 
 import { Box, Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 
-import type { AgentSnapshot, PublicAgentSnapshot } from "./types.ts";
+import type { AgentSnapshot, PublicAgentSnapshot } from "./types.js";
 
 type RenderableAgentSnapshot = AgentSnapshot | PublicAgentSnapshot;
 
@@ -10,14 +10,14 @@ import {
   expandHintLine,
   titleLine,
   toolCallLine,
-} from "../../shared/renderers/common.ts";
+} from "../../shared/renderers/common.js";
 import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
 import {
   CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
   LEGACY_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
   parseSubagentNotificationMessage,
   SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
-} from "./notifications.ts";
+} from "./notifications.js";
 import {
   getSubagentCompletionLabel,
   getSubagentDisplayName,
@@ -26,7 +26,7 @@ import {
   MAX_TASK_REPLY_PREVIEW_LINES,
   summarizeSubagentReply,
   truncateSubagentReply,
-} from "./rendering.ts";
+} from "./rendering.js";
 
 export function extractSnapshotDetails(
   details: { status?: RenderableAgentSnapshot } | RenderableAgentSnapshot | undefined,

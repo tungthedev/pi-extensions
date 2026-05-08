@@ -1,6 +1,6 @@
 import fs from "node:fs";
 
-import type { DurableChildRecord } from "./types.ts";
+import type { DurableChildRecord } from "./types.js";
 
 type SessionFileEntry = {
   type?: unknown;

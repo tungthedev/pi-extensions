@@ -1,11 +1,11 @@
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { join } from "node:path";
 
-import type { Scope, State } from "../types.ts";
+import type { Scope, State } from "../types.js";
 
-import { mutateJsonObjectFile, readJsonObjectFile } from "../../shared/json-settings.ts";
-import { normalizeSource } from "./discover-installed.ts";
-import { getPackageFilterState, normalizeRelativePath, updateExtensionMarkers } from "./filters.ts";
+import { mutateJsonObjectFile, readJsonObjectFile } from "../../shared/json-settings.js";
+import { normalizeSource } from "./discover-installed.js";
+import { getPackageFilterState, normalizeRelativePath, updateExtensionMarkers } from "./filters.js";
 
 interface PackageSettingsObject {
   source: string;

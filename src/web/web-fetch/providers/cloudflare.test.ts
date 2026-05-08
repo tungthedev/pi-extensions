@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { runCloudflareFetch } from "./cloudflare.ts";
+import { runCloudflareFetch } from "./cloudflare.js";
 
 test("runCloudflareFetch omits the invalid zero depth crawl option", async () => {
   const originalAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;

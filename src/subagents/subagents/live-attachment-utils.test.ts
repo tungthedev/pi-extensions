@@ -7,7 +7,7 @@ import {
   queueAgentOperation,
   waitForStateChange,
   waitForAnyStateChange,
-} from "./live-attachment-utils.ts";
+} from "./live-attachment-utils.js";
 
 function createAttachment(transport: "rpc" | "interactive" = "rpc") {
   return {

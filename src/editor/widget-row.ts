@@ -1,6 +1,6 @@
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
-import type { Align } from "./types.ts";
+import type { Align } from "./types.js";
 
 export interface InlineSegment {
   align: Align;

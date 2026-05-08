@@ -5,12 +5,12 @@ import type {
   Theme,
 } from "@mariozechner/pi-coding-agent";
 
-import type { InlineSegment, WidgetRowRegistry } from "./widget-row.ts";
+import type { InlineSegment, WidgetRowRegistry } from "./widget-row.js";
 
-import { DEFAULT_MODE_SHORTCUT, formatToolSetLabel, readPiModeSettings } from "../settings/config.ts";
-import { resolveSessionLoadSkills, resolveSessionToolSet } from "../settings/session.ts";
-import { formatLeftStatus, formatRightStatus } from "./status-format.ts";
-import { EDITOR_BASE_LEFT_SEGMENT_KEY, EDITOR_BASE_RIGHT_SEGMENT_KEY } from "./types.ts";
+import { DEFAULT_MODE_SHORTCUT, formatToolSetLabel, readPiModeSettings } from "../settings/config.js";
+import { resolveSessionLoadSkills, resolveSessionToolSet } from "../settings/session.js";
+import { formatLeftStatus, formatRightStatus } from "./status-format.js";
+import { EDITOR_BASE_LEFT_SEGMENT_KEY, EDITOR_BASE_RIGHT_SEGMENT_KEY } from "./types.js";
 
 export type EditorStatusState = {
   cwd: string;

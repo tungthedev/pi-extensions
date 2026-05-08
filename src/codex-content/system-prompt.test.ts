@@ -3,14 +3,14 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { hasStructuredSkills, resolvePromptOptionsCwd } from "../shared/system-prompt-options.ts";
-import { composeCustomPromptWithPiSections } from "../shared/custom-prompt.ts";
+import { hasStructuredSkills, resolvePromptOptionsCwd } from "../shared/system-prompt-options.js";
+import { composeCustomPromptWithPiSections } from "../shared/custom-prompt.js";
 import {
   buildCodexPrompt,
   handleCodexSystemPromptBeforeAgentStart,
   resolveCodexPromptBody,
   type CodexSystemPromptDeps,
-} from "./system-prompt.ts";
+} from "./system-prompt.js";
 
 const PI_PROMPT_BASE = `You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
 

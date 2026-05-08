@@ -6,7 +6,7 @@ import {
   type UrlMetadata,
 } from "@google/genai";
 
-import { readPiModeSettingsSync } from "../../settings/config.ts";
+import { readPiModeSettingsSync } from "../../settings/config.js";
 
 export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 export const DEFAULT_MAX_RESULTS = 10;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildInteractivePiArgs } from "./launch-args.ts";
+import { buildInteractivePiArgs } from "./launch-args.js";
 
 test("buildInteractivePiArgs applies model, thinking, and role prompt for forked launches", () => {
   const args = buildInteractivePiArgs({

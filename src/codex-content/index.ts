@@ -3,10 +3,20 @@
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { registerCodexSystemPrompt } from "./system-prompt.ts";
-import { registerCodexCompatibilityTools } from "./tools/index.ts";
+import { registerCodexSystemPrompt } from "./system-prompt.js";
+import { registerCodexCompatibilityTools } from "./tools/index.js";
 
-export default function registerCodexContentExtension(pi: ExtensionAPI) {
+export { CODEX_CONTENT_TOOL_NAMES } from "./metadata.js";
+
+export interface CodexContentOptions {}
+
+export function registerCodexContentExtension(
+  pi: ExtensionAPI,
+  _options: CodexContentOptions = {},
+) {
   registerCodexCompatibilityTools(pi);
   registerCodexSystemPrompt(pi);
 }
+
+export default registerCodexContentExtension;
+export { registerCodexSystemPrompt, registerCodexCompatibilityTools }

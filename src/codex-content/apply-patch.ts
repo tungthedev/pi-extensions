@@ -1,4 +1,4 @@
-export { ApplyPatchError, applyPatch, parsePatch, seekSequence } from "./patch/index.ts";
+export { ApplyPatchError, applyPatch, parsePatch, seekSequence } from "./patch/index.js";
 
 export type {
   AddFileHunk,
@@ -11,4 +11,4 @@ export type {
   PatchHunk,
   UpdateFileChunk,
   UpdateFileHunk,
-} from "./patch/index.ts";
+} from "./patch/index.js";

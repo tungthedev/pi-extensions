@@ -1,8 +1,8 @@
 import type { GrepToolInput } from "@mariozechner/pi-coding-agent";
 
-import { FinderOperationError, RuntimeInitializationError } from "../errors.ts";
-import { inferFffGrepMode, isExplicitGlobPattern } from "../query-classifier.ts";
-import { getFffRuntime, resolveAdapterPath, type FffAdapterContext } from "./common.ts";
+import { FinderOperationError, RuntimeInitializationError } from "../errors.js";
+import { inferFffGrepMode, isExplicitGlobPattern } from "../query-classifier.js";
+import { getFffRuntime, resolveAdapterPath, type FffAdapterContext } from "./common.js";
 
 export async function executePiGrepWithFff(
   params: GrepToolInput,

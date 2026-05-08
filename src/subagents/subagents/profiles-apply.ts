@@ -1,4 +1,4 @@
-import type { AgentProfileConfig } from "./profiles-types.ts";
+import type { AgentProfileConfig } from "./profiles-types.js";
 
 export type ChildProfileBootstrap = {
   name: string;

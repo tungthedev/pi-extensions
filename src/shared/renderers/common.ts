@@ -2,7 +2,7 @@ import type { AgentToolResult, Theme, ThemeColor } from "@mariozechner/pi-coding
 
 import { Container, Text } from "@mariozechner/pi-tui";
 
-import { firstText } from "../text.ts";
+import { firstText } from "../text.js";
 
 export function conciseResult(title: string, detail?: string): Text {
   return new Text(detail ? `${title} ${detail}` : title, 0, 0);

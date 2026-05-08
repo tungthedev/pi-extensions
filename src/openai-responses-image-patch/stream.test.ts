@@ -7,7 +7,7 @@ import {
   createOpenAIResponsesImageStream,
   flushGeneratedImageMessages,
   streamSimpleOpenAIResponsesWithImages,
-} from "./stream.ts";
+} from "./stream.js";
 
 const PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";

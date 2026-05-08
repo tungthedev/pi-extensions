@@ -1,17 +1,17 @@
-import { decorateGrepResultWithStats } from "../../renderers/tool-renderers.ts";
-import { FinderOperationError, RuntimeInitializationError } from "../errors.ts";
+import { decorateGrepResultWithStats } from "../../renderers/tool-renderers.js";
+import { FinderOperationError, RuntimeInitializationError } from "../errors.js";
 import {
   inferFffGrepMode,
   isExplicitGlobPattern,
   looksLikeRegexPattern,
   shouldUseLegacyDroidGrep,
-} from "../query-classifier.ts";
+} from "../query-classifier.js";
 import {
   formatAbsolutePathList,
   getFffRuntime,
   resolveAdapterPath,
   type FffAdapterContext,
-} from "./common.ts";
+} from "./common.js";
 
 type DroidGrepParams = {
   pattern: string;

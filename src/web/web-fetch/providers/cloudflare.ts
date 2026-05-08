@@ -1,4 +1,4 @@
-import { readPiModeSettingsSync } from "../../../settings/config.ts";
+import { readPiModeSettingsSync } from "../../../settings/config.js";
 
 const DEFAULT_TIMEOUT_MS = 90_000;
 const POLL_INTERVAL_MS = 1_500;

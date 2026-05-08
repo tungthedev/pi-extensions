@@ -1,6 +1,6 @@
-import type { RpcLiveChildAttachment, RpcResponse } from "./types.ts";
+import type { RpcLiveChildAttachment, RpcResponse } from "./types.js";
 
-import { RPC_COMMAND_TIMEOUT_MS } from "./types.ts";
+import { RPC_COMMAND_TIMEOUT_MS } from "./types.js";
 
 export function parseJsonLines(buffer: string): { lines: string[]; rest: string } {
   const parts = buffer.split("\n");

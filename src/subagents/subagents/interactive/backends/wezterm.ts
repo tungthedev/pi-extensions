@@ -1,4 +1,4 @@
-import type { InteractiveBackendContext } from "./types.ts";
+import type { InteractiveBackendContext } from "./types.js";
 
 function tailLines(text: string, lines: number): string {
   const split = text.split("\n");

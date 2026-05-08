@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { indexSessionDiagrams, type DiagramEntry } from "./session-index.ts";
+import { indexSessionDiagrams, type DiagramEntry } from "./session-index.js";
 
 function mermaidBlock(code: string): string {
   return `\`\`\`mermaid\n${code}\n\`\`\``;

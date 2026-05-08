@@ -1,1 +1,1 @@
-export { renderApplyPatchResult } from "../../codex-content/renderers/apply-patch.ts";
+export { renderApplyPatchResult } from "../../codex-content/renderers/apply-patch.js";

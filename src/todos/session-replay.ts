@@ -1,6 +1,6 @@
-import type { TodoSnapshot, TodoWriteDetails } from "./todo-state.ts";
+import type { TodoSnapshot, TodoWriteDetails } from "./todo-state.js";
 
-import { createEmptyTodoSnapshot, restoreTodoSnapshot } from "./store.ts";
+import { createEmptyTodoSnapshot, restoreTodoSnapshot } from "./store.js";
 
 export function restoreTodoSnapshotFromHistory(
   entries: Array<{

@@ -2,7 +2,7 @@ import type { ExtensionContext, SessionEntry } from "@mariozechner/pi-coding-age
 
 import { randomUUID } from "node:crypto";
 
-import type { AppliedSpawnProfile } from "./profiles-apply.ts";
+import type { AppliedSpawnProfile } from "./profiles-apply.js";
 import type {
   AgentSnapshot,
   ChildTransport,
@@ -11,20 +11,20 @@ import type {
   LiveChildAttachment,
   RpcLiveChildAttachment,
   SubagentEntryType,
-} from "./types.ts";
+} from "./types.js";
 
-import { applySpawnAgentProfile } from "./profiles-apply.ts";
-import { validateSubagentName } from "./naming.ts";
-import { resolveAgentProfiles } from "./profiles.ts";
-import { resolveSessionToolSet } from "../../settings/session.ts";
+import { applySpawnAgentProfile } from "./profiles-apply.js";
+import { validateSubagentName } from "./naming.js";
+import { resolveAgentProfiles } from "./profiles.js";
+import { resolveSessionToolSet } from "../../settings/session.js";
 import {
   buildChildTaskPath,
   normalizeTaskPath,
   resolveTaskPathPrefix,
   ROOT_TASK_PATH,
   validateAgentTarget,
-} from "./task-paths.ts";
-import { SUBAGENT_TASK_PATH_ENV } from "./types.ts";
+} from "./task-paths.js";
+import { SUBAGENT_TASK_PATH_ENV } from "./types.js";
 
 export type SpawnLifecycleRequest = {
   mode: "codex" | "task";

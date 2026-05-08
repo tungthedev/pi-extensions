@@ -3,7 +3,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 
-import type { InteractiveBackendContext } from "./backends/types.ts";
+import type { InteractiveBackendContext } from "./backends/types.js";
 
 const execFileAsync = promisify(execFile);
 

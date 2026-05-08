@@ -1,4 +1,4 @@
-import type { TodoItem, TodoSnapshot, TodoUpdate, TodoWriteDetails } from "./todo-state.ts";
+import type { TodoItem, TodoSnapshot, TodoUpdate, TodoWriteDetails } from "./todo-state.js";
 
 export function createEmptyTodoSnapshot(): TodoSnapshot {
   return {

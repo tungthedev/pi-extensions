@@ -4,12 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { getPiBinDir } from "../shared/runtime-paths.ts";
+import { getPiBinDir } from "../shared/runtime-paths.js";
 import {
   executeShellCommand,
   getShellEnv,
   resolveShellInvocation,
-} from "./runtime.ts";
+} from "./runtime.js";
 
 async function withTempDir(run: (dir: string) => Promise<void>) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "pi-shell-settings-"));

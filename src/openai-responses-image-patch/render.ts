@@ -5,7 +5,7 @@ import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
 import type { ExtensionAPI, Theme } from "@mariozechner/pi-coding-agent";
 import { Box, Image, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 
-import type { GeneratedImageDetails } from "./types.ts";
+import type { GeneratedImageDetails } from "./types.js";
 
 export const GENERATED_IMAGE_CUSTOM_TYPE = "openai-generated-image";
 

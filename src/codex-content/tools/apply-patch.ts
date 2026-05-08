@@ -2,10 +2,10 @@ import type { AgentToolResult, ExtensionAPI } from "@mariozechner/pi-coding-agen
 
 import { Type } from "typebox";
 
-import { applyPatch as runNativeApplyPatch } from "../apply-patch.ts";
-import { renderEmptySlot, renderFallbackResult } from "../renderers/common.ts";
-import { renderApplyPatchResult } from "../renderers/apply-patch.ts";
-import { trimToBudget } from "./runtime.ts";
+import { applyPatch as runNativeApplyPatch } from "../apply-patch.js";
+import { renderEmptySlot, renderFallbackResult } from "../renderers/common.js";
+import { renderApplyPatchResult } from "../renderers/apply-patch.js";
+import { trimToBudget } from "./runtime.js";
 
 type ToolResult<TDetails> = AgentToolResult<TDetails> & { isError?: boolean };
 

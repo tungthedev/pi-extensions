@@ -1,7 +1,7 @@
-import type { ExtensionManagerController } from "../index.ts";
-import type { ManagedEntrySection } from "../entry-model.ts";
+import type { ExtensionManagerController } from "../index.js";
+import type { ManagedEntrySection } from "../entry-model.js";
 
-import { createManagedEntriesView } from "../entry-model.ts";
+import { createManagedEntriesView } from "../entry-model.js";
 
 export async function buildPackageManagedEntrySection(
   packageId: string,

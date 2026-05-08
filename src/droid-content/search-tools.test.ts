@@ -9,10 +9,10 @@ import test from "node:test";
 import {
   resetSessionFffRuntimesForTests,
   setSessionFffRuntimeForTests,
-} from "../fff/session-runtime.ts";
-import { FffRuntime } from "../shared/fff/runtime.ts";
-import { registerDroidGlobTool } from "./tools/glob.ts";
-import { registerDroidGrepTool } from "./tools/grep.ts";
+} from "../fff/session-runtime.js";
+import { FffRuntime } from "../shared/fff/runtime.js";
+import { registerDroidGlobTool } from "./tools/glob.js";
+import { registerDroidGrepTool } from "./tools/grep.js";
 
 async function withTempDir(run: (dir: string) => Promise<void>) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "droid-search-tools-"));

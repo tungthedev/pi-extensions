@@ -1,22 +1,14 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { Type } from "typebox";
 
-import { renderFallbackResult } from "../shared/renderers/common.ts";
-import { buildHiddenCollapsedRenderer, buildSelfShellRenderer } from "../shared/renderers/tool-renderers.ts";
-import { applyResolvedToolset } from "../shared/toolset-resolver.ts";
-import { resolveSkillContent } from "./resolve.ts";
+import { renderFallbackResult } from "../shared/renderers/common.js";
+import { buildHiddenCollapsedRenderer, buildSelfShellRenderer } from "../shared/renderers/tool-renderers.js";
+import { resolveSkillContent } from "./resolve.js";
 
 const SKILL_DESCRIPTION = `Load and apply a skill by name.
 
 Looks up the named skill in Pi's loaded skill registry and returns its instructions for the agent to follow.`;
-
-async function syncSkillToolSet(
-  pi: ExtensionAPI,
-  ctx: Pick<ExtensionContext, "sessionManager">,
-): Promise<void> {
-  await applyResolvedToolset(pi, ctx.sessionManager);
-}
 
 export default function registerSkillExtension(pi: ExtensionAPI): void {
   const skillBaseRenderer = buildHiddenCollapsedRenderer({
@@ -29,14 +21,6 @@ export default function registerSkillExtension(pi: ExtensionAPI): void {
     stateKey: "skillRenderState",
     renderCall: skillBaseRenderer.renderCall,
     renderResult: skillBaseRenderer.renderResult,
-  });
-
-  pi.on("session_start", async (_event, ctx) => {
-    await syncSkillToolSet(pi, ctx);
-  });
-
-  pi.on("before_agent_start", async (_event, ctx) => {
-    await syncSkillToolSet(pi, ctx);
   });
 
   pi.registerTool({

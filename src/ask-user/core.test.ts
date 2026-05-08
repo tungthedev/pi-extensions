@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { executeAskUserRequest } from "./core.ts";
-import { CUSTOM_INPUT_OPTION } from "./types.ts";
+import { executeAskUserRequest } from "./core.js";
+import { CUSTOM_INPUT_OPTION } from "./types.js";
 
 test("executeAskUserRequest collects a selected answer from unified questions params", async () => {
   const result = await executeAskUserRequest(

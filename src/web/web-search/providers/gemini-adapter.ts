@@ -1,4 +1,4 @@
-import { type Citation, runGeminiSearch, type GeminiSearchArgs } from "../gemini.ts";
+import { type Citation, runGeminiSearch, type GeminiSearchArgs } from "../gemini.js";
 
 export type GeminiDroidSearchArgs = {
   query: string;

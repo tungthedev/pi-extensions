@@ -9,8 +9,8 @@ import {
   previewLines,
   shortenPath,
   summarizeList,
-} from "../shared/text.ts";
-import { expandHintLine, renderLines } from "./common.ts";
+} from "../shared/text.js";
+import { expandHintLine, renderLines } from "./common.js";
 
 type ApplyPatchAffected = {
   added?: string[];

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { composeCustomPromptWithPiSections } from "../shared/custom-prompt.ts";
+import { composeCustomPromptWithPiSections } from "../shared/custom-prompt.js";
 import {
   handleDroidSystemPromptBeforeAgentStart,
   type DroidSystemPromptDeps,
-} from "./system-prompt.ts";
+} from "./system-prompt.js";
 
 const PI_PROMPT_BASE = `You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
 

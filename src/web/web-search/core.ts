@@ -1,4 +1,4 @@
-import type { Citation } from "./gemini.ts";
+import type { Citation } from "./gemini.js";
 
 export type GenericSearchParams = {
   objective: string;

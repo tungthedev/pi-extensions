@@ -2,9 +2,9 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { Type } from "typebox";
 
-import { executeAskUserRequest, RequestQuestionSchema } from "../../ask-user/index.ts";
-import { renderFallbackResult, renderToolCall } from "../../shared/renderers/common.ts";
-import { renderRequestUserInputResult } from "../../shared/request-user-input-render.ts";
+import { executeAskUserRequest, RequestQuestionSchema } from "../../ask-user/index.js";
+import { renderFallbackResult, renderToolCall } from "../../shared/renderers/common.js";
+import { renderRequestUserInputResult } from "../../shared/request-user-input-render.js";
 
 const DROID_ASK_USER_DESCRIPTION = `Use this tool when you need to ask the user 1–4 quick questions at once during execution to clarify requirements or decisions.
 

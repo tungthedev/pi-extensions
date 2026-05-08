@@ -3,7 +3,7 @@ import type { Theme } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import path from "node:path";
 
-import type { EditorStatusState } from "./status-state.ts";
+import type { EditorStatusState } from "./status-state.js";
 
 const HORIZONTAL = "─";
 const HORIZONTAL_LEFT_HALF = "╶";

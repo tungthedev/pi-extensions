@@ -8,10 +8,10 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { wrapAutocompleteProviderWithAtPathSupport } from "../shared/fff/editor/autocomplete-at-path.ts";
-import { composeAutocompleteProvider } from "../shared/fff/editor/autocomplete-compose.ts";
-import { EDITOR_SETTINGS_CHANGED_EVENT } from "./events.ts";
-import { TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
+import { wrapAutocompleteProviderWithAtPathSupport } from "../shared/fff/editor/autocomplete-at-path.js";
+import { composeAutocompleteProvider } from "../shared/fff/editor/autocomplete-compose.js";
+import { EDITOR_SETTINGS_CHANGED_EVENT } from "./events.js";
+import { TerminalSplitCompositor } from "./fixed-editor/terminal-split.js";
 import {
   createSubagentRoleAutocompleteProvider,
   EDITOR_REMOVE_STATUS_SEGMENT_EVENT,
@@ -19,13 +19,13 @@ import {
   installCodexEditorUi,
   normalizeCodexEditorInput,
   wrapAutocompleteProviderWithDollarSkillSupport,
-} from "./index.ts";
-import { findContainerWithChild } from "./install.ts";
+} from "./index.js";
+import { findContainerWithChild } from "./install.js";
 import {
   buildTopBorderLineFromItems,
   formatBottomLeftStatus,
   formatCompactBottomLeftStatus,
-} from "./status-format.ts";
+} from "./status-format.js";
 
 const BOOMERANG_ICON = String.fromCodePoint(0x1fa83);
 

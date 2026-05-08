@@ -3,7 +3,7 @@
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import registerWorkspaceExtension from "../src/workspace/index.ts";
+import registerWorkspaceExtension from "../src/workspace/index.js";
 
 export default function workspace(pi: ExtensionAPI): void {
   registerWorkspaceExtension(pi);

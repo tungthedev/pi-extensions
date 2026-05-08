@@ -1,8 +1,8 @@
 import { fileTypeFromBuffer } from "file-type";
 import { open } from "node:fs/promises";
 
-import { getExifOrientation } from "./exif.ts";
-import { loadPhoton, type PhotonImageModule } from "./photon.ts";
+import { getExifOrientation } from "./exif.js";
+import { loadPhoton, type PhotonImageModule } from "./photon.js";
 
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 const FILE_TYPE_SNIFF_BYTES = 4100;

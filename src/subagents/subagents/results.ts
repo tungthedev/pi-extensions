@@ -1,4 +1,4 @@
-import type { AgentSnapshot, PublicAgentSnapshot } from "./types.ts";
+import type { AgentSnapshot, PublicAgentSnapshot } from "./types.js";
 
 export function toPublicAgentSnapshot(snapshot: AgentSnapshot): PublicAgentSnapshot {
   const name = snapshot.name?.trim();

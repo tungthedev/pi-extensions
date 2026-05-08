@@ -3,7 +3,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 
-import { buildSelfShellRenderer } from "../../shared/renderers/tool-renderers.ts";
+import { buildSelfShellRenderer } from "../../shared/renderers/tool-renderers.js";
 import {
   applyTodoUpdates,
   createEmptyTodoSnapshot,
@@ -14,9 +14,9 @@ import {
   type TodoItem,
   type TodoSnapshot,
   type TodoWriteDetails,
-} from "../../todos/index.ts";
-import { syncTodoUi } from "../../todos/todo-widget.ts";
-import { buildDroidPlanUpdates, parseDroidPlanRows, type DroidPlanRow } from "./plan-parser.ts";
+} from "../../todos/index.js";
+import { syncTodoUi } from "../../todos/todo-widget.js";
+import { buildDroidPlanUpdates, parseDroidPlanRows, type DroidPlanRow } from "./plan-parser.js";
 
 const WIDGET_KEY = "droid-content:plan";
 const STATUS_KEY = "droid-content:plan";

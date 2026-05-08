@@ -1,4 +1,4 @@
-import type { AgentSnapshot, PublicAgentSnapshot } from "./types.ts";
+import type { AgentSnapshot, PublicAgentSnapshot } from "./types.js";
 
 export const MAX_SUBAGENT_REPLY_PREVIEW_LINES = 50;
 export const MAX_SUBAGENT_NOTIFICATION_PREVIEW_CHARS = 220;

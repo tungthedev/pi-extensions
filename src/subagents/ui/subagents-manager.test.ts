@@ -3,11 +3,11 @@ import test from "node:test";
 
 import { visibleWidth } from "@mariozechner/pi-tui";
 
-import type { LayeredRoleRecord } from "../subagents/roles-types.ts";
-import { buildListEntries, handleListInput, renderList } from "./subagents-list.ts";
-import { handleDetailInput, renderDetail } from "./subagents-detail.ts";
-import { DEFAULT_MODEL_HINT, MANUAL_MODEL_HINT, getVisibleModelOptions, validateManualModelInput } from "./subagents-edit.ts";
-import { formatScopeOptionLabel, resolveCreateCancelTarget, resolveEditTarget, openSubagentsManager } from "./subagents-manager.ts";
+import type { LayeredRoleRecord } from "../subagents/roles-types.js";
+import { buildListEntries, handleListInput, renderList } from "./subagents-list.js";
+import { handleDetailInput, renderDetail } from "./subagents-detail.js";
+import { DEFAULT_MODEL_HINT, MANUAL_MODEL_HINT, getVisibleModelOptions, validateManualModelInput } from "./subagents-edit.js";
+import { formatScopeOptionLabel, resolveCreateCancelTarget, resolveEditTarget, openSubagentsManager } from "./subagents-manager.js";
 
 function createRole(overrides: Partial<LayeredRoleRecord>): LayeredRoleRecord {
   return {

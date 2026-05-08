@@ -1,9 +1,9 @@
 import path from "node:path";
 
-import { resolveRoleSet } from "./roles-discovery.ts";
-import { loadBuiltinRoles } from "./roles-builtins.ts";
-import type { AgentProfileConfig, AgentProfileSource, ResolvedAgentProfiles } from "./profiles-types.ts";
-import { applySpawnAgentProfile, resolveRequestedAgentType } from "./profiles-apply.ts";
+import { resolveRoleSet } from "./roles-discovery.js";
+import { loadBuiltinRoles } from "./roles-builtins.js";
+import type { AgentProfileConfig, AgentProfileSource, ResolvedAgentProfiles } from "./profiles-types.js";
+import { applySpawnAgentProfile, resolveRequestedAgentType } from "./profiles-apply.js";
 
 function normalizeThinkingToReasoningEffort(
   thinking: "minimal" | "low" | "medium" | "high" | "xhigh" | undefined,
@@ -125,5 +125,5 @@ export function resolveAgentProfiles(
   };
 }
 
-export type { AgentProfileConfig, ResolvedAgentProfiles } from "./profiles-types.ts";
+export type { AgentProfileConfig, ResolvedAgentProfiles } from "./profiles-types.js";
 export { applySpawnAgentProfile, resolveRequestedAgentType };

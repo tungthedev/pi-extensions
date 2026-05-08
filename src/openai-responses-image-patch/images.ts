@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { GeneratedImageDetails, GeneratedImageSaveInput } from "./types.ts";
+import type { GeneratedImageDetails, GeneratedImageSaveInput } from "./types.js";
 
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 

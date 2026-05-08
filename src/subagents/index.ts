@@ -1,13 +1,14 @@
 /**
  * Adds persistent subagent tools for spawning and managing child agents.
  */
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { createSubagentRoleAutocompleteProvider } from "../editor/index.ts";
-import { applyResolvedToolset } from "../shared/toolset-resolver.ts";
-import { registerSubagentsCommand } from "./commands.ts";
-import { resolveAgentProfileNames } from "./subagents/profiles.ts";
-import { SUBAGENT_CHILD_ENV, registerSubagentTools } from "./subagents/index.ts";
+import { createSubagentRoleAutocompleteProvider } from "../editor/index.js";
+import { registerSubagentsCommand } from "./commands.js";
+import { resolveAgentProfileNames } from "./subagents/profiles.js";
+import { SUBAGENT_CHILD_ENV, registerSubagentTools } from "./subagents/index.js";
+
+export { SUBAGENT_CODEX_TOOL_NAMES } from "./metadata.js";
 
 export {
   CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
@@ -16,16 +17,11 @@ export {
   SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
   SUBAGENT_TOOL_NAMES,
   registerCodexSubagentTools,
-} from "./subagents/index.ts";
+} from "./subagents/index.js";
 
-async function syncSubagentToolSet(
-  pi: ExtensionAPI,
-  ctx: Pick<ExtensionContext, "sessionManager">,
-): Promise<void> {
-  await applyResolvedToolset(pi, ctx.sessionManager);
-}
+export interface SubagentsOptions {}
 
-export default function subagentsExtension(pi: ExtensionAPI) {
+export function registerSubagentsExtension(pi: ExtensionAPI, _options: SubagentsOptions = {}) {
   if (process.env[SUBAGENT_CHILD_ENV] !== "1") {
     const subagentTools = registerSubagentTools(pi);
     registerSubagentsCommand(pi);
@@ -38,12 +34,12 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         }),
       );
       subagentTools.refreshRoleDescriptions(ctx.cwd);
-      await syncSubagentToolSet(pi, ctx);
     });
 
     pi.on("before_agent_start", async (_event, ctx) => {
       subagentTools.refreshRoleDescriptions(ctx.cwd);
-      await syncSubagentToolSet(pi, ctx);
     });
   }
 }
+
+export default registerSubagentsExtension;

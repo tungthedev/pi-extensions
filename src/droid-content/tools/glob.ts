@@ -4,14 +4,14 @@ import { createFindToolDefinition } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 import path from "node:path";
 
-import { executeDroidGlobWithFff } from "../../shared/fff/adapters/droid-glob.ts";
-import { findMatchingFiles, formatFindFilesOutput } from "../../shared/file-tools/find-files.ts";
+import { executeDroidGlobWithFff } from "../../shared/fff/adapters/droid-glob.js";
+import { findMatchingFiles, formatFindFilesOutput } from "../../shared/file-tools/find-files.js";
 import {
   buildHiddenCollapsedRenderer,
   buildSelfShellRenderer,
   formatListCallDetail,
-} from "../../shared/renderers/tool-renderers.ts";
-import { resolveAbsolutePath } from "../../shared/runtime-paths.ts";
+} from "../../shared/renderers/tool-renderers.js";
+import { resolveAbsolutePath } from "../../shared/runtime-paths.js";
 
 const DROID_GLOB_DESCRIPTION = `Advanced file path search using glob patterns with multiple pattern support and exclusions.
 Uses ripgrep for high-performance file pattern matching.

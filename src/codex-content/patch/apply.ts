@@ -13,13 +13,13 @@ import type {
   UpdateFileChunk,
   UpdateFileHunk,
   VirtualFileState,
-} from "./types.ts";
+} from "./types.js";
 
-import { resolveAbsolutePath } from "../tools/runtime.ts";
+import { resolveAbsolutePath } from "../tools/runtime.js";
 
-import { seekSequence } from "./matching.ts";
-import { parsePatch } from "./parser.ts";
-import { applyFailed } from "./types.ts";
+import { seekSequence } from "./matching.js";
+import { parsePatch } from "./parser.js";
+import { applyFailed } from "./types.js";
 
 const REDACTION_PATTERNS = [
   /\[REDACTED\]/i,

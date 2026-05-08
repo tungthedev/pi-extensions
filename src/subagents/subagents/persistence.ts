@@ -3,10 +3,10 @@ import type {
   RegistryEntryPayload,
   SessionEntryLike,
   SubagentEntryType,
-} from "./types.ts";
+} from "./types.js";
 
-import { normalizeReconstructedStatus } from "./state.ts";
-import { LEGACY_SUBAGENT_ENTRY_TYPES, SUBAGENT_ENTRY_TYPES } from "./types.ts";
+import { normalizeReconstructedStatus } from "./state.js";
+import { LEGACY_SUBAGENT_ENTRY_TYPES, SUBAGENT_ENTRY_TYPES } from "./types.js";
 
 function isRegistryEntryType(value: unknown): value is SubagentEntryType {
   return (

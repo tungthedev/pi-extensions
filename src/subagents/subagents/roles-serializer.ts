@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { MarkdownRole, RoleDefinition, RoleSource, RoleThinkingLevel } from "./roles-types.ts";
+import type { MarkdownRole, RoleDefinition, RoleSource, RoleThinkingLevel } from "./roles-types.js";
 
 function parseFrontmatter(content: string): { frontmatter: Record<string, string>; body: string } {
   const frontmatter: Record<string, string> = {};

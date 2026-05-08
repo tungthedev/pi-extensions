@@ -5,17 +5,17 @@ import type {
   LocalExtensionEntry,
   PackageExtensionEntry,
   State,
-} from "../types.ts";
+} from "../types.js";
 
-import { discoverLocalExtensions, setLocalExtensionState } from "../local.ts";
+import { discoverLocalExtensions, setLocalExtensionState } from "../local.js";
 import {
   applyPackageExtensionStateChanges,
   discoverInstalledPackages,
   discoverPackageExtensions,
-} from "../packages.ts";
-import type { ManagedEntrySection } from "./entry-model.ts";
-import { buildLocalManagedEntrySection } from "./sources/local-source.ts";
-import { buildPackageManagedEntrySection } from "./sources/package-source.ts";
+} from "../packages.js";
+import type { ManagedEntrySection } from "./entry-model.js";
+import { buildLocalManagedEntrySection } from "./sources/local-source.js";
+import { buildPackageManagedEntrySection } from "./sources/package-source.js";
 
 export class ExtensionManagerController {
   localEntries: LocalExtensionEntry[] = [];

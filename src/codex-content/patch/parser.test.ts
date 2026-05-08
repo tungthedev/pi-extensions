@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApplyPatchError } from "../apply-patch.ts";
-import { parsePatch } from "./parser.ts";
+import { ApplyPatchError } from "../apply-patch.js";
+import { parsePatch } from "./parser.js";
 
 function expectApplyPatchError(
   callback: () => unknown,

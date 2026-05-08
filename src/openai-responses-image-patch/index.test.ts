@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import registerOpenAIResponsesImagePatch from "./index.ts";
+import registerOpenAIResponsesImagePatch from "./index.js";
 
 const PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
@@ -86,7 +86,7 @@ test("flushes queued generated image previews after agent end", async () => {
     },
   } as never);
 
-  const { queueGeneratedImageMessage } = await import("./stream.ts");
+  const { queueGeneratedImageMessage } = await import("./stream.js");
   queueGeneratedImageMessage({
     imageBase64: PNG_BASE64,
     path: "/tmp/generated.png",

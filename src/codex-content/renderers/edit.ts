@@ -8,8 +8,8 @@ import {
   isErrorText,
   previewLines,
   shortenPath,
-} from "../shared/text.ts";
-import { accentSuffix, detailLine, expandHintLine, renderLines, titleLine } from "./common.ts";
+} from "../shared/text.js";
+import { accentSuffix, detailLine, expandHintLine, renderLines, titleLine } from "./common.js";
 
 function diffStatsText(diff?: string): string | undefined {
   if (!diff) return undefined;

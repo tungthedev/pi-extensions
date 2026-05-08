@@ -140,6 +140,31 @@ The package also ships bundled themes under `themes/`:
 - `src/` contains the implementation for editor, web, workspace, FFF, modes, subagents, and shared utilities
 - `themes/` contains bundled Pi themes
 
+## Library Usage
+
+This package can also be imported from Pi SDK-based hosts.
+
+- Root register APIs: `@tungthedev/pi-extensions`
+- Stable bundle APIs: `@tungthedev/pi-extensions/<module>`
+- Stable primitive APIs: `@tungthedev/pi-extensions/<module>/primitives`
+- Tool metadata: `@tungthedev/pi-extensions/metadata` and `@tungthedev/pi-extensions/<module>/metadata`
+- Direct source-level access: `@tungthedev/pi-extensions/<source-path>` maps to `src/<source-path>.ts`
+
+Examples:
+
+```ts
+import { registerShellExtension } from "@tungthedev/pi-extensions";
+import { registerCodexCompatibilityTools } from "@tungthedev/pi-extensions/codex-content/primitives";
+import { registerShellTool } from "@tungthedev/pi-extensions/shell/primitives";
+import { readPiModeSettings } from "@tungthedev/pi-extensions/settings/config";
+
+export function registerCustomPack(pi: ExtensionAPI) {
+  registerShellExtension(pi);
+  registerCodexCompatibilityTools(pi);
+  registerShellTool(pi);
+}
+```
+
 ## License
 
 MIT

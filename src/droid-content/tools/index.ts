@@ -1,13 +1,13 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { registerDroidApplyPatchTool } from "./apply-patch.ts";
-import { registerDroidAskUserTool } from "./ask-user.ts";
-import { registerDroidCreateTool } from "./create.ts";
-import { registerDroidEditTool } from "./edit.ts";
-import { registerDroidExecuteTool } from "./execute.ts";
-import { registerDroidGlobTool } from "./glob.ts";
-import { registerDroidGrepTool } from "./grep.ts";
-import { registerDroidListDirectoryTool } from "./list-directory.ts";
-import { registerDroidPlanTool } from "./plan.ts";
+import { registerDroidApplyPatchTool } from "./apply-patch.js";
+import { registerDroidAskUserTool } from "./ask-user.js";
+import { registerDroidCreateTool } from "./create.js";
+import { registerDroidEditTool } from "./edit.js";
+import { registerDroidExecuteTool } from "./execute.js";
+import { registerDroidGlobTool } from "./glob.js";
+import { registerDroidGrepTool } from "./grep.js";
+import { registerDroidListDirectoryTool } from "./list-directory.js";
+import { registerDroidPlanTool } from "./plan.js";
 
 export function registerDroidEasyTools(pi: ExtensionAPI): void {
   registerDroidListDirectoryTool(pi);

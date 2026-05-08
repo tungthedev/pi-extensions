@@ -7,7 +7,7 @@ import path from "node:path";
 import {
   applyPackageExtensionStateChanges,
   getPackageFilterState,
-} from "./packages.ts";
+} from "./packages.js";
 
 async function withTempDir(run: (dir: string) => Promise<void>) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "ext-manager-packages-"));

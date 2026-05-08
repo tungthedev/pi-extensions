@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import type { DurableChildRecord, LiveChildAttachment } from "./types.ts";
-import type { RuntimeCompletionState, RuntimeUpdateState } from "./runtime-types.ts";
+import type { DurableChildRecord, LiveChildAttachment } from "./types.js";
+import type { RuntimeCompletionState, RuntimeUpdateState } from "./runtime-types.js";
 
 import {
   markSubagentActivityRunning,
@@ -12,12 +12,12 @@ import {
   snapshotSubagentActivities,
   type SubagentActivityState,
   type SubagentActivityWidget,
-} from "./activity-widget.ts";
-import { childSnapshot } from "./registry.ts";
-import { createAttachmentRegistry } from "./attachment-registry.ts";
-import { createCompletionTracker } from "./completion-tracker.ts";
-import { isResumable } from "./session.ts";
-import { isDescendantTaskPath, normalizeTaskPath, resolveTaskTarget } from "./task-paths.ts";
+} from "./activity-widget.js";
+import { childSnapshot } from "./registry.js";
+import { createAttachmentRegistry } from "./attachment-registry.js";
+import { createCompletionTracker } from "./completion-tracker.js";
+import { isResumable } from "./session.js";
+import { isDescendantTaskPath, normalizeTaskPath, resolveTaskTarget } from "./task-paths.js";
 
 function normalizePublicName(name: string): string {
   return name.trim();

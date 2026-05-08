@@ -1,11 +1,11 @@
-import { FinderOperationError, RuntimeInitializationError } from "../errors.ts";
-import { inferFffGrepMode, looksLikeRegexPattern } from "../query-classifier.ts";
+import { FinderOperationError, RuntimeInitializationError } from "../errors.js";
+import { inferFffGrepMode, looksLikeRegexPattern } from "../query-classifier.js";
 import {
   formatAbsolutePathList,
   getFffRuntime,
   resolveAdapterPath,
   type FffAdapterContext,
-} from "./common.ts";
+} from "./common.js";
 
 type GrepFilesParams = {
   pattern: string;

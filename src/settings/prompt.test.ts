@@ -5,7 +5,7 @@ import {
   handleLoadSkillsBeforeAgentStart,
   stripSkillListFromPrompt,
   type LoadSkillsPromptDeps,
-} from "./prompt.ts";
+} from "./prompt.js";
 
 const PROMPT_WITH_SKILLS = `Base prompt\n\nThe following skills provide specialized instructions for specific tasks.
 Use the read tool to load a skill's file when the task matches its description.

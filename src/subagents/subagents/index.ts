@@ -16,9 +16,9 @@ import type {
   RpcLiveChildAttachment,
   SessionEntryLike,
   SubagentEntryType,
-} from "./types.ts";
+} from "./types.js";
 
-import { appendBounded, createLiveAttachment, resolveChildSessionDir } from "./attachment.ts";
+import { appendBounded, createLiveAttachment, resolveChildSessionDir } from "./attachment.js";
 import {
   closeSurface,
   createSurface,
@@ -30,25 +30,25 @@ import {
   selectPreservedInteractiveEnv,
   shellDoneSentinelCommand,
   shellExternalCommand,
-} from "./interactive.ts";
-import { buildInteractivePiArgs, type InteractiveLaunchMode } from "./launch-args.ts";
-import { validateSubagentName } from "./naming.ts";
+} from "./interactive.js";
+import { buildInteractivePiArgs, type InteractiveLaunchMode } from "./launch-args.js";
+import { validateSubagentName } from "./naming.js";
 import {
   CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
   formatSubagentNotificationMessage,
   getSubagentNotificationDeliveryOptions,
   parseSubagentNotificationMessage,
   SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
-} from "./notifications.ts";
-import { rebuildDurableRegistry } from "./persistence.ts";
+} from "./notifications.js";
+import { rebuildDurableRegistry } from "./persistence.js";
 import {
   resolveAgentProfiles,
-} from "./profiles.ts";
-import { childSnapshot } from "./registry.ts";
+} from "./profiles.js";
+import { childSnapshot } from "./registry.js";
 import {
   wrapInteractiveSpawnPrompt,
-} from "./request-utils.ts";
-import { shorten } from "./render.ts";
+} from "./request-utils.js";
+import { shorten } from "./render.js";
 import {
   getSubagentCompletionLabel,
   getSubagentDisplayName,
@@ -57,36 +57,36 @@ import {
   summarizeSubagentReply,
   summarizeTaskRequest,
   truncateSubagentReply,
-} from "./rendering.ts";
+} from "./rendering.js";
 import {
   toPublicAgentSnapshot,
-} from "./results.ts";
+} from "./results.js";
 import {
   handleRpcMessage,
   parseJsonLines,
   rejectPendingResponses,
   sendRpcCommand,
-} from "./rpc.ts";
+} from "./rpc.js";
 import {
   extractLastAssistantText,
   extractLastAssistantTextFromSessionFile,
   isResumable,
-} from "./session.ts";
-import { createSubagentLifecycleService } from "./lifecycle-service.ts";
-import { createSubagentRuntimeStore, isWaitableChild } from "./runtime-store.ts";
-import { createReadySnapshotCoordinator } from "./ready-snapshot-coordinator.ts";
-import { registerSubagentNotificationRenderers } from "./renderers.ts";
-import { registerSubagentSessionEvents } from "./session-events.ts";
-import { deriveDurableStatusFromState, resolvePostPromptDurableStatus } from "./state.ts";
+} from "./session.js";
+import { createSubagentLifecycleService } from "./lifecycle-service.js";
+import { createSubagentRuntimeStore, isWaitableChild } from "./runtime-store.js";
+import { createReadySnapshotCoordinator } from "./ready-snapshot-coordinator.js";
+import { registerSubagentNotificationRenderers } from "./renderers.js";
+import { registerSubagentSessionEvents } from "./session-events.js";
+import { deriveDurableStatusFromState, resolvePostPromptDurableStatus } from "./state.js";
 import {
   isInteractiveAttachment,
   notifyStateChange,
   queueAgentOperation,
   waitForAnyStateChange,
   waitForStateChange,
-} from "./live-attachment-utils.ts";
-import { registerCodexToolAdapters } from "./tool-adapters-codex.ts";
-import { registerTaskToolAdapters } from "./tool-adapters-task.ts";
+} from "./live-attachment-utils.js";
+import { registerCodexToolAdapters } from "./tool-adapters-codex.js";
+import { registerTaskToolAdapters } from "./tool-adapters-task.js";
 import {
   CHILD_EXIT_GRACE_MS,
   SUBAGENT_CWD_ENV,
@@ -100,13 +100,13 @@ import {
   SUBAGENT_TOOL_NAMES,
   SUBAGENT_ENTRY_TYPES,
   TOOL_SET_OVERRIDE_ENV,
-} from "./types.ts";
+} from "./types.js";
 import {
   getWaitAgentResultTitle,
   MAX_WAIT_AGENT_TIMEOUT_MS,
   muxUnavailableError,
   normalizeWaitAgentTimeoutMs,
-} from "./wait-utils.ts";
+} from "./wait-utils.js";
 
 export function normalizeReasoningEffortToThinkingLevel(
   reasoningEffort: string | undefined,
@@ -1338,18 +1338,18 @@ export {
   CODEX_SUBAGENT_TOOL_NAMES,
   formatSubagentNotificationMessage,
 };
-export { buildSendMessageContent, buildSpawnAgentContent } from "./results.ts";
-export { buildWaitAgentContent } from "./notifications.ts";
+export { buildSendMessageContent, buildSpawnAgentContent } from "./results.js";
+export { buildWaitAgentContent } from "./notifications.js";
 export type { AgentSnapshot, DurableChildRecord, LiveChildAttachment };
-export type { AgentProfileConfig, ResolvedAgentProfiles } from "./profiles.ts";
-export type { AppliedSpawnProfile, ChildProfileBootstrap } from "./profiles-apply.ts";
+export type { AgentProfileConfig, ResolvedAgentProfiles } from "./profiles.js";
+export type { AppliedSpawnProfile, ChildProfileBootstrap } from "./profiles-apply.js";
 export {
   buildSpawnAgentTypeDescription,
   clearResolvedAgentProfilesCache,
   loadCustomAgentProfiles,
   resolveAgentProfiles,
   resolveBuiltInAgentProfiles,
-} from "./profiles.ts";
-export { applySpawnAgentProfile, resolveRequestedAgentType } from "./profiles-apply.ts";
+} from "./profiles.js";
+export { applySpawnAgentProfile, resolveRequestedAgentType } from "./profiles-apply.js";
 
 export const registerSubagentTools = registerCodexSubagentTools;

@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-cod
 
 import { Box, truncateToWidth } from "@mariozechner/pi-tui";
 
-import { ensureSessionFffRuntime, resolveSessionFffRuntimeKey } from "./session-runtime.ts";
+import { ensureSessionFffRuntime, resolveSessionFffRuntimeKey } from "./session-runtime.js";
 
 const FFF_COMMAND_MESSAGE_TYPE = "fff-command-result";
 

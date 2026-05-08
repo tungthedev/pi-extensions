@@ -7,13 +7,13 @@ import {
   formatListDirectoryOutput,
   scanDirectoryEntries,
   type ListDirectoryEntry,
-} from "../../shared/file-tools/list-dir.ts";
+} from "../../shared/file-tools/list-dir.js";
 import {
   buildHiddenCollapsedRenderer,
   buildSelfShellRenderer,
   formatListCallDetail,
-} from "../../shared/renderers/tool-renderers.ts";
-import { resolveAbsolutePathWithVariants } from "../../shared/runtime-paths.ts";
+} from "../../shared/renderers/tool-renderers.js";
+import { resolveAbsolutePathWithVariants } from "../../shared/runtime-paths.js";
 
 const DROID_LIST_DIRECTORY_DESCRIPTION = `List the contents of a directory with optional pattern-based filtering.
 Prefer usage of 'Grep' and 'Glob' tools, for more targeted searches.

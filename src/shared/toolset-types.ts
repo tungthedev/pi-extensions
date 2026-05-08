@@ -1,4 +1,4 @@
-import type { ToolSetPack } from "../settings/config.ts";
+import type { ToolSetPack } from "../settings/config.js";
 
 export type ToolsetModeId = ToolSetPack;
 

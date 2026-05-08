@@ -7,7 +7,7 @@ import {
   type StopReason,
 } from "@mariozechner/pi-ai";
 
-import type { GeneratedImageContent, ImageAwareParserOptions } from "./types.ts";
+import type { GeneratedImageContent, ImageAwareParserOptions } from "./types.js";
 
 function encodeTextSignatureV1(id: string, phase?: "commentary" | "final_answer"): string {
   const payload: { v: 1; id: string; phase?: "commentary" | "final_answer" } = { v: 1, id };

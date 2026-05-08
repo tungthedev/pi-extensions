@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { createWriteToolDefinition } from "@mariozechner/pi-coding-agent";
 
-import { registerDroidCreateTool } from "./tools/create.ts";
+import { registerDroidCreateTool } from "./tools/create.js";
 
 function captureCreateTool(): any {
   let tool: any;

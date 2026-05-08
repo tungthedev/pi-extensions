@@ -1,11 +1,11 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { registerFffCommands } from "./commands.ts";
+import { registerFffCommands } from "./commands.js";
 import {
   disposeSessionFffRuntime,
   ensureSessionFffRuntime,
   resolveSessionFffRuntimeKey,
-} from "./session-runtime.ts";
+} from "./session-runtime.js";
 
 export default function registerFffLifecycleExtension(pi: ExtensionAPI): void {
   registerFffCommands(pi);

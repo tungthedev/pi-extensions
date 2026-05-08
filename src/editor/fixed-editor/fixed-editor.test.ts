@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { TUI, visibleWidth } from "@mariozechner/pi-tui";
-import { CURSOR_MARKER, renderFixedEditorCluster } from "./cluster.ts";
+import { CURSOR_MARKER, renderFixedEditorCluster } from "./cluster.js";
 import {
   buildFixedClusterPaint,
   emergencyTerminalModeReset,
@@ -13,7 +13,7 @@ import {
   resetScrollRegion,
   setScrollRegion,
   TerminalSplitCompositor,
-} from "./terminal-split.ts";
+} from "./terminal-split.js";
 
 class FakeTerminal {
   columns = 40;

@@ -1,7 +1,7 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
 
-import { StackPalette } from "./ui.ts";
+import { StackPalette } from "./ui.js";
 
 const theme = {
   fg: (_color: string, text: string) => text,

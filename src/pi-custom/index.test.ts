@@ -11,10 +11,10 @@ import { Box } from "@mariozechner/pi-tui";
 import {
   resetSessionFffRuntimesForTests,
   setSessionFffRuntimeForTests,
-} from "../fff/session-runtime.ts";
-import { FffRuntime } from "../shared/fff/runtime.ts";
-import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "../shared/toolset-resolver.ts";
-import registerPiCustomExtension from "./index.ts";
+} from "../fff/session-runtime.js";
+import { FffRuntime } from "../shared/fff/runtime.js";
+import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "../shared/toolset-resolver.js";
+import registerPiCustomExtension from "./index.js";
 
 function captureTools(): Record<string, any> {
   const tools: Record<string, any> = {};

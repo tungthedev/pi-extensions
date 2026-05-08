@@ -3,12 +3,12 @@ import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 
-import { renderToolCall } from "../../shared/renderers/common.ts";
-import { shortenText } from "../../shared/text.ts";
-import { wrapUntrustedWebContent } from "../web-search/gemini.ts";
-import { hasCloudflareConfig, runCloudflareFetch } from "./providers/cloudflare.ts";
-import { hasFirecrawlConfig, runFirecrawlFetch } from "./providers/firecrawl.ts";
-import { formatFetchUrlError, renderFetchUrlResult } from "./render.ts";
+import { renderToolCall } from "../../shared/renderers/common.js";
+import { shortenText } from "../../shared/text.js";
+import { wrapUntrustedWebContent } from "../web-search/gemini.js";
+import { hasCloudflareConfig, runCloudflareFetch } from "./providers/cloudflare.js";
+import { hasFirecrawlConfig, runFirecrawlFetch } from "./providers/firecrawl.js";
+import { formatFetchUrlError, renderFetchUrlResult } from "./render.js";
 
 export type WebFetchProvider = "cloudflare" | "firecrawl" | "unavailable";
 

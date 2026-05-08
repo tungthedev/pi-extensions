@@ -1,13 +1,13 @@
 import path from "node:path";
 
-import type { SessionKeyContext } from "../../../fff/session-runtime.ts";
-import type { FffRuntime } from "../runtime.ts";
+import type { SessionKeyContext } from "../../../fff/session-runtime.js";
+import type { FffRuntime } from "../runtime.js";
 
 import {
   ensureSessionFffRuntime,
   resolveSessionFffRuntimeKey,
-} from "../../../fff/session-runtime.ts";
-import { resolveAbsolutePathWithVariants } from "../../runtime-paths.ts";
+} from "../../../fff/session-runtime.js";
+import { resolveAbsolutePathWithVariants } from "../../runtime-paths.js";
 
 export type FffAdapterContext = SessionKeyContext & {
   cwd: string;

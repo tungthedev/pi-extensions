@@ -5,8 +5,8 @@ import path from "node:path";
 import fs from "node:fs";
 import test from "node:test";
 
-import { bootstrapSubagentCwd } from "./cwd-bootstrap.ts";
-import { SUBAGENT_CWD_ENV } from "./subagents/types.ts";
+import { bootstrapSubagentCwd } from "./cwd-bootstrap.js";
+import { SUBAGENT_CWD_ENV } from "./subagents/types.js";
 
 test("bootstrapSubagentCwd restores the inherited subagent cwd", () => {
   const originalEnv = process.env[SUBAGENT_CWD_ENV];

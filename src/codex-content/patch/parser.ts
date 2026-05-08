@@ -1,6 +1,6 @@
-import type { ApplyPatchArgs, PatchHunk, UpdateFileChunk, UpdateFileHunk } from "./types.ts";
+import type { ApplyPatchArgs, PatchHunk, UpdateFileChunk, UpdateFileHunk } from "./types.js";
 
-import { invalidHunk, invalidPatch } from "./types.ts";
+import { invalidHunk, invalidPatch } from "./types.js";
 
 const BEGIN_PATCH_MARKER = "*** Begin Patch";
 const END_PATCH_MARKER = "*** End Patch";

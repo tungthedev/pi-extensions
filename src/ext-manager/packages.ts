@@ -1,17 +1,17 @@
 export {
   discoverInstalledPackages,
   parseInstalledPackagesFromListOutput,
-} from "./packages/discover-installed.ts";
+} from "./packages/discover-installed.js";
 export {
   discoverPackageExtensionEntrypoints,
   discoverPackageExtensions,
-} from "./packages/discover-entrypoints.ts";
+} from "./packages/discover-entrypoints.js";
 export {
   getPackageFilterState,
   normalizeRelativePath,
   updateExtensionMarkers,
-} from "./packages/filters.ts";
+} from "./packages/filters.js";
 export {
   applyPackageExtensionStateChanges,
   getPackageExtensionState,
-} from "./packages/settings.ts";
+} from "./packages/settings.js";

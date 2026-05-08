@@ -3,4 +3,4 @@ export {
   scanDirectoryEntries,
   type ListDirectoryEntry,
   type ListDirectoryScan,
-} from "../../codex-content/tools/list-dir.ts";
+} from "../../codex-content/tools/list-dir.js";

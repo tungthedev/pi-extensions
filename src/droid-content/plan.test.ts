@@ -3,8 +3,8 @@ import test from "node:test";
 
 import { Box } from "@mariozechner/pi-tui";
 
-import { parseDroidPlanRows } from "./tools/plan-parser.ts";
-import { registerDroidPlanTool } from "./tools/plan.ts";
+import { parseDroidPlanRows } from "./tools/plan-parser.js";
+import { registerDroidPlanTool } from "./tools/plan.js";
 
 function trimRenderedLines(lines: string[]): string[] {
   return lines.map((line) => line.trimEnd());

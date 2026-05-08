@@ -3,12 +3,12 @@ import type { FileFinder, Result } from "@ff-labs/fff-node";
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { FffRuntime } from "../shared/fff/runtime.ts";
-import { registerFffCommands } from "./commands.ts";
+import { FffRuntime } from "../shared/fff/runtime.js";
+import { registerFffCommands } from "./commands.js";
 import {
   resetSessionFffRuntimesForTests,
   setSessionFffRuntimeForTests,
-} from "./session-runtime.ts";
+} from "./session-runtime.js";
 
 function ok<T>(value: T): Result<T> {
   return { ok: true, value };

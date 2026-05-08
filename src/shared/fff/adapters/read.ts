@@ -2,22 +2,22 @@ import type { ReadToolInput } from "@mariozechner/pi-coding-agent";
 
 import { access } from "node:fs/promises";
 
-import type { ResolvedPath } from "../types.ts";
+import type { ResolvedPath } from "../types.js";
 
 import {
   ensureSessionFffRuntime,
   resolveSessionFffRuntimeKey,
   type SessionKeyContext,
-} from "../../../fff/session-runtime.ts";
-import { resolveAbsolutePathWithVariants } from "../../runtime-paths.ts";
+} from "../../../fff/session-runtime.js";
+import { resolveAbsolutePathWithVariants } from "../../runtime-paths.js";
 import {
   AmbiguousPathError,
   EmptyPathQueryError,
   FinderOperationError,
   MissingPathError,
   RuntimeInitializationError,
-} from "../errors.ts";
-import { formatCandidateLines } from "../format.ts";
+} from "../errors.js";
+import { formatCandidateLines } from "../format.js";
 
 function isPathResolutionCandidate(pathValue: string): boolean {
   const trimmed = pathValue.trim();

@@ -12,7 +12,7 @@ import {
   resolveAbsolutePathWithVariants,
   resolvePiManagedToolPath,
   resolvePiToolPath,
-} from "./runtime.ts";
+} from "./runtime.js";
 
 async function withTempDir(run: (dir: string) => Promise<void>) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "codex-tools-"));

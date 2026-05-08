@@ -3,8 +3,8 @@ import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent
 import { Container, Text } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 
-import { renderToolCall } from "../../shared/renderers/common.ts";
-import { shortenText } from "../../shared/text.ts";
+import { renderToolCall } from "../../shared/renderers/common.js";
+import { shortenText } from "../../shared/text.js";
 import {
   buildRenderableMarkdown,
   formatWebToolError,
@@ -12,7 +12,7 @@ import {
   type FetchParams,
   type SearchParams,
   type WebSearchProvider,
-} from "./core.ts";
+} from "./core.js";
 import {
   type Citation,
   DEFAULT_FETCH_MAX_CHARS,
@@ -24,15 +24,15 @@ import {
   runGeminiSearch,
   trimToMaxChars,
   wrapUntrustedWebContent,
-} from "./gemini.ts";
-import { resolveExaApiKey, runExaSearch } from "./providers/exa.ts";
-import { runGeminiDroidSearch } from "./providers/gemini-adapter.ts";
-import { renderWebResult } from "./render.ts";
+} from "./gemini.js";
+import { resolveExaApiKey, runExaSearch } from "./providers/exa.js";
+import { runGeminiDroidSearch } from "./providers/gemini-adapter.js";
+import { renderWebResult } from "./render.js";
 
 const WEB_SEARCH_TOOL_NAME = "WebSearch";
 const WEB_SUMMARY_TOOL_NAME = "WebSummary";
 
-export { resolveGeminiApiKey } from "./gemini.ts";
+export { resolveGeminiApiKey } from "./gemini.js";
 
 export function resolveWebSearchProvider(): WebSearchProvider {
   if (resolveExaApiKey()) return "exa";

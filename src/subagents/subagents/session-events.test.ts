@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { registerSubagentSessionEvents } from "./session-events.ts";
-import { clearLegacyRoleWarningsForTests } from "./legacy-role-warnings.ts";
+import { registerSubagentSessionEvents } from "./session-events.js";
+import { clearLegacyRoleWarningsForTests } from "./legacy-role-warnings.js";
 
 function withTempHome(testBody: (root: string) => void | Promise<void>) {
   const root = mkdtempSync(path.join(tmpdir(), "subagent-session-events-"));

@@ -3,6 +3,6 @@ export {
   detectSupportedImageMimeTypeFromFile,
   formatDimensionNote,
   resizeImage,
-} from "./images/index.ts";
+} from "./images/index.js";
 
-export type { ResizeImageResult } from "./images/index.ts";
+export type { ResizeImageResult } from "./images/index.js";

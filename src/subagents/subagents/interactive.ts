@@ -1,14 +1,14 @@
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 
-import { createInteractiveContext } from "./interactive/context.ts";
+import { createInteractiveContext } from "./interactive/context.js";
 import {
   closeCmuxSurface,
   createCmuxSurfaceSplit,
   isCmuxRuntimeAvailable,
   readCmuxScreen,
   sendCmuxText,
-} from "./interactive/backends/cmux.ts";
+} from "./interactive/backends/cmux.js";
 import {
   closeTmuxSurface,
   createTmuxSurfaceSplit,
@@ -16,15 +16,15 @@ import {
   readTmuxScreen,
   sendTmuxText,
   submitTmuxInput,
-} from "./interactive/backends/tmux.ts";
-import type { InteractiveBackendContext, MuxBackend } from "./interactive/backends/types.ts";
+} from "./interactive/backends/tmux.js";
+import type { InteractiveBackendContext, MuxBackend } from "./interactive/backends/types.js";
 import {
   closeWezTermSurface,
   createWezTermSurfaceSplit,
   isWezTermRuntimeAvailable,
   readWezTermScreen,
   sendWezTermText,
-} from "./interactive/backends/wezterm.ts";
+} from "./interactive/backends/wezterm.js";
 import {
   closeZellijSurface,
   createZellijSurfaceSplit,
@@ -32,7 +32,7 @@ import {
   readZellijScreen,
   sendZellijText,
   submitZellijInput,
-} from "./interactive/backends/zellij.ts";
+} from "./interactive/backends/zellij.js";
 
 function muxPreference(): MuxBackend | null {
   const pref = (process.env.PI_SUBAGENT_MUX ?? "").trim().toLowerCase();

@@ -1,13 +1,13 @@
 import type { FindToolInput } from "@mariozechner/pi-coding-agent";
 
-import { FinderOperationError, RuntimeInitializationError } from "../errors.ts";
-import { shouldUseLegacyPiFind } from "../query-classifier.ts";
+import { FinderOperationError, RuntimeInitializationError } from "../errors.js";
+import { shouldUseLegacyPiFind } from "../query-classifier.js";
 import {
   buildScopedDiscoveryQuery,
   getFffRuntime,
   resolveAdapterPath,
   type FffAdapterContext,
-} from "./common.ts";
+} from "./common.js";
 
 export async function executePiFindWithFff(
   params: FindToolInput,

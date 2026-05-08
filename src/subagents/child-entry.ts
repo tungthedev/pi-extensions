@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { registerPiModesChildRuntime } from "../pi-modes/child-runtime.ts";
-import { bootstrapSubagentCwd } from "./cwd-bootstrap.ts";
+import { registerPiModesChildRuntime } from "../pi-modes/child-runtime.js";
+import { bootstrapSubagentCwd } from "./cwd-bootstrap.js";
 
 bootstrapSubagentCwd();
 

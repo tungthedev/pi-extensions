@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import type { TodoItem, TodoStatus } from "./todo-state.ts";
+import type { TodoItem, TodoStatus } from "./todo-state.js";
 
 export const TODO_STATUS_ICONS: Record<Extract<TodoStatus, "pending" | "in_progress" | "completed">, string> = {
   pending: "□",

@@ -6,7 +6,7 @@ import test from "node:test";
 
 import { Box } from "@mariozechner/pi-tui";
 
-import registerSkillExtension from "./index.ts";
+import registerSkillExtension from "./index.js";
 
 const AVAILABLE_TOOLS = [
   { name: "read", description: "custom read" },
@@ -34,7 +34,7 @@ function trimRenderedLines(lines: string[]): string[] {
   return lines.map((line) => line.trimEnd());
 }
 
-test("skill extension registers the global skill tool and shared mode handlers", async () => {
+test("skill extension registers only the global skill tool", async () => {
   const handlers = new Map<string, Function[]>();
   const tools: string[] = [];
   let activeTools: string[] | undefined;
@@ -58,36 +58,8 @@ test("skill extension registers the global skill tool and shared mode handlers",
   } as never);
 
   assert.deepEqual(tools, ["skill"]);
-  assert.equal(handlers.has("session_start"), true);
-  assert.equal(handlers.has("before_agent_start"), true);
-
-  const sessionStartHandlers = handlers.get("session_start") ?? [];
-  const ctx = {
-    sessionManager: {
-      getBranch() {
-        return [{ type: "custom", customType: "pi-mode:tool-set", data: { toolSet: "pi" } }];
-      },
-    },
-  };
-
-  for (const handler of sessionStartHandlers) {
-    await handler(undefined, ctx as never);
-  }
-
-  assert.deepEqual(activeTools, [
-    "read",
-    "grep",
-    "find",
-    "ls",
-    "edit",
-    "write",
-    "bash",
-    "WebSearch",
-    "WebSummary",
-    "FetchUrl",
-    "skill",
-    "Task",
-  ]);
+  assert.deepEqual([...handlers.keys()], []);
+  assert.equal(activeTools, undefined);
 });
 
 test("skill tool resolves from Pi's loaded skill commands", async () => {

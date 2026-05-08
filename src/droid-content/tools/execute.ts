@@ -7,12 +7,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 
-import { createShellToolDefinition } from "../../shell/tool.ts";
+import { createShellToolDefinition } from "../../shell/tool.js";
 import {
   getShellEnv,
   readConfiguredShellPath,
   resolveShellInvocation,
-} from "../../shell/runtime.ts";
+} from "../../shell/runtime.js";
 
 const nativeShellTool = createShellToolDefinition();
 

@@ -1,7 +1,7 @@
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { join } from "node:path";
 
-import { mutateJsonObjectFile, readJsonObjectFile } from "../shared/json-settings.ts";
+import { mutateJsonObjectFile, readJsonObjectFile } from "../shared/json-settings.js";
 
 const SETTINGS_FILE = "settings.json";
 const EDITOR_NAMESPACE = "editor";

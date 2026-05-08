@@ -7,7 +7,7 @@ import test from "node:test";
 import interactiveChild, {
   shouldAutoExitOnAgentEnd,
   shouldMarkUserTookOver,
-} from "./interactive-child.ts";
+} from "./interactive-child.js";
 
 test("shouldMarkUserTookOver only flips after the agent starts", () => {
   assert.equal(shouldMarkUserTookOver(false), false);

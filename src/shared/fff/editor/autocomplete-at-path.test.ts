@@ -7,7 +7,7 @@ import test from "node:test";
 import {
   shouldTriggerAtPathAutocomplete,
   wrapAutocompleteProviderWithAtPathSupport,
-} from "./autocomplete-at-path.ts";
+} from "./autocomplete-at-path.js";
 
 function createBaseProvider(): AutocompleteProvider {
   return {

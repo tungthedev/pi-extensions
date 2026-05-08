@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { readPiModeSettings, type ToolSetPack } from "./config.ts";
+import { readPiModeSettings, type ToolSetPack } from "./config.js";
 
 export const SESSION_TOOL_SET_ENTRY_TYPE = "pi-mode:tool-set";
 export const SESSION_LOAD_SKILLS_ENTRY_TYPE = "pi-mode:load-skills";

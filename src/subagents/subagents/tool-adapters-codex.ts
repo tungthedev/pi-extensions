@@ -3,7 +3,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Type } from "typebox";
 import { Container, Text } from "@mariozechner/pi-tui";
 
-import type { PublicAgentSnapshot } from "./types.ts";
+import type { PublicAgentSnapshot } from "./types.js";
 
 import {
   expandHintLine,
@@ -12,25 +12,25 @@ import {
   renderLines,
   titleLine,
   toolCallLine,
-} from "../../shared/renderers/common.ts";
-import { validateSubagentName } from "./naming.ts";
-import type { createSubagentLifecycleService } from "./lifecycle-service.ts";
+} from "../../shared/renderers/common.js";
+import { validateSubagentName } from "./naming.js";
+import type { createSubagentLifecycleService } from "./lifecycle-service.js";
 import {
   buildSpawnAgentTypeDescription,
   resolveAgentProfiles,
-} from "./profiles.ts";
-import { resolveRequestedAgentType } from "./profiles-apply.ts";
+} from "./profiles.js";
+import { resolveRequestedAgentType } from "./profiles-apply.js";
 import {
   buildSendMessageContent,
   toPublicAgentSnapshot,
-} from "./results.ts";
-import { validateAgentTarget } from "./task-paths.ts";
+} from "./results.js";
+import { validateAgentTarget } from "./task-paths.js";
 import {
   extractSnapshotDetails,
   normalizeTaskOutput,
   previewTaskText,
   renderWaitAgentResult,
-} from "./renderers.ts";
+} from "./renderers.js";
 
 type SchemaWithDescription = { description?: string };
 

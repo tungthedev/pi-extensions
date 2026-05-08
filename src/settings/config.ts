@@ -2,7 +2,7 @@ import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { mutateJsonObjectFile, readJsonObjectFile } from "../shared/json-settings.ts";
+import { mutateJsonObjectFile, readJsonObjectFile } from "../shared/json-settings.js";
 
 const SETTINGS_FILE = "settings.json";
 const PI_MODE_NAMESPACE = "pi-mode";

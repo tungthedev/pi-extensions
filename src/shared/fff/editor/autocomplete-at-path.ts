@@ -5,9 +5,9 @@ import type {
 } from "@mariozechner/pi-tui";
 import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
 
-import type { FinderOperationError, RuntimeInitializationError } from "../errors.ts";
-import type { AppResult } from "../result-utils.ts";
-import type { FffFileCandidate } from "../types.ts";
+import type { FinderOperationError, RuntimeInitializationError } from "../errors.js";
+import type { AppResult } from "../result-utils.js";
+import type { FffFileCandidate } from "../types.js";
 
 const PATH_DELIMITERS = new Set([" ", "\t", '"', "'", "="]);
 const MAX_RESULTS = 20;

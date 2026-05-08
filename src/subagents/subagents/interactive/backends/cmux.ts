@@ -1,4 +1,4 @@
-import type { InteractiveBackendContext } from "./types.ts";
+import type { InteractiveBackendContext } from "./types.js";
 
 function shellEscape(value: string): string {
   return "'" + value.replace(/'/g, "'\\''") + "'";

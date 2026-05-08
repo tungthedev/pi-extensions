@@ -1,4 +1,4 @@
-import type { InteractiveBackendContext } from "./types.ts";
+import type { InteractiveBackendContext } from "./types.js";
 
 export function isTmuxRuntimeAvailable(ctx: InteractiveBackendContext): boolean {
   return !!ctx.env.TMUX && ctx.hasCommand("tmux");

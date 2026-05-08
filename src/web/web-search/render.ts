@@ -3,10 +3,10 @@ import type { AgentToolResult, Theme } from "@mariozechner/pi-coding-agent";
 import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Text } from "@mariozechner/pi-tui";
 
-import type { WebToolRenderDetails } from "./core.ts";
+import type { WebToolRenderDetails } from "./core.js";
 
-import { expandHintLine, renderEmptySlot, renderLines } from "../../shared/renderers/common.ts";
-import { firstText, previewLines } from "../../shared/text.ts";
+import { expandHintLine, renderEmptySlot, renderLines } from "../../shared/renderers/common.js";
+import { firstText, previewLines } from "../../shared/text.js";
 
 const COLLAPSED_PREVIEW_LINE_COUNT = 4;
 

@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { discoverLocalExtensions } from "./local.ts";
+import { discoverLocalExtensions } from "./local.js";
 
 async function withTempEnv(
   run: (paths: { root: string; home: string; cwd: string }) => Promise<void>,

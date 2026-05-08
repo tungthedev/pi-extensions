@@ -1,4 +1,4 @@
-import { readPiModeSettingsSync } from "../../../settings/config.ts";
+import { readPiModeSettingsSync } from "../../../settings/config.js";
 
 export type FirecrawlFetchResult = {
   markdown: string;

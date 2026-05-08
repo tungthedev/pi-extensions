@@ -3,10 +3,18 @@ import type {
   ToolsetContribution,
   ToolsetModeId,
   ToolsetToolDefinition,
-} from "./toolset-types.ts";
+} from "./toolset-types.js";
+import { CODEX_CONTENT_TOOL_NAMES } from "../codex-content/metadata.js";
+import { DROID_CONTENT_TOOL_NAMES } from "../droid-content/metadata.js";
+import { SHELL_TOOL_NAMES } from "../shell/metadata.js";
+import { SUBAGENT_CODEX_TOOL_NAMES } from "../subagents/metadata.js";
 
 function optional(name: string): ToolsetToolDefinition {
   return { name, availability: "optional" };
+}
+
+function optionalTools(names: readonly string[]): ToolsetToolDefinition[] {
+  return names.map((name) => optional(name));
 }
 
 export const TOOLSET_CONTRIBUTIONS = {
@@ -32,7 +40,7 @@ export const TOOLSET_CONTRIBUTIONS = {
   },
   shell: {
     extension: "shell",
-    tools: [optional("shell")],
+    tools: optionalTools(SHELL_TOOL_NAMES),
   },
   skill: {
     extension: "skill",
@@ -40,40 +48,15 @@ export const TOOLSET_CONTRIBUTIONS = {
   },
   codexContent: {
     extension: "codex-content",
-    tools: [
-      optional("update_plan"),
-      optional("read_plan"),
-      optional("request_user_input"),
-      optional("list_dir"),
-      optional("find_files"),
-      optional("grep_files"),
-      optional("apply_patch"),
-      optional("view_image"),
-    ],
+    tools: optionalTools(CODEX_CONTENT_TOOL_NAMES),
   },
   droidContent: {
     extension: "droid-content",
-    tools: [
-      optional("LS"),
-      optional("Grep"),
-      optional("Glob"),
-      optional("Create"),
-      optional("Edit"),
-      optional("ApplyPatch"),
-      optional("AskUser"),
-      optional("TodoWrite"),
-      optional("Execute"),
-    ],
+    tools: optionalTools(DROID_CONTENT_TOOL_NAMES),
   },
   subagentsCodex: {
     extension: "subagents-codex",
-    tools: [
-      optional("spawn_agent"),
-      optional("send_message"),
-      optional("wait_agent"),
-      optional("list_agents"),
-      optional("close_agent"),
-    ],
+    tools: optionalTools(SUBAGENT_CODEX_TOOL_NAMES),
   },
   subagentsTask: {
     extension: "subagents-task",

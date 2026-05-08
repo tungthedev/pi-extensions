@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import registerFffLifecycleExtension from "../fff/index.ts";
-import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "./toolset-resolver.ts";
+import registerFffLifecycleExtension from "../fff/index.js";
+import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "./toolset-resolver.js";
 
 const ALL_TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "read", description: "custom read" },

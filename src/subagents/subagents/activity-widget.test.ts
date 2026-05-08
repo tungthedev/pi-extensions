@@ -7,7 +7,7 @@ import {
   buildSubagentActivityWidgetLines,
   sortSubagentActivityViews,
   type SubagentActivityView,
-} from "./activity-widget.ts";
+} from "./activity-widget.js";
 
 const theme = {
   fg: (color: string, text: string) => (color === "dim" && text === " " ? "<dim> </dim>" : text),

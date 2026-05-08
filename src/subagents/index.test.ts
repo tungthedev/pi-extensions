@@ -7,9 +7,9 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import subagentsExtension from "./index.ts";
-import childEntry from "./child-entry.ts";
-import interactiveChildEntry from "./interactive-child-entry.ts";
+import subagentsExtension from "./index.js";
+import childEntry from "./child-entry.js";
+import interactiveChildEntry from "./interactive-child-entry.js";
 import {
   buildSendMessageContent,
   buildSpawnAgentContent,
@@ -21,13 +21,13 @@ import {
   resolveForkContextSessionFile,
   resolveParentSpawnDefaults,
   validateSubagentName,
-} from "./internal-test-helpers.ts";
-import { registerCodexToolAdapters } from "./subagents/tool-adapters-codex.ts";
-import { getSubagentNotificationDeliveryOptions } from "./subagents/notifications.ts";
-import { renderAgentCompletionResult, renderTaskNotificationResult } from "./subagents/renderers.ts";
-import { isWaitableChild } from "./subagents/runtime-store.ts";
-import { registerTaskToolAdapters } from "./subagents/tool-adapters-task.ts";
-import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "../shared/toolset-resolver.ts";
+} from "./internal-test-helpers.js";
+import { registerCodexToolAdapters } from "./subagents/tool-adapters-codex.js";
+import { getSubagentNotificationDeliveryOptions } from "./subagents/notifications.js";
+import { renderAgentCompletionResult, renderTaskNotificationResult } from "./subagents/renderers.js";
+import { isWaitableChild } from "./subagents/runtime-store.js";
+import { registerTaskToolAdapters } from "./subagents/tool-adapters-task.js";
+import { resolveRegisteredToolInfos, resolveToolsetToolNames } from "../shared/toolset-resolver.js";
 
 const EXISTING_FILE = fileURLToPath(new URL("../../package.json", import.meta.url));
 
@@ -282,7 +282,7 @@ function captureTools(register: (pi: { registerTool(def: unknown): void }) => vo
   return tools;
 }
 
-test("subagents public entrypoint registers tools and sync hooks for parent sessions", () => {
+test("subagents public entrypoint registers tools and lifecycle hooks for parent sessions", () => {
   const tools: string[] = [];
   const events: string[] = [];
   const commands: string[] = [];

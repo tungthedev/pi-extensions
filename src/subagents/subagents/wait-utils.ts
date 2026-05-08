@@ -1,4 +1,4 @@
-import { muxSetupHint } from "./interactive.ts";
+import { muxSetupHint } from "./interactive.js";
 
 export const MIN_WAIT_AGENT_TIMEOUT_MS = 30_000;
 export const DEFAULT_WAIT_AGENT_TIMEOUT_MS = 45_000;

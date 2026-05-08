@@ -13,8 +13,8 @@ import {
   type PiModeSettings,
   type ToolSetPack,
   type WebToolSettingKey,
-} from "./config.ts";
-import { DEFAULT_EDITOR_SETTINGS, type EditorSettings, type EditorSettingsUpdate } from "../editor/config.ts";
+} from "./config.js";
+import { DEFAULT_EDITOR_SETTINGS, type EditorSettings, type EditorSettingsUpdate } from "../editor/config.js";
 
 export type SettingsUiSettings = PiModeSettings & {
   editor?: EditorSettings;

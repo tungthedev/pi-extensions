@@ -2,10 +2,10 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { Type } from "typebox";
 
-import { applyPatch as runNativeApplyPatch } from "../../shared/patch/apply.ts";
-import { renderApplyPatchResult } from "../../shared/patch/render.ts";
-import { renderEmptySlot, renderFallbackResult } from "../../shared/renderers/common.ts";
-import { trimToBudget } from "../../shared/runtime-paths.ts";
+import { applyPatch as runNativeApplyPatch } from "../../shared/patch/apply.js";
+import { renderApplyPatchResult } from "../../shared/patch/render.js";
+import { renderEmptySlot, renderFallbackResult } from "../../shared/renderers/common.js";
+import { trimToBudget } from "../../shared/runtime-paths.js";
 
 const DROID_APPLY_PATCH_DESCRIPTION = `Use this tool to edit files.
 Your patch language is a stripped‑down, file‑oriented diff format designed to be easy to parse and safe to apply. You can think of it as a high‑level envelope:

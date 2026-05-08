@@ -28,9 +28,10 @@ import { Type } from "typebox";
 import {
   EDITOR_REMOVE_STATUS_SEGMENT_EVENT,
   EDITOR_SET_STATUS_SEGMENT_EVENT,
-} from "../editor/events.ts";
+} from "../editor/events.js";
+import type { ConfigStorageOptions, ExtensionHostCapabilities } from "../metadata-types.js";
 
-interface BoomerangConfig {
+export interface BoomerangConfig {
   toolEnabled?: boolean;
   toolGuidance?: string | null;
 }
@@ -73,6 +74,7 @@ function installCommandCapableShortcutContextPatch(): void {
     if (!("navigateTree" in context) && typeof runner.navigateTreeHandler === "function") {
       Object.defineProperty(context, "navigateTree", {
         configurable: true,
+        writable: true,
         value: (targetId: string, options?: Parameters<ExtensionCommandContext["navigateTree"]>[1]) => {
           runner.assertActive?.();
           return runner.navigateTreeHandler!(targetId, options);
@@ -83,6 +85,7 @@ function installCommandCapableShortcutContextPatch(): void {
     if (!("reload" in context) && typeof runner.reloadHandler === "function") {
       Object.defineProperty(context, "reload", {
         configurable: true,
+        writable: true,
         value: () => {
           runner.assertActive?.();
           return runner.reloadHandler!();
@@ -144,13 +147,24 @@ export function installBoomerangBranchSummaryRendererPatch(): void {
   };
 }
 
-function getConfigPath(): { dir: string; path: string } {
-  const dir = join(homedir(), ".pi", "agent");
-  return { dir, path: join(dir, "boomerang.json") };
+function normalizeConfigStorageOptions(
+  pathOrOptions?: string | ConfigStorageOptions,
+): ConfigStorageOptions {
+  if (typeof pathOrOptions === "string") return { configPath: pathOrOptions };
+  return pathOrOptions ?? {};
 }
 
-function loadConfig(): BoomerangConfig {
-  const { path } = getConfigPath();
+export function resolveBoomerangConfigPath(pathOrOptions?: string | ConfigStorageOptions): {
+  dir: string;
+  path: string;
+} {
+  const options = normalizeConfigStorageOptions(pathOrOptions);
+  const dir = options.configDir ?? join(homedir(), ".pi", "agent");
+  return { dir, path: options.configPath ?? join(dir, "boomerang.json") };
+}
+
+export function loadBoomerangConfig(pathOrOptions?: string | ConfigStorageOptions): BoomerangConfig {
+  const { path } = resolveBoomerangConfigPath(pathOrOptions);
   if (!existsSync(path)) {
     return {};
   }
@@ -176,9 +190,12 @@ function loadConfig(): BoomerangConfig {
   }
 }
 
-function saveConfig(config: BoomerangConfig): string | null {
+export function saveBoomerangConfig(
+  config: BoomerangConfig,
+  pathOrOptions?: string | ConfigStorageOptions,
+): string | null {
   try {
-    const { dir, path } = getConfigPath();
+    const { dir, path } = resolveBoomerangConfigPath(pathOrOptions);
     mkdirSync(dir, { recursive: true });
     writeFileSync(path, JSON.stringify(config, null, 2));
     return null;
@@ -187,8 +204,12 @@ function saveConfig(config: BoomerangConfig): string | null {
   }
 }
 
-function saveConfigOrNotify(config: BoomerangConfig, ctx: ExtensionContext): void {
-  const saveError = saveConfig(config);
+function saveConfigOrNotify(
+  config: BoomerangConfig,
+  ctx: ExtensionContext,
+  options?: ConfigStorageOptions,
+): void {
+  const saveError = saveBoomerangConfig(config, options);
   if (saveError) {
     ctx.ui.notify(`Failed to save boomerang config: ${saveError}`, "warning");
   }
@@ -677,7 +698,16 @@ export function getEffectiveArgs(step: ChainStep, globalArgs: string[]): string[
   return step.args.length > 0 ? step.args : globalArgs;
 }
 
-export default function (pi: ExtensionAPI) {
+export interface BoomerangOptions extends ConfigStorageOptions {
+  toolEnabledByDefault?: boolean;
+  enableCommand?: boolean;
+  enableTool?: boolean;
+  enableShortcuts?: boolean;
+  enableAutoMode?: boolean;
+  hostCapabilities?: ExtensionHostCapabilities;
+}
+
+export function registerBoomerangExtension(pi: ExtensionAPI, options: BoomerangOptions = {}) {
   installCommandCapableShortcutContextPatch();
   installBoomerangBranchSummaryRendererPatch();
 
@@ -704,8 +734,8 @@ export default function (pi: ExtensionAPI) {
   let reloadFallbackDisplay: (() => Promise<void>) | null = null;
   let justCollapsedEntryId: string | null = null;
 
-  const initialConfig = loadConfig();
-  let toolEnabled = initialConfig.toolEnabled ?? false;
+  const initialConfig = loadBoomerangConfig(options);
+  let toolEnabled = initialConfig.toolEnabled ?? options.toolEnabledByDefault ?? false;
   let toolGuidance: string | null = initialConfig.toolGuidance ?? null;
   let toolRegistered = false;
 
@@ -2049,12 +2079,12 @@ export default function (pi: ExtensionAPI) {
           }
         } else if (trimmed === "guidance clear") {
           toolGuidance = null;
-          saveConfigOrNotify({ toolEnabled, toolGuidance }, ctx);
+          saveConfigOrNotify({ toolEnabled, toolGuidance }, ctx, options);
           ctx.ui.notify("Guidance cleared.", "info");
         } else {
           const guidanceRaw = trimmed.slice("guidance".length).trim();
           toolGuidance = guidanceRaw.replace(/^["']|["']$/g, "");
-          saveConfigOrNotify({ toolEnabled, toolGuidance }, ctx);
+          saveConfigOrNotify({ toolEnabled, toolGuidance }, ctx, options);
           ctx.ui.notify(`Guidance set: "${toolGuidance}"`, "info");
         }
         return;
@@ -2063,7 +2093,7 @@ export default function (pi: ExtensionAPI) {
       if (trimmed === "tool" || trimmed.startsWith("tool ")) {
         if (trimmed === "tool off") {
           toolEnabled = false;
-          saveConfigOrNotify({ toolEnabled, toolGuidance }, ctx);
+          saveConfigOrNotify({ toolEnabled, toolGuidance }, ctx, options);
           ctx.ui.notify("Boomerang tool disabled.", "info");
         } else if (trimmed === "tool on" || trimmed.startsWith("tool on ")) {
           toolEnabled = true;
@@ -2075,7 +2105,7 @@ export default function (pi: ExtensionAPI) {
           } else {
             ctx.ui.notify("Boomerang tool enabled. Agent can now use boomerang().", "info");
           }
-          saveConfigOrNotify({ toolEnabled, toolGuidance }, ctx);
+          saveConfigOrNotify({ toolEnabled, toolGuidance }, ctx, options);
         } else if (trimmed === "tool") {
           if (toolEnabled) {
             const guidanceInfo = toolGuidance ? ` | Guidance: "${toolGuidance}"` : "";
@@ -2623,3 +2653,5 @@ export default function (pi: ExtensionAPI) {
     await resetForSessionChange(ctx);
   });
 }
+
+export default registerBoomerangExtension;

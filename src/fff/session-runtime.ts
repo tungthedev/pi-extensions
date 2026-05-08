@@ -1,9 +1,9 @@
 import path from "node:path";
 
-import type { FinderOperationError, RuntimeInitializationError } from "../shared/fff/errors.ts";
-import type { AppResult } from "../shared/fff/result-utils.ts";
+import type { FinderOperationError, RuntimeInitializationError } from "../shared/fff/errors.js";
+import type { AppResult } from "../shared/fff/result-utils.js";
 
-import { FffRuntime } from "../shared/fff/runtime.ts";
+import { FffRuntime } from "../shared/fff/runtime.js";
 
 const runtimeRegistry = new Map<string, FffRuntime>();
 

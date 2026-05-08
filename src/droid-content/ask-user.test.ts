@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { registerDroidAskUserTool } from "./tools/ask-user.ts";
+import { registerDroidAskUserTool } from "./tools/ask-user.js";
 
 const theme = {
   fg: (_color: string, text: string) => text,

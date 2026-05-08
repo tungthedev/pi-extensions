@@ -5,7 +5,7 @@ import crypto from "node:crypto";
 import { getEnvApiKey, type Context, type Model, type Tool, type Usage } from "@mariozechner/pi-ai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 
-import type { GeneratedImageContent } from "./types.ts";
+import type { GeneratedImageContent } from "./types.js";
 
 const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
 

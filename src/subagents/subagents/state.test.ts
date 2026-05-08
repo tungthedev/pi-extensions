@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { resolvePostPromptDurableStatus } from "./state.ts";
+import { resolvePostPromptDurableStatus } from "./state.js";
 
 test("resolvePostPromptDurableStatus keeps a just-prompted child running when get_state is still idle", () => {
   assert.equal(

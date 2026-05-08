@@ -4,7 +4,7 @@ export {
   executeAskUserRequest,
   normalizeRequestOptions,
   normalizeRequestQuestions,
-} from "./core.ts";
+} from "./core.js";
 export {
   CUSTOM_INPUT_OPTION,
   RequestOptionSchema,
@@ -15,4 +15,4 @@ export {
   type RequestQuestion,
   type RequestQuestionInput,
   type RequestUserInputDetails,
-} from "./types.ts";
+} from "./types.js";

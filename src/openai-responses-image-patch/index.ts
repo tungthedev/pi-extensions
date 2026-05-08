@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { GENERATED_IMAGE_CUSTOM_TYPE, registerGeneratedImageRenderer } from "./render.ts";
-import { flushGeneratedImageMessages, streamSimpleOpenAIResponsesWithImages } from "./stream.ts";
+import { GENERATED_IMAGE_CUSTOM_TYPE, registerGeneratedImageRenderer } from "./render.js";
+import { flushGeneratedImageMessages, streamSimpleOpenAIResponsesWithImages } from "./stream.js";
 
 const PROVIDER_NAME = "openai-responses-image-patch";
 

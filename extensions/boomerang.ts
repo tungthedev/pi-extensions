@@ -3,7 +3,7 @@
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import registerBoomerangExtension from "../src/boomerang/index.ts";
+import registerBoomerangExtension from "../src/boomerang/index.js";
 
 export default function boomerang(pi: ExtensionAPI): void {
   registerBoomerangExtension(pi);

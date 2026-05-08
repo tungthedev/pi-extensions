@@ -20,6 +20,7 @@
     "url": "git+https://github.com/tungthedev/pi-extensions.git"
   },
   "files": [
+    "dist",
     "extensions",
     "src",
     "themes",
@@ -28,11 +29,101 @@
     "LICENSE"
   ],
   "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./boomerang": {
+      "types": "./dist/src/boomerang/index.d.ts",
+      "import": "./dist/src/boomerang/index.js"
+    },
+    "./pi-modes": {
+      "types": "./dist/src/pi-modes/index.d.ts",
+      "import": "./dist/src/pi-modes/index.js"
+    },
+    "./settings": {
+      "types": "./dist/src/settings/index.d.ts",
+      "import": "./dist/src/settings/index.js"
+    },
+    "./codex-content": {
+      "types": "./dist/src/codex-content/index.d.ts",
+      "import": "./dist/src/codex-content/index.js"
+    },
+    "./droid-content": {
+      "types": "./dist/src/droid-content/index.d.ts",
+      "import": "./dist/src/droid-content/index.js"
+    },
+    "./shell": {
+      "types": "./dist/src/shell/index.d.ts",
+      "import": "./dist/src/shell/index.js"
+    },
+    "./subagents": {
+      "types": "./dist/src/subagents/index.d.ts",
+      "import": "./dist/src/subagents/index.js"
+    },
+    "./system-md": {
+      "types": "./dist/src/system-md/index.d.ts",
+      "import": "./dist/src/system-md/index.js"
+    },
+    "./metadata": {
+      "types": "./dist/src/metadata.d.ts",
+      "import": "./dist/src/metadata.js"
+    },
+    "./boomerang/metadata": {
+      "types": "./dist/src/boomerang/metadata.d.ts",
+      "import": "./dist/src/boomerang/metadata.js"
+    },
+    "./codex-content/metadata": {
+      "types": "./dist/src/codex-content/metadata.d.ts",
+      "import": "./dist/src/codex-content/metadata.js"
+    },
+    "./droid-content/metadata": {
+      "types": "./dist/src/droid-content/metadata.d.ts",
+      "import": "./dist/src/droid-content/metadata.js"
+    },
+    "./shell/metadata": {
+      "types": "./dist/src/shell/metadata.d.ts",
+      "import": "./dist/src/shell/metadata.js"
+    },
+    "./subagents/metadata": {
+      "types": "./dist/src/subagents/metadata.d.ts",
+      "import": "./dist/src/subagents/metadata.js"
+    },
+    "./boomerang/primitives": {
+      "types": "./dist/src/boomerang/primitives.d.ts",
+      "import": "./dist/src/boomerang/primitives.js"
+    },
+    "./codex-content/primitives": {
+      "types": "./dist/src/codex-content/primitives.d.ts",
+      "import": "./dist/src/codex-content/primitives.js"
+    },
+    "./droid-content/primitives": {
+      "types": "./dist/src/droid-content/primitives.d.ts",
+      "import": "./dist/src/droid-content/primitives.js"
+    },
+    "./shell/primitives": {
+      "types": "./dist/src/shell/primitives.d.ts",
+      "import": "./dist/src/shell/primitives.js"
+    },
+    "./subagents/primitives": {
+      "types": "./dist/src/subagents/primitives.d.ts",
+      "import": "./dist/src/subagents/primitives.js"
+    },
+    "./*": {
+      "types": "./dist/src/*.d.ts",
+      "import": "./dist/src/*.js"
+    }
+  },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "check": "bun run test && bun run lint && bun run typecheck",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && mkdir -p dist/src/subagents && cp src/subagents/interactive-launcher.mjs dist/src/subagents/interactive-launcher.mjs",
+    "check": "bun run test && bun run lint && bun run typecheck && bun run build && bun run check:imports",
+    "check:imports": "node scripts/check-import-contracts.mjs",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint extensions src",

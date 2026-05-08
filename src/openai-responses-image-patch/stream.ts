@@ -12,16 +12,16 @@ import {
 } from "@mariozechner/pi-ai";
 import OpenAI from "openai";
 
-import type { GeneratedImageDetails, GeneratedImageParserInput } from "./types.ts";
+import type { GeneratedImageDetails, GeneratedImageParserInput } from "./types.js";
 
-import { persistGeneratedPng } from "./images.ts";
+import { persistGeneratedPng } from "./images.js";
 import {
   applyOpenAIServiceTierPricing,
   buildOpenAIResponsesClientConfig,
   buildOpenAIResponsesParams,
-} from "./openai.ts";
-import { GENERATED_IMAGE_CUSTOM_TYPE } from "./render.ts";
-import { processResponsesStreamWithImages } from "./responses-parser.ts";
+} from "./openai.js";
+import { GENERATED_IMAGE_CUSTOM_TYPE } from "./render.js";
+import { processResponsesStreamWithImages } from "./responses-parser.js";
 
 type ResponsesStreamResult = {
   response: { status: number; headers: Headers };

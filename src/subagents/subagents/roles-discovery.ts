@@ -2,16 +2,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { resolveCodexConfigPath } from "../../shared/codex-config.ts";
-import { loadBuiltinRoles } from "./roles-builtins.ts";
-import { parseMarkdownRole } from "./roles-serializer.ts";
+import { resolveCodexConfigPath } from "../../shared/codex-config.js";
+import { loadBuiltinRoles } from "./roles-builtins.js";
+import { parseMarkdownRole } from "./roles-serializer.js";
 import type {
   EffectiveRoleRecord,
   LayeredRoleRecord,
   MarkdownRole,
   ResolvedRoleSet,
   RoleSource,
-} from "./roles-types.ts";
+} from "./roles-types.js";
 
 function isDirectory(dirPath: string): boolean {
   try {

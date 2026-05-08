@@ -4,8 +4,8 @@ import type {
   ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 
-import { hasStructuredSkills } from "../shared/system-prompt-options.ts";
-import { resolveSessionLoadSkills } from "./session.ts";
+import { hasStructuredSkills } from "../shared/system-prompt-options.js";
+import { resolveSessionLoadSkills } from "./session.js";
 
 const SKILLS_SECTION_START =
   "\n\nThe following skills provide specialized instructions for specific tasks.\nUse the read tool to load a skill's file when the task matches its description.\nWhen a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\n<available_skills>\n";

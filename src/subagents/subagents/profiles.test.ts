@@ -11,7 +11,7 @@ import {
   resolveAgentProfiles,
   resolveAgentProfileNames,
   resolveBuiltInAgentProfiles,
-} from "./profiles.ts";
+} from "./profiles.js";
 
 function withTempHome(testBody: (root: string) => void | Promise<void>) {
   const root = mkdtempSync(path.join(tmpdir(), "subagent-profiles-"));

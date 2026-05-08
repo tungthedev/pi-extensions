@@ -5,12 +5,12 @@ import test from "node:test";
 import {
   buildDurablePatchFromGetState,
   ingestCallerUpdate,
-} from "./index.ts";
-import { createReadySnapshotCoordinator } from "./ready-snapshot-coordinator.ts";
-import { childSnapshot } from "./registry.ts";
-import { handleRpcMessage } from "./rpc.ts";
-import { createSubagentRuntimeStore } from "./runtime-store.ts";
-import type { AgentSnapshot, DurableChildRecord, LiveChildAttachment, RpcLiveChildAttachment } from "./types.ts";
+} from "./index.js";
+import { createReadySnapshotCoordinator } from "./ready-snapshot-coordinator.js";
+import { childSnapshot } from "./registry.js";
+import { handleRpcMessage } from "./rpc.js";
+import { createSubagentRuntimeStore } from "./runtime-store.js";
+import type { AgentSnapshot, DurableChildRecord, LiveChildAttachment, RpcLiveChildAttachment } from "./types.js";
 
 function createRecord(agentId: string, overrides: Partial<DurableChildRecord> = {}): DurableChildRecord {
   return {

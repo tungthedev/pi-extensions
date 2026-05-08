@@ -6,7 +6,7 @@ import test from "node:test";
 
 import type { SlashCommandInfo } from "@mariozechner/pi-coding-agent";
 
-import { resolveSkillContent } from "./resolve.ts";
+import { resolveSkillContent } from "./resolve.js";
 
 async function createSkill(root: string, relativeDir: string, name: string) {
   const skillDir = join(root, relativeDir);

@@ -2,7 +2,7 @@ import { Box } from "@mariozechner/pi-tui";
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { registerTodoTools } from "./todo-tools.ts";
+import { registerTodoTools } from "./todo-tools.js";
 
 type RegisteredTool = {
   name: string;

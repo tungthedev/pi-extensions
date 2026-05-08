@@ -1,9 +1,9 @@
 import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 
-import type { ExtensionManagerController } from "../controller/index.ts";
-import type { ManagerAction, PaletteView } from "../types.ts";
+import type { ExtensionManagerController } from "../controller/index.js";
+import type { ManagerAction, PaletteView } from "../types.js";
 
-import { StackPalette } from "../ui.ts";
+import { StackPalette } from "../ui.js";
 
 export async function openManagerOverlay(
   ctx: ExtensionCommandContext,

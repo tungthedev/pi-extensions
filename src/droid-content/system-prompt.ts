@@ -6,13 +6,13 @@ import type {
 
 import fs from "node:fs";
 
-import { readSettings, type PiModeSettings } from "../settings/config.ts";
-import { resolveSessionToolSet } from "../settings/session.ts";
+import { readSettings, type PiModeSettings } from "../settings/config.js";
+import { resolveSessionToolSet } from "../settings/session.js";
 import {
   composeCustomPromptWithPiSections,
-} from "../shared/custom-prompt.ts";
-import { resolvePromptOptionsCwd } from "../shared/system-prompt-options.ts";
-import { resolveSystemMdPrompt } from "../system-md/state.ts";
+} from "../shared/custom-prompt.js";
+import { resolvePromptOptionsCwd } from "../shared/system-prompt-options.js";
+import { resolveSystemMdPrompt } from "../system-md/state.js";
 
 const DROID_IDENTITY_PATH = new URL("./assets/identity.txt", import.meta.url);
 const DROID_BASE_PATH = new URL("./assets/base.txt", import.meta.url);

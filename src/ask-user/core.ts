@@ -8,10 +8,10 @@ import {
   type RequestAnswer,
   type RequestQuestion,
   type RequestUserInputDetails,
-} from "./types.ts";
-import { normalizeAskUserRequest, normalizeRequestOptions, normalizeRequestQuestions } from "./normalize.ts";
+} from "./types.js";
+import { normalizeAskUserRequest, normalizeRequestOptions, normalizeRequestQuestions } from "./normalize.js";
 
-export { normalizeRequestOptions, normalizeRequestQuestions } from "./normalize.ts";
+export { normalizeRequestOptions, normalizeRequestQuestions } from "./normalize.js";
 
 type CollectedAnswer = {
   answer: RequestAnswer;

@@ -1,5 +1,5 @@
-import type { AgentSnapshot, DurableChildRecord, LiveChildAttachment } from "./types.ts";
-import type { SubagentRuntimeStore } from "./runtime-store.ts";
+import type { AgentSnapshot, DurableChildRecord, LiveChildAttachment } from "./types.js";
+import type { SubagentRuntimeStore } from "./runtime-store.js";
 
 function completionSignature(record: DurableChildRecord): string {
   return JSON.stringify({

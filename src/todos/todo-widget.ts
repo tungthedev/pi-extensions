@@ -1,8 +1,8 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-import type { TodoItem } from "./todo-state.ts";
+import type { TodoItem } from "./todo-state.js";
 
-import { renderTodoPreviewLine } from "./todo-render.ts";
+import { renderTodoPreviewLine } from "./todo-render.js";
 
 export function syncTodoUi(
   ctx: ExtensionContext,

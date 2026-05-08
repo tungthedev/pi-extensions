@@ -1,17 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { validateSubagentName } from "./naming.ts";
-import { resolveProjectRolesTargetDir, resolveUserRolesDir } from "./roles-discovery.ts";
-import { clearResolvedAgentProfilesCache } from "./profiles.ts";
-import { parseMarkdownRole, serializeMarkdownRole } from "./roles-serializer.ts";
+import { validateSubagentName } from "./naming.js";
+import { resolveProjectRolesTargetDir, resolveUserRolesDir } from "./roles-discovery.js";
+import { clearResolvedAgentProfilesCache } from "./profiles.js";
+import { parseMarkdownRole, serializeMarkdownRole } from "./roles-serializer.js";
 import type {
   DeleteRoleInput,
   MarkdownRole,
   RenameRoleInput,
   SaveRoleInput,
   SavedRoleResult,
-} from "./roles-types.ts";
+} from "./roles-types.js";
 
 function resolveScopeDir(cwd: string, scope: "user" | "project"): string {
   if (scope === "user") return resolveUserRolesDir();

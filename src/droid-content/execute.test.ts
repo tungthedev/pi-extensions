@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { registerDroidExecuteTool } from "./tools/execute.ts";
+import { registerDroidExecuteTool } from "./tools/execute.js";
 
 test("registerDroidExecuteTool registers Execute with Droid label", () => {
   let tool: any;

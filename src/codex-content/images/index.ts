@@ -1,8 +1,8 @@
-export { getExifOrientation } from "./exif.ts";
-export { loadPhoton } from "./photon.ts";
+export { getExifOrientation } from "./exif.js";
+export { loadPhoton } from "./photon.js";
 export {
   detectSupportedImageMimeTypeFromFile,
   formatDimensionNote,
   resizeImage,
-} from "./resize.ts";
-export type { ResizeImageResult } from "./resize.ts";
+} from "./resize.js";
+export type { ResizeImageResult } from "./resize.js";

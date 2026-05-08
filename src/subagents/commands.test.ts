@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { registerSubagentsCommand } from "./commands.ts";
+import { registerSubagentsCommand } from "./commands.js";
 
 function captureSubagentsCommand() {
   let registered:

@@ -2,14 +2,14 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import { Type } from "typebox";
 
-import registerCodexContentExtension from "../codex-content/index.ts";
-import registerDroidContentExtension from "../droid-content/index.ts";
-import registerShellExtension from "../shell/index.ts";
-import registerSkillExtension from "../skill/index.ts";
-import { registerSubagentTools } from "../subagents/subagents/index.ts";
-import interactiveChild from "../subagents/subagents/interactive-child.ts";
-import registerSystemMdExtension from "../system-md/index.ts";
-import registerWebExtension from "../web/index.ts";
+import registerCodexContentExtension from "../codex-content/index.js";
+import registerDroidContentExtension from "../droid-content/index.js";
+import registerShellExtension from "../shell/index.js";
+import registerSkillExtension from "../skill/index.js";
+import { registerSubagentTools } from "../subagents/subagents/index.js";
+import interactiveChild from "../subagents/subagents/interactive-child.js";
+import registerSystemMdExtension from "../system-md/index.js";
+import registerWebExtension from "../web/index.js";
 
 function registerCallerUpdateTool(pi: ExtensionAPI): void {
   pi.registerTool({

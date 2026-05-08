@@ -19,8 +19,8 @@ import {
   getSessionFffRuntime,
   getSessionFffRuntimeCount,
   resetSessionFffRuntimesForTests,
-} from "../../fff/session-runtime.ts";
-import { FffRuntime } from "./runtime.ts";
+} from "../../fff/session-runtime.js";
+import { FffRuntime } from "./runtime.js";
 
 function ok<T>(value: T): Result<T> {
   return { ok: true, value };

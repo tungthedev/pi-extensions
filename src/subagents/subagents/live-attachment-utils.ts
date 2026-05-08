@@ -1,4 +1,4 @@
-import type { InteractiveLiveChildAttachment, LiveChildAttachment } from "./types.ts";
+import type { InteractiveLiveChildAttachment, LiveChildAttachment } from "./types.js";
 
 export function notifyStateChange(attachment: LiveChildAttachment): void {
   const waiters = attachment.stateWaiters.splice(0, attachment.stateWaiters.length);

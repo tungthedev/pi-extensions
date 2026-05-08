@@ -1,10 +1,10 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { LocalExtensionEntry, Scope, State } from "../types.ts";
+import type { LocalExtensionEntry, Scope, State } from "../types.js";
 
-import { fileExists } from "../shared/fs.ts";
-import { readSummary } from "../shared/summary.ts";
+import { fileExists } from "../shared/fs.js";
+import { readSummary } from "../shared/summary.js";
 
 export const DISABLED_SUFFIX = ".disabled";
 

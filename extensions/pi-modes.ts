@@ -3,7 +3,7 @@
  */
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import registerPiModesExtension from "../src/pi-modes/index.ts";
+import registerPiModesExtension from "../src/pi-modes/index.js";
 
 export default function piModes(pi: ExtensionAPI): void {
   registerPiModesExtension(pi);

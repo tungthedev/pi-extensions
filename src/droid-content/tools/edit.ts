@@ -8,8 +8,8 @@ import fs from "node:fs/promises";
 import {
   formatListCallDetail,
   renderToolLabel,
-} from "../../shared/renderers/tool-renderers.ts";
-import { resolveAbsolutePath } from "../../shared/runtime-paths.ts";
+} from "../../shared/renderers/tool-renderers.js";
+import { resolveAbsolutePath } from "../../shared/runtime-paths.js";
 
 const DROID_EDIT_DESCRIPTION = `
 Edit the contents of a file by finding and replacing text.

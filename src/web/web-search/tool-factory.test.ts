@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createWebSearchTool } from "./tool-factory.ts";
+import { createWebSearchTool } from "./tool-factory.js";
 
 function withSearchEnv(env: {
   exa?: string;

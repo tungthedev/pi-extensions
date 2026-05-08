@@ -18,5 +18,5 @@ export {
   summarizeTaskRequest,
   validateSubagentName,
   wrapInteractiveSpawnPrompt,
-} from "./subagents/index.ts";
-export { createSubagentRuntimeStore } from "./subagents/runtime-store.ts";
+} from "./subagents/index.js";
+export { createSubagentRuntimeStore } from "./subagents/runtime-store.js";

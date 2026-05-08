@@ -2,8 +2,8 @@ import type { Theme } from "@mariozechner/pi-coding-agent";
 
 import { Box, Container, type Component, Text } from "@mariozechner/pi-tui";
 
-import { renderEmptySlot } from "./common.ts";
-import { shortenPath } from "../text.ts";
+import { renderEmptySlot } from "./common.js";
+import { shortenPath } from "../text.js";
 
 export type ToolTextContent = {
   type?: string;

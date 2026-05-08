@@ -1,5 +1,5 @@
-import type { AgentSnapshot, PublicAgentSnapshot } from "./types.ts";
-import { toPublicAgentSnapshot } from "./results.ts";
+import type { AgentSnapshot, PublicAgentSnapshot } from "./types.js";
+import { toPublicAgentSnapshot } from "./results.js";
 
 export const SUBAGENT_NOTIFICATION_CUSTOM_TYPE = "subagent-notification";
 export const LEGACY_SUBAGENT_NOTIFICATION_CUSTOM_TYPE = "codex-subagent-notification";

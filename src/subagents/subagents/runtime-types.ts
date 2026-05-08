@@ -1,4 +1,4 @@
-import type { DurableChildRecord, LiveChildAttachment } from "./types.ts";
+import type { DurableChildRecord, LiveChildAttachment } from "./types.js";
 
 export type RuntimeTrackedChild = DurableChildRecord;
 export type RuntimeTrackedAttachment = LiveChildAttachment;

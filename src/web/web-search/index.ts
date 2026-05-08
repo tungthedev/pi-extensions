@@ -5,5 +5,5 @@ export {
   createWebSummaryTool,
   resolveGeminiApiKey,
   resolveWebSearchProvider,
-} from "./tool-factory.ts";
-export { default } from "./tool-factory.ts";
+} from "./tool-factory.js";
+export { default } from "./tool-factory.js";

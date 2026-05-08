@@ -10,7 +10,7 @@ import {
   createUnavailableWebSearchTool,
   resolveGeminiApiKey,
   resolveWebFetchProvider,
-} from "./index.ts";
+} from "./index.js";
 
 async function withAgentSettings(
   settings: Record<string, unknown>,

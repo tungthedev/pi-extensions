@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { rmSync, writeFileSync } from "node:fs";
 import test from "node:test";
 
-import { createInteractiveContext } from "./interactive/context.ts";
-import { createTmuxSurfaceSplit, submitTmuxInput } from "./interactive/backends/tmux.ts";
-import { createWezTermSurfaceSplit } from "./interactive/backends/wezterm.ts";
+import { createInteractiveContext } from "./interactive/context.js";
+import { createTmuxSurfaceSplit, submitTmuxInput } from "./interactive/backends/tmux.js";
+import { createWezTermSurfaceSplit } from "./interactive/backends/wezterm.js";
 import {
   consumeInteractiveExitSignal,
   consumeInteractiveUpdateSignals,
   getMuxBackend,
-} from "./interactive.ts";
+} from "./interactive.js";
 
 test("getMuxBackend respects context-scoped command detection without leaking between invocations", () => {
   const firstContext = createInteractiveContext({
@@ -117,7 +117,7 @@ test("consumeInteractiveUpdateSignals only returns appended update bytes on late
 });
 
 test("wrapInteractiveSpawnPrompt no longer references subagent_done", async () => {
-  const { wrapInteractiveSpawnPrompt } = await import("./request-utils.ts");
+  const { wrapInteractiveSpawnPrompt } = await import("./request-utils.js");
   const prompt = wrapInteractiveSpawnPrompt("finish the task");
 
   assert.equal(prompt.includes("subagent_done"), false);

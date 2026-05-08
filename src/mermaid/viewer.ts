@@ -2,10 +2,10 @@ import type { ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
 
 import { Key, matchesKey, visibleWidth } from "@mariozechner/pi-tui";
 
-import type { MermaidContextSlice } from "./extract.ts";
-import type { RenderCache } from "./render.ts";
+import type { MermaidContextSlice } from "./extract.js";
+import type { RenderCache } from "./render.js";
 
-import { pickBestPreset } from "./render.ts";
+import { pickBestPreset } from "./render.js";
 
 type DiagramEntry = {
   id: string;

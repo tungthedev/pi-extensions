@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { registerCodexToolAdapters } from "./tool-adapters-codex.ts";
-import { registerTaskToolAdapters } from "./tool-adapters-task.ts";
+import { registerCodexToolAdapters } from "./tool-adapters-codex.js";
+import { registerTaskToolAdapters } from "./tool-adapters-task.js";
 
 function withTempHome(testBody: (root: string) => void | Promise<void>) {
   const root = mkdtempSync(path.join(tmpdir(), "subagent-tool-descriptions-"));

@@ -1,6 +1,6 @@
 import { matchesGlob } from "node:path";
 
-import type { State } from "../types.ts";
+import type { State } from "../types.js";
 
 export function normalizeRelativePath(value: string): string {
   return value.replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "");

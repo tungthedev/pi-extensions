@@ -1,4 +1,4 @@
-import { SUBAGENT_CWD_ENV } from "./subagents/types.ts";
+import { SUBAGENT_CWD_ENV } from "./subagents/types.js";
 
 export function bootstrapSubagentCwd(): void {
   const inheritedCwd = process.env[SUBAGENT_CWD_ENV]?.trim();

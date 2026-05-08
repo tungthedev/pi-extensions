@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createAssistantMessageEventStream, type AssistantMessage, type Model } from "@mariozechner/pi-ai";
 
-import { processResponsesStreamWithImages } from "./responses-parser.ts";
+import { processResponsesStreamWithImages } from "./responses-parser.js";
 
 function model(): Model<"openai-responses"> {
   return {

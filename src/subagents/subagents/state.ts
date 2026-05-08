@@ -1,4 +1,4 @@
-import type { AgentToolStatus, DurableChildStatus } from "./types.ts";
+import type { AgentToolStatus, DurableChildStatus } from "./types.js";
 
 export function durableStatusToAgentStatus(status: DurableChildStatus): AgentToolStatus {
   return status === "live_running" ? "running" : status === "live_idle" ? "idle" : status;

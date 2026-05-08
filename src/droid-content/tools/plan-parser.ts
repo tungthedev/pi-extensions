@@ -1,4 +1,4 @@
-import type { TodoUpdate } from "../../todos/index.ts";
+import type { TodoUpdate } from "../../todos/index.js";
 
 const TODO_LINE_RE = /^(?:\d+\.\s*)?\[(pending|in_progress|completed)\]\s+(.+)$/i;
 

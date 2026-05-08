@@ -1,8 +1,8 @@
-import type { ExtensionManagerController } from "../controller/index.ts";
-import type { PaletteItem, PaletteView } from "../types.ts";
-import type { InstalledPackage } from "../types.ts";
+import type { ExtensionManagerController } from "../controller/index.js";
+import type { PaletteItem, PaletteView } from "../types.js";
+import type { InstalledPackage } from "../types.js";
 
-import { buildPackageView } from "./package-detail.ts";
+import { buildPackageView } from "./package-detail.js";
 
 function packageLabel(pkg: InstalledPackage): string {
   return `📦 ${pkg.name}`;

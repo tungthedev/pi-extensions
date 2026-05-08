@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createAttachmentRegistry } from "./attachment-registry.ts";
-import { createCompletionTracker } from "./completion-tracker.ts";
+import { createAttachmentRegistry } from "./attachment-registry.js";
+import { createCompletionTracker } from "./completion-tracker.js";
 
 test("createAttachmentRegistry stores durable records and live attachments independently", () => {
   const registry = createAttachmentRegistry();

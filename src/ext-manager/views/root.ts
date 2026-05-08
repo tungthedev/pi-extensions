@@ -1,8 +1,8 @@
-import type { ExtensionManagerController } from "../controller/index.ts";
-import type { PaletteItem, PaletteView } from "../types.ts";
+import type { ExtensionManagerController } from "../controller/index.js";
+import type { PaletteItem, PaletteView } from "../types.js";
 
-import { buildLocalScopeView } from "./local-scope.ts";
-import { buildPackagesView } from "./packages.ts";
+import { buildLocalScopeView } from "./local-scope.js";
+import { buildPackagesView } from "./packages.js";
 
 export function buildRootView(controller: ExtensionManagerController): PaletteView {
   const projectCount = controller.localEntriesForScope("project").length;

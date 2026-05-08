@@ -10,8 +10,8 @@ import {
   buildHiddenCollapsedRenderer,
   buildSelfShellRenderer,
   formatListCallDetail,
-} from "../../shared/renderers/tool-renderers.ts";
-import { MAX_LIST_DIR_SCAN_ENTRIES, resolveAbsolutePathWithVariants } from "./runtime.ts";
+} from "../../shared/renderers/tool-renderers.js";
+import { MAX_LIST_DIR_SCAN_ENTRIES, resolveAbsolutePathWithVariants } from "./runtime.js";
 
 export type ListDirectoryEntry = {
   sortKey: string;

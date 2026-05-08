@@ -1,4 +1,4 @@
-import type { ManagerAction, PaletteItem, PaletteView, State } from "../types.ts";
+import type { ManagerAction, PaletteItem, PaletteView, State } from "../types.js";
 
 export type ManagedEntry = {
   id: string;

@@ -4,8 +4,8 @@ import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import os from "node:os";
 import path from "node:path";
 
-import { ExtensionManagerController } from "./controller/index.ts";
-import extensionManager from "./index.ts";
+import { ExtensionManagerController } from "./controller/index.js";
+import extensionManager from "./index.js";
 
 test("extmgr command returns early without touching ctx.ui when UI is unavailable", async () => {
   let commandHandler: ((args: string[], ctx: Record<string, unknown>) => Promise<void>) | undefined;

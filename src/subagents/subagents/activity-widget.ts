@@ -2,9 +2,9 @@ import type { Theme } from "@mariozechner/pi-coding-agent";
 
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
-import type { ChildTransport } from "./types.ts";
+import type { ChildTransport } from "./types.js";
 
-import { getSubagentDisplayName } from "./rendering.ts";
+import { getSubagentDisplayName } from "./rendering.js";
 
 export const SUBAGENT_ACTIVITY_WIDGET_KEY = "subagents:activity-widget";
 

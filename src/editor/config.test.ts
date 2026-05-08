@@ -9,7 +9,7 @@ import {
   readEditorSettingsFromFile,
   resolveEditorSettingsWritePath,
   writeEditorSettings,
-} from "./config.ts";
+} from "./config.js";
 
 test("readEditorSettingsFromFile fails closed on malformed json", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-editor-settings-"));

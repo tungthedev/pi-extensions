@@ -6,27 +6,27 @@ import type {
 
 import fs from "node:fs";
 
-import { readSettings, type PiModeSettings } from "../settings/config.ts";
-import { resolveSessionToolSet } from "../settings/session.ts";
+import { readSettings, type PiModeSettings } from "../settings/config.js";
+import { resolveSessionToolSet } from "../settings/session.js";
 import {
   resolveCodexConfigPath,
   resolveCodexHome,
   resolveCodexModelsCachePath,
   resolveConfiguredModelCatalogPath,
-} from "../shared/codex-config.ts";
+} from "../shared/codex-config.js";
 import {
   composeCustomPromptWithPiSections,
-} from "../shared/custom-prompt.ts";
-import { resolvePromptOptionsCwd } from "../shared/system-prompt-options.ts";
-import { matchTomlString } from "../shared/toml-lite.ts";
-import { resolveSystemMdPrompt } from "../system-md/state.ts";
+} from "../shared/custom-prompt.js";
+import { resolvePromptOptionsCwd } from "../shared/system-prompt-options.js";
+import { matchTomlString } from "../shared/toml-lite.js";
+import { resolveSystemMdPrompt } from "../system-md/state.js";
 
 export {
   resolveCodexConfigPath,
   resolveCodexHome,
   resolveCodexModelsCachePath,
   resolveConfiguredModelCatalogPath,
-} from "../shared/codex-config.ts";
+} from "../shared/codex-config.js";
 
 const BUNDLED_MODELS_CATALOG_PATH = new URL("./assets/codex-models.json", import.meta.url);
 const DEFAULT_GPT_PROMPT_MODEL = "gpt-5.4";

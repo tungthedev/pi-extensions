@@ -1,6 +1,6 @@
-import type { AgentSnapshot, DurableChildRecord, LiveChildAttachment } from "./types.ts";
+import type { AgentSnapshot, DurableChildRecord, LiveChildAttachment } from "./types.js";
 
-import { durableStatusToAgentStatus } from "./state.ts";
+import { durableStatusToAgentStatus } from "./state.js";
 
 export function childSnapshot(
   record: DurableChildRecord,

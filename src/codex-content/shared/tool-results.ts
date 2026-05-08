@@ -1,1 +1,1 @@
-export * from "../../shared/tool-results.ts";
+export * from "../../shared/tool-results.js";

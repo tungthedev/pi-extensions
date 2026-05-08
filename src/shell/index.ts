@@ -1,23 +1,13 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { applyResolvedToolset } from "../shared/toolset-resolver.ts";
-import { registerShellTool } from "./tool.ts";
+import { registerShellTool } from "./tool.js";
 
-async function syncShellToolSet(
-  pi: ExtensionAPI,
-  ctx: Pick<ExtensionContext, "sessionManager">,
-): Promise<void> {
-  await applyResolvedToolset(pi, ctx.sessionManager);
-}
+export { SHELL_TOOL_NAMES } from "./metadata.js";
 
-export default function registerShellExtension(pi: ExtensionAPI): void {
+export interface ShellOptions {}
+
+export function registerShellExtension(pi: ExtensionAPI, _options: ShellOptions = {}): void {
   registerShellTool(pi);
-
-  pi.on("session_start", async (_event, ctx) => {
-    await syncShellToolSet(pi, ctx);
-  });
-
-  pi.on("before_agent_start", async (_event, ctx) => {
-    await syncShellToolSet(pi, ctx);
-  });
 }
+
+export default registerShellExtension;

@@ -8,7 +8,7 @@ import {
   type GrepMatch,
   type GrepOutputMode,
   type ResolvedPath,
-} from "./types.ts";
+} from "./types.js";
 
 function formatContextLine(path: string, lineNumber: number, line: string): string {
   return `${path}-${lineNumber}- ${truncateLine(line).text}`;

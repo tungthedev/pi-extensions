@@ -11,10 +11,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { loadBuiltinRoles } from "./roles-builtins.ts";
-import { resolveRoleSet } from "./roles-discovery.ts";
-import { parseMarkdownRole, serializeMarkdownRole } from "./roles-serializer.ts";
-import { deleteRole, renameRole, saveRole } from "./roles-storage.ts";
+import { loadBuiltinRoles } from "./roles-builtins.js";
+import { resolveRoleSet } from "./roles-discovery.js";
+import { parseMarkdownRole, serializeMarkdownRole } from "./roles-serializer.js";
+import { deleteRole, renameRole, saveRole } from "./roles-storage.js";
 
 function withTempHome(testBody: (root: string) => void | Promise<void>) {
   const root = mkdtempSync(path.join(tmpdir(), "subagent-roles-"));

@@ -10,9 +10,9 @@ import {
   truncateToWidth,
 } from "@mariozechner/pi-tui";
 
-import type { ManagerAction, PaletteActionContext, PaletteItem, PaletteView } from "../types.ts";
+import type { ManagerAction, PaletteActionContext, PaletteItem, PaletteView } from "../types.js";
 
-import { boxLine, makeBottom, makeTop, pad } from "./palette-render.ts";
+import { boxLine, makeBottom, makeTop, pad } from "./palette-render.js";
 
 const MAX_VISIBLE = 12;
 

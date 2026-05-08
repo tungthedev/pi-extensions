@@ -19,18 +19,18 @@ import {
   type WebToolSettingKey,
   type ToolSetChangedPayload,
   type ToolSetPack,
-} from "./config.ts";
+} from "./config.js";
 import {
   readEditorSettings,
   resolveEditorSettingsWritePath,
   writeEditorSettings,
   type EditorSettingsUpdate,
-} from "../editor/config.ts";
-import { EDITOR_SETTINGS_CHANGED_EVENT } from "../editor/events.ts";
+} from "../editor/config.js";
+import { EDITOR_SETTINGS_CHANGED_EVENT } from "../editor/events.js";
 import {
   applyLoadSkillsTransition,
   applySessionLoadSkillsTransition,
-} from "./load-skills-transition.ts";
+} from "./load-skills-transition.js";
 import {
   ensureSessionLoadSkillsSnapshot,
   ensureSessionToolSetSnapshot,
@@ -38,14 +38,15 @@ import {
   resolveSessionToolSet,
   writeSessionLoadSkillsSnapshot,
   writeSessionToolSetSnapshot,
-} from "./session.ts";
-import { applySessionToolSetTransition, applyToolSetTransition } from "./tool-set-transition.ts";
+} from "./session.js";
+import { applySessionToolSetTransition, applyToolSetTransition } from "./tool-set-transition.js";
 import {
   formatSystemMdPromptLabel,
   openPiModeSettingsUi,
   parseSettingsCommand,
   type SettingsUiSettings,
-} from "./ui.ts";
+} from "./ui.js";
+import { applyResolvedToolset } from "../shared/toolset-resolver.js";
 
 export type PiModeCommandDeps = {
   readSettings: () => Promise<SettingsUiSettings>;
@@ -253,7 +254,29 @@ export async function registerPiModeShortcut(
   });
 }
 
-export default function registerPiModeSettingsExtension(pi: ExtensionAPI) {
+export interface PiModeSettingsOptions {}
+
+export async function applyPiModeActiveTools(
+  pi: Pick<ExtensionAPI, "getAllTools" | "setActiveTools">,
+  ctx: Pick<ExtensionContext, "sessionManager">,
+): Promise<void> {
+  await applyResolvedToolset(pi, ctx.sessionManager);
+}
+
+export function registerPiToolsetController(pi: ExtensionAPI): void {
+  pi.on("session_start", async (_event, ctx) => {
+    await applyPiModeActiveTools(pi, ctx);
+  });
+
+  pi.on("before_agent_start", async (_event, ctx) => {
+    await applyPiModeActiveTools(pi, ctx);
+  });
+}
+
+export function registerPiModeSettingsExtension(
+  pi: ExtensionAPI,
+  _options: PiModeSettingsOptions = {},
+) {
   const deps = createDefaultDeps(pi);
 
   pi.on("session_start", async (_event, ctx) => {
@@ -261,6 +284,10 @@ export default function registerPiModeSettingsExtension(pi: ExtensionAPI) {
     await ensureSessionLoadSkillsSnapshot(pi, ctx.sessionManager);
   });
 
+  registerPiToolsetController(pi);
+
   registerPiModeCommand(pi, deps);
   void registerPiModeShortcut(pi, deps);
 }
+
+export default registerPiModeSettingsExtension;

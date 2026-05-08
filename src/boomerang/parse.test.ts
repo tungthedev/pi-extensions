@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { BranchSummaryMessageComponent, initTheme } from "@mariozechner/pi-coding-agent";
+import { BranchSummaryMessageComponent, ExtensionRunner, initTheme } from "@mariozechner/pi-coding-agent";
 
 import boomerangExtension, {
   extractRethrow,
   getEffectiveArgs,
   installBoomerangBranchSummaryRendererPatch,
   parseChain,
-} from "./index.ts";
+} from "./index.js";
 import {
   EDITOR_REMOVE_STATUS_SEGMENT_EVENT,
   EDITOR_SET_STATUS_SEGMENT_EVENT,
-} from "../editor/events.ts";
+} from "../editor/events.js";
 
 const BOOMERANG_ICON = String.fromCodePoint(0x1fa83);
 
@@ -363,6 +363,37 @@ test("auto-boomerang shortcut uses command navigation when available", async () 
   assert.equal(getNavigateTreeCalls(), 1);
   assert.equal(getBranchWithSummaryCalls(), 0);
   assert.equal(getReloadCalls(), 0);
+});
+
+test("boomerang context patch keeps command contexts writable", async () => {
+  const { commands } = createBoomerangHarness();
+  assert.ok(commands.has("boomerang"));
+
+  const runner = new ExtensionRunner([], {} as never, "/repo", {} as never, {} as never);
+  let navigateTreeCalls = 0;
+  let reloadCalls = 0;
+
+  runner.bindCommandContext({
+    waitForIdle: async () => {},
+    newSession: async () => ({ cancelled: false }),
+    fork: async () => ({ cancelled: false }),
+    navigateTree: async () => {
+      navigateTreeCalls += 1;
+      return { cancelled: false };
+    },
+    switchSession: async () => ({ cancelled: false }),
+    reload: async () => {
+      reloadCalls += 1;
+    },
+  });
+
+  const commandCtx = runner.createCommandContext();
+
+  await commandCtx.navigateTree("entry-1");
+  await commandCtx.reload();
+
+  assert.equal(navigateTreeCalls, 1);
+  assert.equal(reloadCalls, 1);
 });
 
 test("boomerang branch summary patch shows task in collapsed branch output", () => {

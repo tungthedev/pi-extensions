@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createLiveAttachment, resolveChildSessionDir } from "./attachment.ts";
+import { createLiveAttachment, resolveChildSessionDir } from "./attachment.js";
 
 test("resolveChildSessionDir stores child sessions under ~/.pi/subagents/sessions", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "subagent-home-"));

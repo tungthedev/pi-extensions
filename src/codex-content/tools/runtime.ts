@@ -1,1 +1,1 @@
-export * from "../../shared/runtime-paths.ts";
+export * from "../../shared/runtime-paths.js";

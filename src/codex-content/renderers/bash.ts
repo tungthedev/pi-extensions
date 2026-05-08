@@ -9,8 +9,8 @@ import {
   previewLines,
   stripExitCodeLines,
   summarizeCommand,
-} from "../shared/text.ts";
-import { detailLine, expandHintLine, renderLines, titleLine } from "./common.ts";
+} from "../shared/text.js";
+import { detailLine, expandHintLine, renderLines, titleLine } from "./common.js";
 
 const COLLAPSED_BODY_LINE_COUNT = 5;
 const EXPANDED_BODY_LINE_COUNT = 12;

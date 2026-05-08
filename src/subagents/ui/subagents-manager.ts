@@ -1,11 +1,11 @@
 import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 
-import { notifyLegacyRoleWarnings } from "../subagents/legacy-role-warnings.ts";
-import { resolveRoleSet } from "../subagents/roles-discovery.ts";
-import { deleteRole, renameRole, saveRole } from "../subagents/roles-storage.ts";
-import type { LayeredRoleRecord, RoleThinkingLevel } from "../subagents/roles-types.ts";
-import { renderDetail, handleDetailInput, type SubagentsDetailState } from "./subagents-detail.ts";
+import { notifyLegacyRoleWarnings } from "../subagents/legacy-role-warnings.js";
+import { resolveRoleSet } from "../subagents/roles-discovery.js";
+import { deleteRole, renameRole, saveRole } from "../subagents/roles-storage.js";
+import type { LayeredRoleRecord, RoleThinkingLevel } from "../subagents/roles-types.js";
+import { renderDetail, handleDetailInput, type SubagentsDetailState } from "./subagents-detail.js";
 import {
   buildListEntries,
   buildRoleKey,
@@ -13,7 +13,7 @@ import {
   renderList,
   type SubagentsListEntry,
   type SubagentsListState,
-} from "./subagents-list.ts";
+} from "./subagents-list.js";
 import {
   DEFAULT_MODEL_HINT,
   MANUAL_MODEL_HINT,
@@ -24,7 +24,7 @@ import {
   validateManualModelInput,
   type ModelOption,
   type ThinkingLevel,
-} from "./subagents-edit.ts";
+} from "./subagents-edit.js";
 import {
   createEditorState,
   ensureCursorVisible,
@@ -33,7 +33,7 @@ import {
   renderEditor,
   wrapText,
   type TextEditorState,
-} from "./text-editor.ts";
+} from "./text-editor.js";
 
 const MAIN_PROMPT_VIEWPORT = 8;
 const MODEL_SUGGESTION_VIEWPORT = 6;

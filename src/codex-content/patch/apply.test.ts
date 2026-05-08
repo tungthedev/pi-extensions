@@ -6,7 +6,7 @@ import test from "node:test";
 
 import { withFileMutationQueue } from "@mariozechner/pi-coding-agent";
 
-import { ApplyPatchError, applyPatch } from "../apply-patch.ts";
+import { ApplyPatchError, applyPatch } from "../apply-patch.js";
 
 async function withTempDir(run: (dir: string) => Promise<void>) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "codex-apply-patch-"));

@@ -1,1 +1,1 @@
-export { StackPalette } from "./ui/stack-palette.ts";
+export { StackPalette } from "./ui/stack-palette.js";

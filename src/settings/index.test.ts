@@ -2,16 +2,103 @@ import { initTheme } from "@mariozechner/pi-coding-agent";
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { handlePiModeCommand, registerPiModeShortcut, type PiModeCommandDeps } from "./index.ts";
-import { TOOL_SET_OVERRIDE_ENV } from "./session.ts";
-import { applyToolSetTransition } from "./tool-set-transition.ts";
-import { openPiModeSettingsUi } from "./ui.ts";
+import {
+  handlePiModeCommand,
+  registerPiModeSettingsExtension,
+  registerPiModeShortcut,
+  type PiModeCommandDeps,
+} from "./index.js";
+import { TOOL_SET_OVERRIDE_ENV } from "./session.js";
+import { applyToolSetTransition } from "./tool-set-transition.js";
+import { openPiModeSettingsUi } from "./ui.js";
 
 initTheme("dark");
+
+const TOOL_INFOS = [
+  { name: "read", description: "custom read" },
+  { name: "grep", description: "builtin grep" },
+  { name: "find", description: "builtin find" },
+  { name: "ls", description: "builtin ls" },
+  { name: "edit", description: "builtin edit" },
+  { name: "write", description: "builtin write" },
+  { name: "bash", description: "builtin bash" },
+  { name: "shell", description: "compat shell" },
+  { name: "WebSearch", description: "web search" },
+  { name: "WebSummary", description: "web summary" },
+  { name: "FetchUrl", description: "fetch" },
+  { name: "skill", description: "skill" },
+  { name: "update_plan", description: "codex" },
+  { name: "read_plan", description: "codex" },
+  { name: "request_user_input", description: "codex" },
+  { name: "list_dir", description: "codex" },
+  { name: "find_files", description: "codex" },
+  { name: "grep_files", description: "codex" },
+  { name: "apply_patch", description: "codex" },
+  { name: "view_image", description: "codex" },
+  { name: "spawn_agent", description: "subagent codex" },
+  { name: "send_message", description: "subagent codex" },
+  { name: "wait_agent", description: "subagent codex" },
+  { name: "list_agents", description: "subagent codex" },
+  { name: "close_agent", description: "subagent codex" },
+  { name: "mcp__vesper__vesper_execute", description: "host tool" },
+];
 
 function flushMicrotasks(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
+
+test("registerPiModeSettingsExtension owns active tool resolution on session start", async () => {
+  const handlers = new Map<string, Function>();
+  let activeTools: string[] | undefined;
+
+  registerPiModeSettingsExtension({
+    appendEntry() {},
+    events: {
+      emit() {},
+    },
+    getAllTools() {
+      return TOOL_INFOS;
+    },
+    on(event: string, handler: Function) {
+      handlers.set(event, handler);
+    },
+    registerCommand() {},
+    registerShortcut() {},
+    setActiveTools(value: string[]) {
+      activeTools = value;
+    },
+  } as never);
+
+  await handlers.get("session_start")?.(undefined, {
+    sessionManager: {
+      getBranch() {
+        return [{ type: "custom", customType: "pi-mode:tool-set", data: { toolSet: "codex" } }];
+      },
+    },
+  });
+
+  assert.deepEqual(activeTools, [
+    "shell",
+    "read",
+    "WebSearch",
+    "WebSummary",
+    "FetchUrl",
+    "skill",
+    "update_plan",
+    "read_plan",
+    "request_user_input",
+    "list_dir",
+    "find_files",
+    "grep_files",
+    "apply_patch",
+    "view_image",
+    "spawn_agent",
+    "send_message",
+    "wait_agent",
+    "list_agents",
+    "close_agent",
+  ]);
+});
 
 test("handlePiModeCommand writes the selected tool set directly", async () => {
   const writes: Array<"pi" | "codex" | "droid"> = [];

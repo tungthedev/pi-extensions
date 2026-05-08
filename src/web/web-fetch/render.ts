@@ -3,10 +3,10 @@ import type { AgentToolResult, Theme } from "@mariozechner/pi-coding-agent";
 import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Text } from "@mariozechner/pi-tui";
 
-import type { WebFetchProvider } from "./index.ts";
+import type { WebFetchProvider } from "./index.js";
 
-import { expandHintLine, renderEmptySlot, renderLines } from "../../shared/renderers/common.ts";
-import { firstText, previewLines } from "../../shared/text.ts";
+import { expandHintLine, renderEmptySlot, renderLines } from "../../shared/renderers/common.js";
+import { firstText, previewLines } from "../../shared/text.js";
 
 export type FetchUrlDetails = {
   provider?: WebFetchProvider;

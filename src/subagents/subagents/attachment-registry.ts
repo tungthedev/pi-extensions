@@ -1,4 +1,4 @@
-import type { DurableChildRecord, LiveChildAttachment } from "./types.ts";
+import type { DurableChildRecord, LiveChildAttachment } from "./types.js";
 
 export function createAttachmentRegistry() {
   const durableChildrenById = new Map<string, DurableChildRecord>();

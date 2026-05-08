@@ -1,6 +1,6 @@
 import { rename } from "node:fs/promises";
 
-import type { LocalExtensionEntry, State } from "../types.ts";
+import type { LocalExtensionEntry, State } from "../types.js";
 
 export async function setLocalExtensionState(
   entry: Pick<LocalExtensionEntry, "activePath" | "disabledPath">,

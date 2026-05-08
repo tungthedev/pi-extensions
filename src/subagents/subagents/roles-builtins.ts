@@ -1,7 +1,7 @@
 import fs from "node:fs";
 
-import { parseMarkdownRole } from "./roles-serializer.ts";
-import type { MarkdownRole } from "./roles-types.ts";
+import { parseMarkdownRole } from "./roles-serializer.js";
+import type { MarkdownRole } from "./roles-types.js";
 
 export const BUILTIN_ROLE_NAMES = [
   "default",

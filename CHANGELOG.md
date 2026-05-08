@@ -2,6 +2,16 @@
 
 All notable changes to `@tungthedev/pi-extensions` will be documented in this file.
 
+## Unreleased
+
+### Added
+
+- Added compiled library exports to use with Pi SDK programatically.
+
+### Fixed
+
+- Fixed `/boomerang` failed to start
+
 ## [2.5.0] - 2026-05-06
 
 ### Added

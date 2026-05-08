@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createSubagentLifecycleService } from "./lifecycle-service.ts";
-import { SUBAGENT_ENTRY_TYPES } from "./types.ts";
-import type { AgentSnapshot, DurableChildRecord, LiveChildAttachment } from "./types.ts";
+import { createSubagentLifecycleService } from "./lifecycle-service.js";
+import { SUBAGENT_ENTRY_TYPES } from "./types.js";
+import type { AgentSnapshot, DurableChildRecord, LiveChildAttachment } from "./types.js";
 
 function withTempHome(testBody: (root: string) => void | Promise<void>) {
   const root = mkdtempSync(path.join(tmpdir(), "subagent-lifecycle-"));

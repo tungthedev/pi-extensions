@@ -1,6 +1,6 @@
 import { isKeyRelease, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import { matchesConfiguredShortcut } from "./shortcuts.ts";
-import type { FixedEditorClusterRender } from "./cluster.ts";
+import { matchesConfiguredShortcut } from "./shortcuts.js";
+import type { FixedEditorClusterRender } from "./cluster.js";
 
 // oxlint-disable no-control-regex
 

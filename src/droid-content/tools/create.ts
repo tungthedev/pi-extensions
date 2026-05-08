@@ -6,7 +6,7 @@ import { Type } from "typebox";
 import {
   buildHiddenCollapsedRenderer,
   formatWriteCallDetail,
-} from "../../shared/renderers/tool-renderers.ts";
+} from "../../shared/renderers/tool-renderers.js";
 
 const DROID_CREATE_DESCRIPTION =
   "Creates a new file on the file system with the specified content. Prefer editing existing files, unless you need to create a new file.";

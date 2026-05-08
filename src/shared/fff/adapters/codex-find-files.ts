@@ -1,14 +1,14 @@
 import type { FindToolInput } from "@mariozechner/pi-coding-agent";
 
-import { FinderOperationError, RuntimeInitializationError } from "../errors.ts";
-import { shouldUseLegacyCodexFind } from "../query-classifier.ts";
+import { FinderOperationError, RuntimeInitializationError } from "../errors.js";
+import { shouldUseLegacyCodexFind } from "../query-classifier.js";
 import {
   buildScopedDiscoveryQuery,
   formatAbsolutePathList,
   getFffRuntime,
   resolveAdapterPath,
   type FffAdapterContext,
-} from "./common.ts";
+} from "./common.js";
 
 type FindFilesParams = FindToolInput & { offset?: number };
 export async function executeCodexFindFilesWithFff(
