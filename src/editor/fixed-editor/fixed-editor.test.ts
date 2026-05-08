@@ -900,6 +900,47 @@ test("terminal split selection does not expose OSC control sequences as text", (
   compositor.dispose();
 });
 
+test("terminal split selection preserves OSC 8 hyperlink labels", () => {
+  const terminal = new FakeTerminal();
+  terminal.columns = 80;
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const copied: string[] = [];
+  const linkLine = "open \x1b]8;;file:///tmp/terminal-split.ts\x1b\\terminal-split.ts\x1b]8;;\x1b\\ now";
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return ["old-0", "old-1", "old-2", "old-3", "old-4", "old-5", "old-6", "old-7", "old-8", linkLine];
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    onCopySelection: (text) => copied.push(text),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(80);
+
+  assert.deepEqual(inputListener?.("\x1b[<0;1;10M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<32;30;10M"), { consume: true });
+  const selectedLine = tui.render(80).at(-1) ?? "";
+  assert.ok(selectedLine.includes("\x1b[7mopen terminal-split.ts now\x1b[27m"));
+  assert.doesNotMatch(selectedLine, /\]8;;/);
+  assert.deepEqual(inputListener?.("\x1b[<0;30;10m"), { consume: true });
+  assert.deepEqual(copied, ["open terminal-split.ts now"]);
+
+  compositor.dispose();
+});
+
 test("terminal split selection highlighting does not duplicate wide glyphs", () => {
   for (const glyph of ["🪃", "👨‍👩‍👧‍👦"]) {
     const terminal = new FakeTerminal();

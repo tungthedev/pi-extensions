@@ -228,7 +228,7 @@ function isMouseRelease(packet: SgrMousePacket): boolean {
 }
 
 function stripOscSequences(line: string): string {
-  return line.replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "");
+  return line.replace(/\x1b\](?:(?!\x07|\x1b\\).)*(?:\x07|\x1b\\)/g, "");
 }
 
 function stripAnsi(line: string): string {
