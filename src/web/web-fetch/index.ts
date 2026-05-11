@@ -6,15 +6,16 @@ import { renderToolCall } from "../../shared/renderers/common.js";
 import { shortenText } from "../../shared/text.js";
 import { wrapUntrustedWebContent } from "../web-search/gemini.js";
 import { hasCloudflareConfig, runCloudflareFetch } from "./providers/cloudflare.js";
+import { runDirectFetch } from "./providers/direct.js";
 import { hasFirecrawlConfig, runFirecrawlFetch } from "./providers/firecrawl.js";
 import { formatFetchUrlError, renderFetchUrlResult } from "./render.js";
 
-export type WebFetchProvider = "cloudflare" | "firecrawl" | "unavailable";
+export type WebFetchProvider = "cloudflare" | "firecrawl" | "direct" | "unavailable";
 
 export function resolveWebFetchProvider(): WebFetchProvider {
   if (hasCloudflareConfig()) return "cloudflare";
   if (hasFirecrawlConfig()) return "firecrawl";
-  return "unavailable";
+  return "direct";
 }
 
 function isIpv6Loopback(hostname: string): boolean {
@@ -169,13 +170,30 @@ DO NOT use this tool for:
           };
         }
 
-        return formatFetchUrlError(
-          "No web fetch provider is configured. Set Cloudflare or Firecrawl credentials.",
-          {
-            provider,
-            subject: url,
-          },
-        );
+        if (provider === "direct") {
+          const result = await runDirectFetch(url, signal);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: wrapUntrustedWebContent(result.markdown, "web_fetch"),
+              },
+            ],
+            details: {
+              provider,
+              subject: result.url,
+              title: result.title,
+              statusCode: result.statusCode,
+              render_markdown: result.markdown,
+              preview_text: result.markdown,
+            },
+          };
+        }
+
+        return formatFetchUrlError("No web fetch provider is available.", {
+          provider,
+          subject: url,
+        });
       } catch (error) {
         return formatFetchUrlError(error instanceof Error ? error.message : String(error), {
           provider,

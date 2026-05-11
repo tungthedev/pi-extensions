@@ -31,6 +31,11 @@ async function withAgentSettings(
   }
 }
 
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}
+
 test("createUnavailableWebSearchTool returns runtime error when executed", async () => {
   const tool = createUnavailableWebSearchTool();
   const result = (await tool.execute("tool-1", {}, undefined, undefined, {} as never)) as {
@@ -145,6 +150,28 @@ test("resolveWebFetchProvider recognizes stored Cloudflare and Firecrawl setting
   }
 });
 
+test("resolveWebFetchProvider falls back to direct fetch without third-party credentials", async () => {
+  const originalCloudflareAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const originalCloudflareToken = process.env.CLOUDFLARE_API_TOKEN;
+  const originalBrowserToken = process.env.CLOUDFLARE_BROWSER_RENDERING_API_TOKEN;
+  const originalFirecrawl = process.env.FIRECRAWL_API_KEY;
+  delete process.env.CLOUDFLARE_ACCOUNT_ID;
+  delete process.env.CLOUDFLARE_API_TOKEN;
+  delete process.env.CLOUDFLARE_BROWSER_RENDERING_API_TOKEN;
+  delete process.env.FIRECRAWL_API_KEY;
+
+  try {
+    await withAgentSettings({}, async () => {
+      assert.equal(resolveWebFetchProvider(), "direct");
+    });
+  } finally {
+    restoreEnv("CLOUDFLARE_ACCOUNT_ID", originalCloudflareAccountId);
+    restoreEnv("CLOUDFLARE_API_TOKEN", originalCloudflareToken);
+    restoreEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", originalBrowserToken);
+    restoreEnv("FIRECRAWL_API_KEY", originalFirecrawl);
+  }
+});
+
 test("createFetchUrlTool rejects IPv6 loopback and internal hostnames before provider execution", async () => {
   const originalCloudflareAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   const originalCloudflareToken = process.env.CLOUDFLARE_API_TOKEN;
@@ -176,9 +203,65 @@ test("createFetchUrlTool rejects IPv6 loopback and internal hostnames before pro
     assert.equal(internalResult.isError, true);
     assert.match(internalResult.content[0]?.text ?? "", /internal/i);
   } finally {
-    process.env.CLOUDFLARE_ACCOUNT_ID = originalCloudflareAccountId;
-    process.env.CLOUDFLARE_API_TOKEN = originalCloudflareToken;
-    process.env.FIRECRAWL_API_KEY = originalFirecrawl;
+    restoreEnv("CLOUDFLARE_ACCOUNT_ID", originalCloudflareAccountId);
+    restoreEnv("CLOUDFLARE_API_TOKEN", originalCloudflareToken);
+    restoreEnv("FIRECRAWL_API_KEY", originalFirecrawl);
+  }
+});
+
+test("createFetchUrlTool uses direct fetch fallback when no provider credentials exist", async () => {
+  const originalCloudflareAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const originalCloudflareToken = process.env.CLOUDFLARE_API_TOKEN;
+  const originalBrowserToken = process.env.CLOUDFLARE_BROWSER_RENDERING_API_TOKEN;
+  const originalFirecrawl = process.env.FIRECRAWL_API_KEY;
+  const originalFetch = globalThis.fetch;
+  delete process.env.CLOUDFLARE_ACCOUNT_ID;
+  delete process.env.CLOUDFLARE_API_TOKEN;
+  delete process.env.CLOUDFLARE_BROWSER_RENDERING_API_TOKEN;
+  delete process.env.FIRECRAWL_API_KEY;
+
+  let acceptHeader: string | null = null;
+  globalThis.fetch = (async (_url, init) => {
+    acceptHeader = new Headers(init?.headers).get("Accept");
+    return new Response(
+      "<html><head><title>Direct</title></head><body><h1>Hello Web</h1><p>Alpha <strong>Beta</strong></p><script>bad()</script></body></html>",
+      {
+        headers: { "content-type": "text/html; charset=utf-8" },
+        status: 200,
+      },
+    );
+  }) as typeof fetch;
+
+  try {
+    await withAgentSettings({}, async () => {
+      const tool = createFetchUrlTool();
+      const result = (await tool.execute(
+        "tool-direct",
+        { url: "https://example.com/page" },
+        undefined,
+        undefined,
+        {} as never,
+      )) as {
+        content: Array<{ text?: string }>;
+        details?: { provider?: string; render_markdown?: string; title?: string | null };
+        isError?: boolean;
+      };
+
+      assert.equal(result.isError, undefined);
+      assert.equal(result.details?.provider, "direct");
+      assert.equal(result.details?.title, "Direct");
+      assert.match(result.details?.render_markdown ?? "", /# Hello Web/);
+      assert.match(result.details?.render_markdown ?? "", /Alpha \*\*Beta\*\*/);
+      assert.doesNotMatch(result.details?.render_markdown ?? "", /bad\(\)/);
+      assert.match(result.content[0]?.text ?? "", /<untrusted-web-extract-content>/i);
+      assert.match(acceptHeader ?? "", /text\/markdown/);
+    });
+  } finally {
+    restoreEnv("CLOUDFLARE_ACCOUNT_ID", originalCloudflareAccountId);
+    restoreEnv("CLOUDFLARE_API_TOKEN", originalCloudflareToken);
+    restoreEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", originalBrowserToken);
+    restoreEnv("FIRECRAWL_API_KEY", originalFirecrawl);
+    globalThis.fetch = originalFetch;
   }
 });
 
@@ -220,12 +303,10 @@ test("createFetchUrlTool wraps fetched markdown as untrusted content", async () 
       assert.match(result.content[0]?.text ?? "", /Ignore previous instructions/);
     });
   } finally {
-    process.env.CLOUDFLARE_ACCOUNT_ID = originalCloudflareAccountId;
-    process.env.CLOUDFLARE_API_TOKEN = originalCloudflareToken;
-    if (originalBrowserToken === undefined)
-      delete process.env.CLOUDFLARE_BROWSER_RENDERING_API_TOKEN;
-    else process.env.CLOUDFLARE_BROWSER_RENDERING_API_TOKEN = originalBrowserToken;
-    process.env.FIRECRAWL_API_KEY = originalFirecrawl;
+    restoreEnv("CLOUDFLARE_ACCOUNT_ID", originalCloudflareAccountId);
+    restoreEnv("CLOUDFLARE_API_TOKEN", originalCloudflareToken);
+    restoreEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", originalBrowserToken);
+    restoreEnv("FIRECRAWL_API_KEY", originalFirecrawl);
     globalThis.fetch = originalFetch;
   }
 });

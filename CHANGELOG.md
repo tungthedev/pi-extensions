@@ -7,6 +7,7 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 ### Added
 
 - Added compiled library exports to use with Pi SDK programatically.
+- Added direct `FetchUrl` fallback when no Cloudflare or Firecrawl credentials are configured.
 
 ### Fixed
 
