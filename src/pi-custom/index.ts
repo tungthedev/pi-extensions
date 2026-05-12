@@ -14,7 +14,6 @@ import {
 import { Box, Container, Text, type Component } from "@earendil-works/pi-tui";
 
 import { executePiFindWithFff } from "../shared/fff/adapters/pi-find.js";
-import { syncEarendilWorksTheme } from "../shared/pi-sdk-theme.js";
 import { executePiGrepWithFff } from "../shared/fff/adapters/pi-grep.js";
 import { resolveReadToolInput } from "../shared/fff/adapters/read.js";
 import {
@@ -233,7 +232,6 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
       return box;
     },
     renderResult(result, options, theme, context) {
-      syncEarendilWorksTheme(theme);
       const state = getReadRenderState(context as { state?: Record<string, unknown> });
       const box = getReadRenderBox(context as { state?: Record<string, unknown> });
       let resultComponent = readRenderer.renderResult(result, options, theme, {
@@ -264,7 +262,6 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
       return writeRenderer.renderCall(args as Record<string, unknown>, theme);
     },
     renderResult(result, options, theme, context) {
-      syncEarendilWorksTheme(theme);
       return writeRenderer.renderResult(result, options, theme, context);
     },
   });
@@ -277,7 +274,6 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
       return editRenderer.renderCall(args as Record<string, unknown>, theme);
     },
     renderResult(result, options, theme, context) {
-      syncEarendilWorksTheme(theme);
       return editRenderer.renderResult(result, options, theme, context);
     },
   });
@@ -303,7 +299,6 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
       );
     },
     renderResult(result, options, theme, context) {
-      syncEarendilWorksTheme(theme);
       return findRenderer.renderResult(result, options, theme, context);
     },
   });
@@ -326,7 +321,6 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
       return grepRenderer.renderCall(args as Record<string, unknown>, theme, context as never);
     },
     renderResult(result, options, theme, context) {
-      syncEarendilWorksTheme(theme);
       return grepRenderer.renderResult(result, options, theme, context);
     },
   });
@@ -340,7 +334,6 @@ export default function registerPiCustomExtension(pi: ExtensionAPI): void {
       return listRenderer.renderCall(args as Record<string, unknown>, theme, context as never);
     },
     renderResult(result, options, theme, context) {
-      syncEarendilWorksTheme(theme);
       return listRenderer.renderResult(result, options, theme, context);
     },
   });

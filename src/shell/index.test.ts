@@ -79,57 +79,6 @@ test("shell renderer keeps bash-style compact rendering for partial args and res
 
 
 
-test("shell renderer uses passed runtime theme without an SDK theme singleton", () => {
-  const themeKey = Symbol.for("@earendil-works/pi-coding-agent:theme");
-  const globalTheme = globalThis as Record<symbol, unknown>;
-  const previousTheme = globalTheme[themeKey];
-  const runtimeTheme = {
-    fg: (_name: string, value: string) => value,
-    bg: (_name: string, value: string) => value,
-    bold: (value: string) => value,
-  };
-
-  try {
-    delete globalTheme[themeKey];
-
-    const tool = createShellToolDefinition();
-    const state = {};
-    const call = tool.renderCall({ command: "pwd" }, runtimeTheme, {
-      state,
-      lastComponent: undefined,
-      executionStarted: true,
-    });
-
-    assert.deepEqual(visibleLines(call.render(120)), ["$ pwd"]);
-
-    const result = tool.renderResult(
-      {
-        content: [{ type: "text", text: `${process.cwd()}\n` }],
-        details: { command: "pwd", workdir: process.cwd(), exitCode: 0 },
-      },
-      { expanded: false, isPartial: false },
-      runtimeTheme,
-      {
-        state,
-        lastComponent: undefined,
-        executionStarted: true,
-        isError: false,
-        showImages: true,
-        invalidate() {},
-      },
-    );
-
-    const rendered = visibleLines(result.render(120));
-    assert.equal(rendered.some((line) => line === process.cwd()), true);
-  } finally {
-    if (previousTheme === undefined) {
-      delete globalTheme[themeKey];
-    } else {
-      globalTheme[themeKey] = previousTheme;
-    }
-  }
-});
-
 test("shell execute keeps public details while renderer receives native bash shape", async () => {
   const tool = createShellToolDefinition();
   const updates: Array<{ content: Array<{ type: "text"; text: string }>; details: unknown }> = [];

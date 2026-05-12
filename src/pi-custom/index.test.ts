@@ -586,56 +586,6 @@ test("read uses a self-rendered Box shell without background fill", () => {
 
 
 
-test("read renderer bridges runtime theme for delegated native syntax highlighting", () => {
-  const themeKey = Symbol.for("@earendil-works/pi-coding-agent:theme");
-  const globalTheme = globalThis as Record<symbol, unknown>;
-  const previousTheme = globalTheme[themeKey];
-  const runtimeTheme = {
-    fg: (_name: string, value: string) => value,
-    bg: (_name: string, value: string) => value,
-    bold: (value: string) => value,
-  } as any;
-
-  try {
-    delete globalTheme[themeKey];
-
-    const tools = captureTools();
-    const tool = tools.read;
-    const state: Record<string, unknown> = {};
-    const call = tool.renderCall({ path: "src/a.ts" }, runtimeTheme, {
-      state,
-      lastComponent: undefined,
-    } as never);
-
-    assert.doesNotThrow(() =>
-      tool.renderResult(
-        { content: [{ type: "text", text: "const value = 1;\n" }] },
-        { expanded: true, isPartial: false },
-        runtimeTheme,
-        {
-          state,
-          args: { path: "src/a.ts" },
-          isError: false,
-          lastComponent: undefined,
-          showImages: true,
-          cwd: process.cwd(),
-        } as never,
-      ),
-    );
-
-    assert.equal(
-      trimRenderedLines(call.render(120)).some((line) => line.includes("const value = 1;")),
-      true,
-    );
-  } finally {
-    if (previousTheme === undefined) {
-      delete globalTheme[themeKey];
-    } else {
-      globalTheme[themeKey] = previousTheme;
-    }
-  }
-});
-
 test("read reuses the native result component instead of the self-shell empty slot", () => {
   const tools = captureTools();
   const tool = tools.read;

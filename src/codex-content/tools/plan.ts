@@ -1,12 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { registerTodoTools } from "../../todos/index.js";
-import { registerRequestUserInputTool } from "./request-user-input.js";
-import { CODEX_WORKFLOW_TOOL_NAMES } from "./types.js";
 
-export { CODEX_WORKFLOW_TOOL_NAMES };
-
-export function registerCodexWorkflowTools(pi: ExtensionAPI) {
+export function registerCodexPlanTools(pi: ExtensionAPI) {
   registerTodoTools(pi, {
     writeToolName: "update_plan",
     readToolName: "read_plan",
@@ -26,6 +22,4 @@ export function registerCodexWorkflowTools(pi: ExtensionAPI) {
     widgetKey: "codex-content:plan",
     statusKey: "codex-content:plan",
   });
-
-  registerRequestUserInputTool(pi);
 }

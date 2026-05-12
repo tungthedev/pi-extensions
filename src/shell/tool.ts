@@ -13,7 +13,6 @@ import { createWriteStream, type WriteStream } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { syncEarendilWorksTheme } from "../shared/pi-sdk-theme.js";
 import { resolveAbsolutePath } from "../shared/runtime-paths.js";
 import {
   executeShellCommand,
@@ -351,7 +350,6 @@ export function createShellToolDefinition() {
       }
     },
     renderCall(args: ShellParams | undefined, theme: any, context: any) {
-      syncEarendilWorksTheme(theme);
       return nativeBashTool.renderCall!(
         {
           command: args?.command ?? "",
@@ -362,7 +360,6 @@ export function createShellToolDefinition() {
       );
     },
     renderResult(result: any, options: any, theme: any, context: any) {
-      syncEarendilWorksTheme(theme);
       return nativeBashTool.renderResult!(
         toNativeBashResult(result as AgentToolResult<ShellToolDetails | BashToolDetails | undefined>),
         options,
