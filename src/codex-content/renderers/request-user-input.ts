@@ -1,7 +1,7 @@
 import type { AgentToolResult, Theme } from "@earendil-works/pi-coding-agent";
 import type { Text } from "@earendil-works/pi-tui";
 
-import type { RequestAnswer, RequestUserInputDetails } from "../workflow/types.js";
+import type { RequestAnswer, RequestUserInputDetails } from "../../ask-user/types.js";
 
 import { firstLine, firstText, shortenText } from "../shared/text.js";
 import { detailLine, expandHintLine, renderLines, titleLine } from "./common.js";

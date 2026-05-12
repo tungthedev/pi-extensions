@@ -1,4 +1,7 @@
-import type { AgentToolResult, ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+  AgentToolResult,
+  ExtensionAPI,
+} from "@earendil-works/pi-coding-agent";
 
 import { Type } from "typebox";
 
@@ -29,7 +32,9 @@ export function registerApplyPatchTool(pi: ExtensionAPI): void {
     description:
       "Use the apply_patch tool to edit files. Provide raw patch text, a heredoc body, or a simple apply_patch heredoc invocation in the input field.",
     parameters: Type.Object({
-      input: Type.String({ description: "Patch text or a simple apply_patch heredoc invocation." }),
+      input: Type.String({
+        description: "Patch text or a simple apply_patch heredoc invocation.",
+      }),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       try {

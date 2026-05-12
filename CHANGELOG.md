@@ -4,6 +4,8 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 
 ## Unreleased
 
+## [2.6.0] - 2026-05-12
+
 ### Added
 
 - Added compiled library exports to use with Pi SDK programatically.

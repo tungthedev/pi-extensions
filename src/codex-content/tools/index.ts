@@ -10,7 +10,7 @@ import { registerRequestUserInputTool } from "./request-user-input.js";
 
 export function registerCodexCompatibilityTools(pi: ExtensionAPI) {
   registerCodexPlanTools(pi);
-  registerRequestUserInputTool(pi)
+  registerRequestUserInputTool(pi);
 
   registerListDirTool(pi);
   registerFindFilesTool(pi);
@@ -20,14 +20,11 @@ export function registerCodexCompatibilityTools(pi: ExtensionAPI) {
 }
 
 export {
-  formatListDirectoryOutput,
-  listDirectoryEntries,
-  scanDirectoryEntries,
-} from "./list-dir.js";
-export { findMatchingFiles, formatFindFilesOutput } from "./find-files.js";
-export { findContentMatches, formatGrepFilesOutput } from "./grep-files.js";
-export {
-  execCommand,
-  resolveAbsolutePath,
-  resolveAbsolutePathWithVariants,
-} from "./runtime.js";
+  registerCodexPlanTools,
+  registerRequestUserInputTool,
+  registerListDirTool,
+  registerFindFilesTool,
+  registerGrepFilesTool,
+  registerApplyPatchTool,
+  registerViewImageTool,
+};

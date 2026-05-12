@@ -19,4 +19,6 @@ export function registerCodexContentExtension(
 }
 
 export default registerCodexContentExtension;
-export { registerCodexSystemPrompt, registerCodexCompatibilityTools }
+
+export { registerCodexSystemPrompt };
+export * from "./tools/index.js";
