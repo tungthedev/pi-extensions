@@ -1,4 +1,4 @@
-import type { FindToolInput } from "@mariozechner/pi-coding-agent";
+import type { FindToolInput } from "@earendil-works/pi-coding-agent";
 
 import { FinderOperationError, RuntimeInitializationError } from "../errors.js";
 import { shouldUseLegacyPiFind } from "../query-classifier.js";

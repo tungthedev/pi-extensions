@@ -1,5 +1,5 @@
-import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import { matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 
 import { notifyLegacyRoleWarnings } from "../subagents/legacy-role-warnings.js";
 import { resolveRoleSet } from "../subagents/roles-discovery.js";

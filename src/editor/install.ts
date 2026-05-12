@@ -3,11 +3,11 @@ import type {
   ExtensionContext,
   KeybindingsManager,
   Theme,
-} from "@mariozechner/pi-coding-agent";
-import type { AutocompleteProvider, EditorTheme, TUI } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import type { AutocompleteProvider, EditorTheme, TUI } from "@earendil-works/pi-tui";
 
-import { CustomEditor, copyToClipboard } from "@mariozechner/pi-coding-agent";
-import { isKeyRelease, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { CustomEditor, copyToClipboard } from "@earendil-works/pi-coding-agent";
+import { isKeyRelease, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { execFileSync } from "node:child_process";
 
 import { ensureSessionFffRuntime, resolveSessionFffRuntimeKey } from "../fff/session-runtime.js";

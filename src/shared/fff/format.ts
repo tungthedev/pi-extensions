@@ -1,4 +1,4 @@
-import { truncateHead, truncateLine, type TruncationResult } from "@mariozechner/pi-coding-agent";
+import { truncateHead, truncateLine, type TruncationResult } from "@earendil-works/pi-coding-agent";
 
 import {
   CROPPED_MATCH_LINE_WIDTH,

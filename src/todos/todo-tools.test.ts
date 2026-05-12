@@ -1,4 +1,4 @@
-import { Box } from "@mariozechner/pi-tui";
+import { Box } from "@earendil-works/pi-tui";
 import assert from "node:assert/strict";
 import test from "node:test";
 

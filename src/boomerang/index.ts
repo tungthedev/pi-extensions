@@ -7,8 +7,8 @@
  * Usage: /boomerang <task>
  */
 
-import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { AssistantMessage, Model } from "@earendil-works/pi-ai";
 
 import {
   BranchSummaryMessageComponent,
@@ -19,7 +19,7 @@ import {
   type SessionEntry,
   type SessionManager,
   keyText,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";

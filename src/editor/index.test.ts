@@ -1,6 +1,6 @@
-import type { AutocompleteProvider } from "@mariozechner/pi-tui";
+import type { AutocompleteProvider } from "@earendil-works/pi-tui";
 
-import { visibleWidth } from "@mariozechner/pi-tui";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { Result } from "better-result";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";

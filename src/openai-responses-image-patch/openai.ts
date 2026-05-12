@@ -1,8 +1,8 @@
-// Vendored from @mariozechner/pi-ai 0.70.0 openai-responses provider because
+// Vendored from @earendil-works/pi-ai 0.70.0 openai-responses provider because
 // openai-responses-shared.js is not exported as a public package subpath.
 import crypto from "node:crypto";
 
-import { getEnvApiKey, type Context, type Model, type Tool, type Usage } from "@mariozechner/pi-ai";
+import { getEnvApiKey, type Context, type Model, type Tool, type Usage } from "@earendil-works/pi-ai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 
 import type { GeneratedImageContent } from "./types.js";

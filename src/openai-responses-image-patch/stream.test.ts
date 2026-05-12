@@ -1,4 +1,4 @@
-import type { Context, Model } from "@mariozechner/pi-ai";
+import type { Context, Model } from "@earendil-works/pi-ai";
 
 import { expect, test } from "bun:test";
 

@@ -1,6 +1,6 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { Box, Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
+import { Box, Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 
 import type { AgentSnapshot, PublicAgentSnapshot } from "./types.js";
 
@@ -11,7 +11,7 @@ import {
   titleLine,
   toolCallLine,
 } from "../../shared/renderers/common.js";
-import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
+import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import {
   CODEX_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,
   LEGACY_SUBAGENT_NOTIFICATION_CUSTOM_TYPE,

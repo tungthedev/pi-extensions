@@ -1,4 +1,4 @@
-import { matchesKey, type KeyId } from "@mariozechner/pi-tui";
+import { matchesKey, type KeyId } from "@earendil-works/pi-tui";
 
 // oxlint-disable no-control-regex
 

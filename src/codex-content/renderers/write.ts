@@ -1,5 +1,5 @@
-import type { AgentToolResult, Theme } from "@mariozechner/pi-coding-agent";
-import type { Text } from "@mariozechner/pi-tui";
+import type { AgentToolResult, Theme } from "@earendil-works/pi-coding-agent";
+import type { Text } from "@earendil-works/pi-tui";
 
 import { firstLine, firstText, isErrorText, shortenPath } from "../shared/text.js";
 import { accentSuffix, detailLine, renderLines, titleLine } from "./common.js";

@@ -1,4 +1,4 @@
-import { FileFinder } from "@ff-labs/fff-node";
+import type { FileFinder } from "@ff-labs/fff-node";
 import { Result } from "better-result";
 import { mkdir, stat } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
@@ -1060,9 +1060,16 @@ export class FffRuntime {
     });
     if (dbResult.isErr()) return propagateError(dbResult);
 
+    const fileFinderModule = await Result.tryPromise({
+      try: () => import("@ff-labs/fff-node"),
+      catch: (cause) =>
+        new RuntimeInitializationError({ cwd: this.cwd, step: "load file finder", cause }),
+    });
+    if (fileFinderModule.isErr()) return propagateError(fileFinderModule);
+
     const created = Result.try({
       try: () =>
-        FileFinder.create({
+        fileFinderModule.value.FileFinder.create({
           basePath: projectRoot,
           aiMode: true,
           frecencyDbPath: paths.frecencyDbPath,

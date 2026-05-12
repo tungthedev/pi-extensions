@@ -3,8 +3,8 @@ import {
   SessionManager,
   type ExtensionAPI,
   type SessionEntry,
-} from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import fs from "node:fs";
 import path from "node:path";
 

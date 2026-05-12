@@ -1,4 +1,4 @@
-import { Text } from "@mariozechner/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
 
 export function conciseResult(title: string, detail?: string) {
   return new Text(detail ? `${title} ${detail}` : title, 0, 0);

@@ -1,7 +1,7 @@
-import type { AgentToolResult, Theme } from "@mariozechner/pi-coding-agent";
+import type { AgentToolResult, Theme } from "@earendil-works/pi-coding-agent";
 
-import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
-import { Container, Markdown } from "@mariozechner/pi-tui";
+import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
+import { Container, Markdown } from "@earendil-works/pi-tui";
 
 import type { WebFetchProvider } from "./index.js";
 

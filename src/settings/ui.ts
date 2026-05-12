@@ -1,11 +1,11 @@
-import { getSettingsListTheme, type ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { getSettingsListTheme, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   Input,
   SettingsList,
   type Component,
   type SettingItem,
   wrapTextWithAnsi,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 
 import {
   DEFAULT_MODE_SHORTCUT,

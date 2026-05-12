@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { registerDroidSystemPrompt } from "./system-prompt.js";
 import { registerDroidEasyTools } from "./tools/index.js";

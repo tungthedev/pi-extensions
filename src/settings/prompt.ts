@@ -2,7 +2,7 @@ import type {
   BeforeAgentStartEvent,
   ExtensionAPI,
   ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 import { hasStructuredSkills } from "../shared/system-prompt-options.js";
 import { resolveSessionLoadSkills } from "./session.js";

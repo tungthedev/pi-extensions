@@ -15,7 +15,7 @@ const metadataFiles = [
   "src/metadata.ts",
 ];
 const forbiddenMetadataImport =
-  /@(mariozechner\/pi-|ff-labs\/fff-node)|openai|@google\/genai|pi-tui|\/index\.js"/;
+  /@((mariozechner|earendil-works)\/pi-|ff-labs\/fff-node)|openai|@google\/genai|pi-tui|\/index\.js"/;
 
 for (const file of metadataFiles) {
   const contents = await readFile(join(root, file), "utf8");

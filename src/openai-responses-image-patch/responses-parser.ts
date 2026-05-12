@@ -5,7 +5,7 @@ import {
   type AssistantMessageEventStream,
   type Model,
   type StopReason,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai";
 
 import type { GeneratedImageContent, ImageAwareParserOptions } from "./types.js";
 

@@ -2,8 +2,8 @@ import type {
   ExtensionAPI,
   ExtensionCommandContext,
   ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
-import type { KeyId } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import type { KeyId } from "@earendil-works/pi-tui";
 
 import {
   DEFAULT_MODE_SHORTCUT,

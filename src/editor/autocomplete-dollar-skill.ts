@@ -1,5 +1,5 @@
-import type { KeybindingsManager } from "@mariozechner/pi-coding-agent";
-import type { AutocompleteItem, AutocompleteProvider } from "@mariozechner/pi-tui";
+import type { KeybindingsManager } from "@earendil-works/pi-coding-agent";
+import type { AutocompleteItem, AutocompleteProvider } from "@earendil-works/pi-tui";
 
 const SHIFT_ENTER_SEQUENCES = new Set(["\u001b[13;2u", "\u001b[13;2~", "\u001b[27;2;13~"]);
 const DOLLAR_SKILL_PREFIX_PATTERN = /(?:^|[\s])(\$[a-zA-Z0-9._-]*)$/;

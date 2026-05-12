@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerDroidApplyPatchTool } from "./apply-patch.js";
 import { registerDroidAskUserTool } from "./ask-user.js";
 import { registerDroidCreateTool } from "./create.js";

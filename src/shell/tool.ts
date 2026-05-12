@@ -1,11 +1,11 @@
-import type { AgentToolResult, BashToolDetails, ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { AgentToolResult, BashToolDetails, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import {
   DEFAULT_MAX_BYTES,
   createBashToolDefinition,
   formatSize,
   truncateTail,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
@@ -13,6 +13,7 @@ import { createWriteStream, type WriteStream } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { syncEarendilWorksTheme } from "../shared/pi-sdk-theme.js";
 import { resolveAbsolutePath } from "../shared/runtime-paths.js";
 import {
   executeShellCommand,
@@ -46,8 +47,6 @@ type ShellToolDetails = BashToolDetails & {
   notes?: string[];
 };
 
-type ToolResult<TDetails> = AgentToolResult<TDetails> & { isError?: boolean };
-
 const nativeBashTool = createBashToolDefinition(process.cwd());
 
 function normalizeShellInput(cwd: string, params: ShellParams): NormalizedShellInput {
@@ -69,18 +68,6 @@ function normalizeShellInput(cwd: string, params: ShellParams): NormalizedShellI
   }
 
   return { command, workdir, notes };
-}
-
-function buildShellErrorResult(
-  command: string | undefined,
-  workdir: string,
-  text: string,
-): ToolResult<ShellToolDetails> {
-  return {
-    content: [{ type: "text" as const, text }],
-    details: { command, workdir },
-    isError: true,
-  };
 }
 
 async function validateWorkdir(workdir: string): Promise<string | undefined> {
@@ -171,10 +158,34 @@ function buildShellDetails(
   };
 }
 
+function buildBashDetails(options: {
+  truncation?: ReturnType<typeof truncateTail>;
+  fullOutputPath?: string;
+}): BashToolDetails | undefined {
+  return options.truncation || options.fullOutputPath
+    ? {
+      truncation: options.truncation,
+      fullOutputPath: options.fullOutputPath,
+    }
+    : undefined;
+}
+
+function toNativeBashResult(
+  result: AgentToolResult<ShellToolDetails | BashToolDetails | undefined>,
+): AgentToolResult<BashToolDetails | undefined> {
+  const details = result.details
+    ? buildBashDetails({
+      truncation: result.details.truncation,
+      fullOutputPath: result.details.fullOutputPath,
+    })
+    : undefined;
+  return { content: result.content, details };
+}
+
 export function createShellToolDefinition() {
   return {
     name: "shell",
-    label: "shell",
+    label: "$",
     description:
       "Runs a shell command and returns its output. Always set the workdir param when possible.",
     parameters: Type.Object({
@@ -200,16 +211,12 @@ export function createShellToolDefinition() {
     async execute(_toolCallId: string, params: ShellParams, signal: AbortSignal | undefined, onUpdate: ((update: { content: Array<{ type: "text"; text: string }>; details: unknown }) => void) | undefined, ctx: { cwd: string }) {
       const normalized = normalizeShellInput(ctx.cwd, params);
       if (!normalized.command) {
-        return buildShellErrorResult(
-          params.command,
-          normalized.workdir,
-          "Shell command is empty after normalization.",
-        );
+        throw new Error("Shell command is empty after normalization.");
       }
 
       const workdirError = await validateWorkdir(normalized.workdir);
       if (workdirError) {
-        return buildShellErrorResult(params.command, normalized.workdir, workdirError);
+        throw new Error(workdirError);
       }
 
       const configuredShellPath = await readConfiguredShellPath();
@@ -271,6 +278,8 @@ export function createShellToolDefinition() {
         });
       };
 
+      let errorAlreadyIncludesOutput = false;
+
       try {
         const execution = await executeShellCommand(invocation, normalized.workdir, {
           env: getShellEnv(),
@@ -302,11 +311,8 @@ export function createShellToolDefinition() {
 
         if (execution.aborted) {
           const text = outputText ? `${outputText}\n\nCommand aborted` : "Command aborted";
-          return {
-            content: [{ type: "text" as const, text }],
-            details,
-            isError: true,
-          };
+          errorAlreadyIncludesOutput = true;
+          throw new Error(text);
         }
 
         if (execution.timedOut) {
@@ -315,22 +321,16 @@ export function createShellToolDefinition() {
               ? `Command timed out after ${params.timeout_ms}ms`
               : "Command timed out";
           const text = outputText ? `${outputText}\n\n${timeoutText}` : timeoutText;
-          return {
-            content: [{ type: "text" as const, text }],
-            details,
-            isError: true,
-          };
+          errorAlreadyIncludesOutput = true;
+          throw new Error(text);
         }
 
         if (execution.exitCode !== 0 && execution.exitCode !== null) {
           const text = outputText
             ? `${outputText}\n\nCommand exited with code ${execution.exitCode}`
             : `Command exited with code ${execution.exitCode}`;
-          return {
-            content: [{ type: "text" as const, text }],
-            details,
-            isError: true,
-          };
+          errorAlreadyIncludesOutput = true;
+          throw new Error(text);
         }
 
         return {
@@ -340,30 +340,31 @@ export function createShellToolDefinition() {
       } catch (error) {
         await closeTempFileStream(tempFileStream).catch(() => undefined);
 
+        if (errorAlreadyIncludesOutput) {
+          throw error;
+        }
+
         const message = error instanceof Error ? error.message : String(error);
         const output = Buffer.concat(chunks).toString("utf-8");
         const text = output ? `${output}\n\n${message}` : message;
-
-        return {
-          content: [{ type: "text" as const, text }],
-          details: buildShellDetails(normalized, params, invocation),
-          isError: true,
-        };
+        throw new Error(text);
       }
     },
-    renderCall(args: ShellParams, theme: any, context: any) {
+    renderCall(args: ShellParams | undefined, theme: any, context: any) {
+      syncEarendilWorksTheme(theme);
       return nativeBashTool.renderCall!(
         {
-          command: args.command ?? "",
-          timeout: args.timeout_ms !== undefined ? args.timeout_ms / 1000 : undefined,
+          command: args?.command ?? "",
+          timeout: args?.timeout_ms !== undefined ? args.timeout_ms / 1000 : undefined,
         },
         theme,
         context as never,
       );
     },
     renderResult(result: any, options: any, theme: any, context: any) {
+      syncEarendilWorksTheme(theme);
       return nativeBashTool.renderResult!(
-        result as AgentToolResult<BashToolDetails | undefined>,
+        toNativeBashResult(result as AgentToolResult<ShellToolDetails | BashToolDetails | undefined>),
         options,
         theme,
         context as never,

@@ -1,6 +1,6 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-import { Box, truncateToWidth } from "@mariozechner/pi-tui";
+import { Box, truncateToWidth } from "@earendil-works/pi-tui";
 
 import type { RenderCache } from "./render.js";
 import type { DiagramEntry } from "./session-index.js";

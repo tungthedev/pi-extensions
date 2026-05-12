@@ -2,7 +2,7 @@ import type {
   BeforeAgentStartEvent,
   BuildSystemPromptOptions,
   ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 type PromptOptionsEvent = Pick<BeforeAgentStartEvent, "systemPromptOptions">;
 type PromptOptionsContext = Pick<ExtensionContext, "cwd">;

@@ -1,4 +1,4 @@
-import { isKeyRelease, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { isKeyRelease, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { matchesConfiguredShortcut } from "./shortcuts.js";
 import type { FixedEditorClusterRender } from "./cluster.js";
 

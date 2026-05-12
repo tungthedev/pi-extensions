@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { GENERATED_IMAGE_CUSTOM_TYPE, registerGeneratedImageRenderer } from "./render.js";
 import { flushGeneratedImageMessages, streamSimpleOpenAIResponsesWithImages } from "./stream.js";

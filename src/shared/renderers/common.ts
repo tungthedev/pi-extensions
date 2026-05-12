@@ -1,6 +1,6 @@
-import type { AgentToolResult, Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
+import type { AgentToolResult, Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 
-import { Container, Text } from "@mariozechner/pi-tui";
+import { Container, Text } from "@earendil-works/pi-tui";
 
 import { firstText } from "../text.js";
 

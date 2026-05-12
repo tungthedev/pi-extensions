@@ -1,7 +1,7 @@
 /**
  * Skill loading extension.
  */
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import registerSkillExtension from "../src/skill/index.js";
 

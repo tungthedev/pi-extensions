@@ -1,6 +1,6 @@
-import type { ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 
-import { Key, matchesKey, visibleWidth } from "@mariozechner/pi-tui";
+import { Key, matchesKey, visibleWidth } from "@earendil-works/pi-tui";
 
 import type { MermaidContextSlice } from "./extract.js";
 import type { RenderCache } from "./render.js";

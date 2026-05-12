@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 import type { ExtensionManagerController } from "../controller/index.js";
 import type { ManagerAction, PaletteView } from "../types.js";

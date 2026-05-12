@@ -1,4 +1,4 @@
-import { withFileMutationQueue } from "@mariozechner/pi-coding-agent";
+import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 
 import fs from "node:fs/promises";
 import path from "node:path";

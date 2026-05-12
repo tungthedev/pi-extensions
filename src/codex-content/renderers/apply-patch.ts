@@ -1,6 +1,6 @@
-import type { Text } from "@mariozechner/pi-tui";
+import type { Text } from "@earendil-works/pi-tui";
 
-import { renderDiff, type AgentToolResult, type Theme } from "@mariozechner/pi-coding-agent";
+import { renderDiff, type AgentToolResult, type Theme } from "@earendil-works/pi-coding-agent";
 
 import {
   countDiff,

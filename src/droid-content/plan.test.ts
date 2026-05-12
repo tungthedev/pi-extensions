@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { Box } from "@mariozechner/pi-tui";
+import { Box } from "@earendil-works/pi-tui";
 
 import { parseDroidPlanRows } from "./tools/plan-parser.js";
 import { registerDroidPlanTool } from "./tools/plan.js";

@@ -1,4 +1,4 @@
-import type { ReadToolInput } from "@mariozechner/pi-coding-agent";
+import type { ReadToolInput } from "@earendil-works/pi-coding-agent";
 
 import { access } from "node:fs/promises";
 

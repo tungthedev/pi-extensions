@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { BranchSummaryMessageComponent, ExtensionRunner, initTheme } from "@mariozechner/pi-coding-agent";
+import { BranchSummaryMessageComponent, ExtensionRunner, initTheme } from "@earendil-works/pi-coding-agent";
 
 import boomerangExtension, {
   extractRethrow,

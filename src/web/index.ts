@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { createFetchUrlTool } from "./web-fetch/index.js";
 import { createWebSearchTool, createWebSummaryTool } from "./web-search/index.js";

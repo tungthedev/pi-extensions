@@ -2,7 +2,7 @@ import type {
   BeforeAgentStartEvent,
   ExtensionAPI,
   ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 import { readSettings, type PiModeSettings } from "../settings/config.js";
 import { composeCustomPromptWithPiSections } from "../shared/custom-prompt.js";

@@ -1,4 +1,4 @@
-import type { GrepToolInput } from "@mariozechner/pi-coding-agent";
+import type { GrepToolInput } from "@earendil-works/pi-coding-agent";
 
 import { FinderOperationError, RuntimeInitializationError } from "../errors.js";
 import { inferFffGrepMode, isExplicitGlobPattern } from "../query-classifier.js";

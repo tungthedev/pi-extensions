@@ -1,6 +1,6 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
-import { Box, truncateToWidth } from "@mariozechner/pi-tui";
+import { Box, truncateToWidth } from "@earendil-works/pi-tui";
 
 import { ensureSessionFffRuntime, resolveSessionFffRuntimeKey } from "./session-runtime.js";
 

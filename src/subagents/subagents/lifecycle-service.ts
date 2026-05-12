@@ -1,4 +1,4 @@
-import type { ExtensionContext, SessionEntry } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 
 import { randomUUID } from "node:crypto";
 

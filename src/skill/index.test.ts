@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
-import { Box } from "@mariozechner/pi-tui";
+import { Box } from "@earendil-works/pi-tui";
 
 import registerSkillExtension from "./index.js";
 

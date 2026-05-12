@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { SUBAGENT_ACTIVITY_WIDGET_KEY, SubagentActivityWidget } from "./activity-widget.js";
 import { notifyLegacyRoleWarnings } from "./legacy-role-warnings.js";
@@ -28,14 +28,17 @@ export function registerSubagentSessionEvents(
     deps.store.setActiveSessionFile(ctx.sessionManager.getSessionFile());
     deps.reconstructDurableRegistry(ctx.sessionManager.getEntries() as SessionEntryLike[]);
     deps.store.clearActivities();
-    deps.store.mountActivityWidget(ctx as Pick<ExtensionContext, "ui">, SUBAGENT_ACTIVITY_WIDGET_KEY, (tui, theme) =>
-      new SubagentActivityWidget(
-        tui,
-        theme,
-        () => deps.store.snapshotActivities(),
-        () => deps.store.getActivityVersion(),
-      ),
-    );
+
+    if (ctx.hasUI) {
+      deps.store.mountActivityWidget(ctx as Pick<ExtensionContext, "ui">, SUBAGENT_ACTIVITY_WIDGET_KEY, (tui, theme) =>
+        new SubagentActivityWidget(
+          tui,
+          theme,
+          () => deps.store.snapshotActivities(),
+          () => deps.store.getActivityVersion(),
+        ),
+      );
+    }
   });
 
   pi.on("agent_start", async () => {

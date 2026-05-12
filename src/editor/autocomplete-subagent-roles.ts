@@ -1,4 +1,4 @@
-import type { AutocompleteItem, AutocompleteProvider } from "@mariozechner/pi-tui";
+import type { AutocompleteItem, AutocompleteProvider } from "@earendil-works/pi-tui";
 
 type SubagentRoleAutocompleteOptions = {
   cwd: string;

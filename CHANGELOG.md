@@ -10,10 +10,16 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 - Added direct `FetchUrl` fallback when no Cloudflare or Firecrawl credentials are configured.
 - Added `/goal` mode inspired from [fitchmultz/pi-codex-goal](https://github.com/fitchmultz/pi-codex-goal).
 
+### Changed
+
+- Updated Pi SDK packages to `0.74.0` and migrated package imports from `@mariozechner/*` to `@earendil-works/*`.
+- Updated the package manifest to load compiled extension entrypoints from `dist` and exclude TypeScript source trees from published package files.
+
 ### Fixed
 
 - Fixed `/boomerang` failed to start
 - Fixed active tool resolution to keep Web, boomerang, goal, and external tools available across modes.
+- Reduced Pi startup overhead from the bundled `pi-modes` and `workspace` extensions by lazy-loading mode-specific tool bundles and deferring FFF runtime initialization until first use.
 
 ## [2.5.0] - 2026-05-06
 

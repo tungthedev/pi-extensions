@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import registerOpenAIResponsesImagePatch from "../src/openai-responses-image-patch/index.js";
 

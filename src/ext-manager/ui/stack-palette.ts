@@ -1,4 +1,4 @@
-import type { Theme } from "@mariozechner/pi-coding-agent";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 
 import {
   type Component,
@@ -8,7 +8,7 @@ import {
   Key,
   matchesKey,
   truncateToWidth,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 
 import type { ManagerAction, PaletteActionContext, PaletteItem, PaletteView } from "../types.js";
 

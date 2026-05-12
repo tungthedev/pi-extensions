@@ -10,7 +10,7 @@ import type {
   Result as EngineResult,
   Score,
 } from "@ff-labs/fff-node";
-import type { TruncationResult } from "@mariozechner/pi-coding-agent";
+import type { TruncationResult } from "@earendil-works/pi-coding-agent";
 
 import type {
   FindFilesError,

@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import type { TodoItem } from "./todo-state.js";
 
@@ -12,6 +12,8 @@ export function syncTodoUi(
     statusKey: string;
   },
 ): void {
+  if (ctx.hasUI === false) return;
+
   ctx.ui.setStatus(options.statusKey, undefined);
 
   const inProgressIndex = items.findIndex((item) => item.status === "in_progress");

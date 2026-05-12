@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createAssistantMessageEventStream, type AssistantMessage, type Model } from "@mariozechner/pi-ai";
+import { createAssistantMessageEventStream, type AssistantMessage, type Model } from "@earendil-works/pi-ai";
 
 import { processResponsesStreamWithImages } from "./responses-parser.js";
 
