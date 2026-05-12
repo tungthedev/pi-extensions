@@ -7,6 +7,8 @@ export { CODEX_CONTENT_TOOL_NAMES, CODEX_CONTENT_TOOLS } from "./codex-content/m
 export type { DroidContentOptions } from "./droid-content/index.js";
 export { registerDroidContentExtension } from "./droid-content/index.js";
 export { DROID_CONTENT_TOOL_NAMES, DROID_CONTENT_TOOLS } from "./droid-content/metadata.js";
+export { registerGoalExtension } from "./goal/index.js";
+export { GOAL_TOOL_NAMES, GOAL_TOOLS } from "./goal/metadata.js";
 export type { ExtensionHostCapabilities, ExtensionToolMetadata } from "./metadata-types.js";
 export { getPiExtensionsToolMetadata } from "./metadata.js";
 export type { PiModesOptions } from "./pi-modes/index.js";

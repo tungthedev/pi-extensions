@@ -17,6 +17,10 @@ const ALL_TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "WebSummary", description: "web summary" },
   { name: "FetchUrl", description: "fetch" },
   { name: "skill", description: "skill" },
+  { name: "boomerang", description: "boomerang" },
+  { name: "get_goal", description: "goal" },
+  { name: "create_goal", description: "goal" },
+  { name: "update_goal", description: "goal" },
   { name: "update_plan", description: "codex" },
   { name: "read_plan", description: "codex" },
   { name: "request_user_input", description: "codex" },
@@ -40,6 +44,7 @@ const ALL_TOOL_INFOS = resolveRegisteredToolInfos([
   { name: "list_agents", description: "subagent codex" },
   { name: "close_agent", description: "subagent codex" },
   { name: "Task", description: "task" },
+  { name: "mcp__vesper__vesper_execute", description: "external" },
 ]);
 
 test("resolveToolsetToolNames computes the canonical tool list for each mode", () => {
@@ -55,7 +60,12 @@ test("resolveToolsetToolNames computes the canonical tool list for each mode", (
     "WebSummary",
     "FetchUrl",
     "skill",
+    "boomerang",
+    "get_goal",
+    "create_goal",
+    "update_goal",
     "Task",
+    "mcp__vesper__vesper_execute",
   ]);
 
   assert.deepEqual(resolveToolsetToolNames("codex", ALL_TOOL_INFOS), [
@@ -65,6 +75,10 @@ test("resolveToolsetToolNames computes the canonical tool list for each mode", (
     "WebSummary",
     "FetchUrl",
     "skill",
+    "boomerang",
+    "get_goal",
+    "create_goal",
+    "update_goal",
     "update_plan",
     "read_plan",
     "request_user_input",
@@ -78,6 +92,7 @@ test("resolveToolsetToolNames computes the canonical tool list for each mode", (
     "wait_agent",
     "list_agents",
     "close_agent",
+    "mcp__vesper__vesper_execute",
   ]);
 
   assert.deepEqual(resolveToolsetToolNames("droid", ALL_TOOL_INFOS), [
@@ -95,7 +110,12 @@ test("resolveToolsetToolNames computes the canonical tool list for each mode", (
     "WebSummary",
     "FetchUrl",
     "skill",
+    "boomerang",
+    "get_goal",
+    "create_goal",
+    "update_goal",
     "Task",
+    "mcp__vesper__vesper_execute",
   ]);
 });
 
@@ -117,8 +137,33 @@ test("resolveToolsetToolNames filters unavailable optional tools without leaving
     "Execute",
     "WebSearch",
     "skill",
+    "boomerang",
+    "get_goal",
+    "create_goal",
+    "update_goal",
     "Task",
+    "mcp__vesper__vesper_execute",
   ]);
+});
+
+test("resolveToolsetToolNames scopes Codex and Droid tools but preserves external tools", () => {
+  const piTools = resolveToolsetToolNames("pi", ALL_TOOL_INFOS);
+  const codexTools = resolveToolsetToolNames("codex", ALL_TOOL_INFOS);
+  const droidTools = resolveToolsetToolNames("droid", ALL_TOOL_INFOS);
+
+  for (const toolNames of [piTools, codexTools, droidTools]) {
+    assert.ok(toolNames.includes("WebSearch"));
+    assert.ok(toolNames.includes("boomerang"));
+    assert.ok(toolNames.includes("get_goal"));
+    assert.ok(toolNames.includes("mcp__vesper__vesper_execute"));
+  }
+
+  assert.equal(piTools.includes("update_plan"), false);
+  assert.equal(piTools.includes("LS"), false);
+  assert.ok(codexTools.includes("update_plan"));
+  assert.equal(codexTools.includes("LS"), false);
+  assert.ok(droidTools.includes("LS"));
+  assert.equal(droidTools.includes("update_plan"), false);
 });
 
 test("resolveToolsetToolNames is stable regardless of tool registration order", () => {
@@ -166,7 +211,7 @@ test("fff lifecycle extension does not register any public tools", () => {
   ]);
 });
 
-test("toolset resolution keeps read active across modes without surfacing a public FFF tool family", () => {
+test("toolset resolution keeps read active across modes and preserves unclassified tools", () => {
   const withHypotheticalFffTools = resolveRegisteredToolInfos([
     ...ALL_TOOL_INFOS,
     { name: "fff_status", description: "internal fff status" },
@@ -179,11 +224,7 @@ test("toolset resolution keeps read active across modes without surfacing a publ
   for (const mode of ["pi", "codex", "droid"] as const) {
     const toolNames = resolveToolsetToolNames(mode, withHypotheticalFffTools);
     assert.ok(toolNames.includes("read"));
-    assert.equal(
-      toolNames.some(
-        (name) => name.startsWith("fff") || name === "resolve_file" || name === "related_files",
-      ),
-      false,
-    );
+    assert.ok(toolNames.includes("resolve_file"));
+    assert.ok(toolNames.includes("related_files"));
   }
 });

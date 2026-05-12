@@ -1,8 +1,13 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-import { resolveSessionToolSet } from "../settings/session.js";
-import { TOOLSET_CONFLICT_RULES, TOOLSET_CONTRIBUTIONS, TOOLSET_MODE_ORDER } from "./toolset-registry.js";
 import type { RegisteredToolInfo, ResolvedToolsetEntry, ToolsetModeId } from "./toolset-types.js";
+
+import { resolveSessionToolSet } from "../settings/session.js";
+import {
+  TOOLSET_CONFLICT_RULES,
+  TOOLSET_CONTRIBUTIONS,
+  TOOLSET_MODE_ORDER,
+} from "./toolset-registry.js";
 
 export function resolveRegisteredToolInfos(
   tools: Array<{ name: string; description?: string }>,
@@ -36,12 +41,23 @@ function resolveHiddenToolNames(mode: ToolsetModeId): Set<string> {
   return hidden;
 }
 
+function resolveContributedToolNames(): Set<string> {
+  const names = new Set<string>();
+  for (const contribution of Object.values(TOOLSET_CONTRIBUTIONS)) {
+    for (const tool of contribution.tools) {
+      names.add(tool.name);
+    }
+  }
+  return names;
+}
+
 export function resolveToolsetEntries(
   mode: ToolsetModeId,
   registeredTools: RegisteredToolInfo[],
 ): ResolvedToolsetEntry[] {
   const available = new Map(registeredTools.map((tool) => [tool.name, tool]));
   const hidden = resolveHiddenToolNames(mode);
+  const contributed = resolveContributedToolNames();
   const resolved: ResolvedToolsetEntry[] = [];
   const seen = new Set<string>();
 
@@ -59,6 +75,21 @@ export function resolveToolsetEntries(
     }
   }
 
+  for (const registered of registeredTools) {
+    if (
+      hidden.has(registered.name) ||
+      seen.has(registered.name) ||
+      contributed.has(registered.name)
+    ) {
+      continue;
+    }
+    seen.add(registered.name);
+    resolved.push({
+      ...registered,
+      availability: "optional",
+    });
+  }
+
   return resolved;
 }
 
@@ -74,7 +105,10 @@ export async function applyResolvedToolset(
   sessionManager: { getBranch(): Array<unknown> },
 ): Promise<{ mode: ToolsetModeId; activeToolNames: string[] }> {
   const mode = await resolveSessionToolSet(sessionManager as never);
-  const activeToolNames = resolveToolsetToolNames(mode, resolveRegisteredToolInfos(pi.getAllTools()));
+  const activeToolNames = resolveToolsetToolNames(
+    mode,
+    resolveRegisteredToolInfos(pi.getAllTools()),
+  );
   pi.setActiveTools(activeToolNames);
   return { mode, activeToolNames };
 }

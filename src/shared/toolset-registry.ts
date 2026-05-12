@@ -4,8 +4,10 @@ import type {
   ToolsetModeId,
   ToolsetToolDefinition,
 } from "./toolset-types.js";
+
 import { CODEX_CONTENT_TOOL_NAMES } from "../codex-content/metadata.js";
 import { DROID_CONTENT_TOOL_NAMES } from "../droid-content/metadata.js";
+import { GOAL_TOOL_NAMES } from "../goal/metadata.js";
 import { SHELL_TOOL_NAMES } from "../shell/metadata.js";
 import { SUBAGENT_CODEX_TOOL_NAMES } from "../subagents/metadata.js";
 
@@ -46,6 +48,14 @@ export const TOOLSET_CONTRIBUTIONS = {
     extension: "skill",
     tools: [optional("skill")],
   },
+  boomerang: {
+    extension: "boomerang",
+    tools: [optional("boomerang")],
+  },
+  goal: {
+    extension: "goal",
+    tools: optionalTools(GOAL_TOOL_NAMES),
+  },
   codexContent: {
     extension: "codex-content",
     tools: optionalTools(CODEX_CONTENT_TOOL_NAMES),
@@ -65,9 +75,9 @@ export const TOOLSET_CONTRIBUTIONS = {
 } satisfies Record<string, ToolsetContribution>;
 
 export const TOOLSET_MODE_ORDER = {
-  pi: ["piBuiltins", "web", "skill", "subagentsTask"],
-  codex: ["shell", "read", "web", "skill", "codexContent", "subagentsCodex"],
-  droid: ["read", "droidContent", "web", "skill", "subagentsTask"],
+  pi: ["piBuiltins", "web", "skill", "boomerang", "goal", "subagentsTask"],
+  codex: ["shell", "read", "web", "skill", "boomerang", "goal", "codexContent", "subagentsCodex"],
+  droid: ["read", "droidContent", "web", "skill", "boomerang", "goal", "subagentsTask"],
 } satisfies Record<ToolsetModeId, readonly (keyof typeof TOOLSET_CONTRIBUTIONS)[]>;
 
 export const TOOLSET_CONFLICT_RULES = [

@@ -1,7 +1,7 @@
 {
   "name": "@tungthedev/pi-extensions",
   "version": "2.5.0",
-  "description": "A Pi package containing editor, mermaid, workspace, web, skill, boomerang, pi-modes, and ext-manager extensions.",
+  "description": "A Pi package containing editor, mermaid, workspace, web, skill, boomerang, goal, pi-modes, and ext-manager extensions.",
   "keywords": [
     "codex",
     "droid",
@@ -40,6 +40,10 @@
       "types": "./dist/src/boomerang/index.d.ts",
       "import": "./dist/src/boomerang/index.js"
     },
+    "./goal": {
+      "types": "./dist/src/goal/index.d.ts",
+      "import": "./dist/src/goal/index.js"
+    },
     "./pi-modes": {
       "types": "./dist/src/pi-modes/index.d.ts",
       "import": "./dist/src/pi-modes/index.js"
@@ -75,6 +79,10 @@
     "./boomerang/metadata": {
       "types": "./dist/src/boomerang/metadata.d.ts",
       "import": "./dist/src/boomerang/metadata.js"
+    },
+    "./goal/metadata": {
+      "types": "./dist/src/goal/metadata.d.ts",
+      "import": "./dist/src/goal/metadata.js"
     },
     "./codex-content/metadata": {
       "types": "./dist/src/codex-content/metadata.d.ts",
@@ -172,6 +180,7 @@
       "./extensions/web.ts",
       "./extensions/skill.ts",
       "./extensions/boomerang.ts",
+      "./extensions/goal.ts",
       "./extensions/workspace.ts",
       "./extensions/pi-modes.ts",
       "./extensions/ext-manager.ts",

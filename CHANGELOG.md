@@ -8,10 +8,12 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 
 - Added compiled library exports to use with Pi SDK programatically.
 - Added direct `FetchUrl` fallback when no Cloudflare or Firecrawl credentials are configured.
+- Added `/goal` mode inspired from [fitchmultz/pi-codex-goal](https://github.com/fitchmultz/pi-codex-goal).
 
 ### Fixed
 
 - Fixed `/boomerang` failed to start
+- Fixed active tool resolution to keep Web, boomerang, goal, and external tools available across modes.
 
 ## [2.5.0] - 2026-05-06
 

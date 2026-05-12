@@ -27,6 +27,10 @@ const TOOL_INFOS = [
   { name: "WebSummary", description: "web summary" },
   { name: "FetchUrl", description: "fetch" },
   { name: "skill", description: "skill" },
+  { name: "boomerang", description: "boomerang" },
+  { name: "get_goal", description: "goal" },
+  { name: "create_goal", description: "goal" },
+  { name: "update_goal", description: "goal" },
   { name: "update_plan", description: "codex" },
   { name: "read_plan", description: "codex" },
   { name: "request_user_input", description: "codex" },
@@ -84,6 +88,10 @@ test("registerPiModeSettingsExtension owns active tool resolution on session sta
     "WebSummary",
     "FetchUrl",
     "skill",
+    "boomerang",
+    "get_goal",
+    "create_goal",
+    "update_goal",
     "update_plan",
     "read_plan",
     "request_user_input",
@@ -97,6 +105,7 @@ test("registerPiModeSettingsExtension owns active tool resolution on session sta
     "wait_agent",
     "list_agents",
     "close_agent",
+    "mcp__vesper__vesper_execute",
   ]);
 });
 
@@ -244,7 +253,9 @@ test("openPiModeSettingsUi applies the same tool-set transition side effects", a
 test("openPiModeSettingsUi edits the mode shortcut from the root list", async () => {
   const shortcutWrites: string[] = [];
   const notifications: string[] = [];
-  let component: { handleInput?: (data: string) => void; render?: (width: number) => string[] } | undefined;
+  let component:
+    | { handleInput?: (data: string) => void; render?: (width: number) => string[] }
+    | undefined;
 
   await openPiModeSettingsUi(
     {
@@ -274,14 +285,15 @@ test("openPiModeSettingsUi edits the mode shortcut from the root list", async ()
       },
     } as never,
     {
-      readSettings: async () => ({
-        toolSet: "pi",
-        loadSkills: true,
-        systemMdPrompt: false,
-        modeShortcut: "xx",
-        webTools: {},
-        editor: { fixedEditor: false, mouseScroll: true },
-      } as never),
+      readSettings: async () =>
+        ({
+          toolSet: "pi",
+          loadSkills: true,
+          systemMdPrompt: false,
+          modeShortcut: "xx",
+          webTools: {},
+          editor: { fixedEditor: false, mouseScroll: true },
+        }) as never,
       applyToolSetTransition: async () => {
         throw new Error("applyToolSetTransition should not run");
       },
@@ -324,7 +336,9 @@ test("openPiModeSettingsUi edits the mode shortcut from the root list", async ()
 test("openPiModeSettingsUi toggles pin editor and enables mouse scroll with fixed mode", async () => {
   const editorWrites: Array<Record<string, boolean>> = [];
   const notifications: string[] = [];
-  let component: { handleInput?: (data: string) => void; render?: (width: number) => string[] } | undefined;
+  let component:
+    | { handleInput?: (data: string) => void; render?: (width: number) => string[] }
+    | undefined;
 
   await openPiModeSettingsUi(
     {
@@ -354,13 +368,14 @@ test("openPiModeSettingsUi toggles pin editor and enables mouse scroll with fixe
       },
     } as never,
     {
-      readSettings: async () => ({
-        toolSet: "pi",
-        loadSkills: true,
-        systemMdPrompt: false,
-        webTools: {},
-        editor: { fixedEditor: false, mouseScroll: true },
-      } as never),
+      readSettings: async () =>
+        ({
+          toolSet: "pi",
+          loadSkills: true,
+          systemMdPrompt: false,
+          webTools: {},
+          editor: { fixedEditor: false, mouseScroll: true },
+        }) as never,
       applyToolSetTransition: async () => {
         throw new Error("applyToolSetTransition should not run");
       },
