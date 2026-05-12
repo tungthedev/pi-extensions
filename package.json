@@ -129,7 +129,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json && mkdir -p dist/src/subagents && cp src/subagents/interactive-launcher.mjs dist/src/subagents/interactive-launcher.mjs",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && mkdir -p dist/src/subagents && cp src/subagents/interactive-launcher.mjs dist/src/subagents/interactive-launcher.mjs && cp -R src/subagents/assets dist/src/subagents/assets",
     "check": "bun run test && bun run lint && bun run typecheck && bun run build && bun run check:imports",
     "check:imports": "node scripts/check-import-contracts.mjs",
     "format": "oxfmt .",
