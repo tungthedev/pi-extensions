@@ -4,6 +4,10 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 
 ## Unreleased
 
+### Fixed
+
+- Fixed Mermaid preview messages to render immediately after assistant turns instead of waiting for the next user turn.
+
 ## [2.6.0] - 2026-05-12
 
 ### Added

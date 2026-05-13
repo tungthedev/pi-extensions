@@ -18,6 +18,7 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
   const MAX_DIAGRAMS = 100;
   const cache: RenderCache = createCache();
   let diagrams: DiagramEntry[] = [];
+  const pendingAssistantDiagrams: DiagramEntry[] = [];
 
   function syncDiagramsFromSession(ctx: Pick<ExtensionContext, "sessionManager">): void {
     diagrams = indexSessionDiagrams(ctx.sessionManager.getBranch() as never, { maxCodeLength: MAX_CODE_LENGTH }).slice(-MAX_DIAGRAMS);
@@ -91,25 +92,21 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
       const id = `${Date.now()}:${block.blockIndex}:${hashCode(block.code)}`;
       const entry: DiagramEntry = { id, block, context, source: "assistant" };
       addDiagram(entry);
-
-      /**
-       * deliverAs: "nextTurn" — message_end fires while isStreaming is still true.
-       * without this, sendMessage defaults to steer(), injecting a role:"custom"
-       * message into the active agent loop. models that reject assistant prefill
-       * (e.g. claude opus) then error because the conversation ends non-user.
-       */
-      pi.sendMessage(
-        {
-          customType: CUSTOM_TYPE,
-          content: "",
-          display: true,
-          details: entry,
-        },
-        { deliverAs: "nextTurn" },
-      );
+      pendingAssistantDiagrams.push(entry);
     }
 
     syncDiagramsFromSession(ctx);
+  });
+
+  pi.on("agent_end", async () => {
+    setTimeout(() => {
+      try {
+        flushPendingAssistantDiagrams();
+      } catch {
+        // The source message still contains the Mermaid block; avoid surfacing
+        // a post-stream async exception if the preview message fails.
+      }
+    }, 0);
   });
 
   pi.on("input", async (event, ctx) => {
@@ -128,15 +125,7 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
       const entry: DiagramEntry = { id, block, context, source: "user" };
       addDiagram(entry);
 
-      pi.sendMessage(
-        {
-          customType: CUSTOM_TYPE,
-          content: "",
-          display: true,
-          details: entry,
-        },
-        { deliverAs: "nextTurn" },
-      );
+      sendDiagramMessage(entry, { deliverAs: "nextTurn" });
     }
 
     syncDiagramsFromSession(ctx);
@@ -186,6 +175,25 @@ export default function mermaidInlineExtension(pi: ExtensionAPI) {
     diagrams.push(entry);
     if (diagrams.length > MAX_DIAGRAMS) {
       diagrams = diagrams.slice(-MAX_DIAGRAMS);
+    }
+  }
+
+  function sendDiagramMessage(entry: DiagramEntry, options?: { deliverAs: "nextTurn" }) {
+    pi.sendMessage(
+      {
+        customType: CUSTOM_TYPE,
+        content: "",
+        display: true,
+        details: entry,
+      },
+      options,
+    );
+  }
+
+  function flushPendingAssistantDiagrams() {
+    const pending = pendingAssistantDiagrams.splice(0);
+    for (const entry of pending) {
+      sendDiagramMessage(entry);
     }
   }
 }
