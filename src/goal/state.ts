@@ -232,16 +232,40 @@ export function updateGoalStatus(current: ThreadGoal | null, status: GoalStatus)
   }
 
   const goal = cloneGoal(current);
-  if (current.status === "budgetLimited" && (status === "active" || status === "paused")) {
-    goal.status = "budgetLimited";
-  } else {
-    goal.status = statusAfterBudgetLimit(status, goal.usage.tokensUsed, goal.tokenBudget);
-  }
+  goal.status = statusAfterBudgetLimit(status, goal.usage.tokensUsed, goal.tokenBudget);
   goal.updatedAt = unixSeconds();
 
   return {
     ok: true,
     message: `Goal marked ${goal.status}.`,
+    goal,
+  };
+}
+
+export function updateGoalBudget(current: ThreadGoal | null, tokenBudget: number | null): GoalResult {
+  if (!current) {
+    return {
+      ok: false,
+      message: "No active goal exists.",
+      goal: null,
+    };
+  }
+
+  const budgetError = validateTokenBudget(tokenBudget);
+  if (budgetError) {
+    return { ok: false, message: budgetError, goal: current };
+  }
+
+  const goal = cloneGoal(current);
+  goal.tokenBudget = tokenBudget;
+  goal.status = statusAfterBudgetLimit(goal.status, goal.usage.tokensUsed, goal.tokenBudget);
+  goal.updatedAt = unixSeconds();
+
+  return {
+    ok: true,
+    message: tokenBudget === null
+      ? "Goal token budget cleared."
+      : `Goal token budget set to ${tokenBudget.toLocaleString("en-US")}.`,
     goal,
   };
 }

@@ -5,7 +5,8 @@ import {
   EDITOR_SET_STATUS_SEGMENT_EVENT,
 } from "../editor/events.js";
 import { registerGoalCommand } from "./commands.js";
-import { budgetLimitPrompt, continuationGoalIdFromPrompt, continuationPrompt } from "./prompts.js";
+import { budgetLimitNotice, continuationGoalIdFromPrompt, continuationPrompt } from "./prompts.js";
+import { syncGoalWidget } from "./goal-widget.js";
 import {
   applyUsage,
   clearEntry,
@@ -113,6 +114,7 @@ const GOAL_EDITOR_STATUS_TEXT = String.fromCodePoint(0x1f3af);
 
 export function registerGoalExtension(pi: ExtensionAPI): void {
   let goal: ThreadGoal | null = null;
+  let currentUiCtx: ExtensionContext | null = null;
   let continuationQueuedFor: string | null = null;
   let continuationScheduledFor: string | null = null;
   let continuationTimer: ReturnType<typeof setTimeout> | null = null;
@@ -148,8 +150,13 @@ export function registerGoalExtension(pi: ExtensionAPI): void {
     clearActiveAccounting();
   };
 
-  const refreshUi = (): void => {
-    if (!goalForDisplay()) {
+  const refreshUi = (ctx = currentUiCtx): void => {
+    const displayGoal = goalForDisplay();
+    if (ctx) {
+      syncGoalWidget(ctx, displayGoal);
+    }
+
+    if (!displayGoal) {
       pi.events.emit(EDITOR_REMOVE_STATUS_SEGMENT_EVENT, { key: GOAL_EDITOR_STATUS_KEY });
       return;
     }
@@ -187,7 +194,7 @@ export function registerGoalExtension(pi: ExtensionAPI): void {
     pi.appendEntry(CUSTOM_ENTRY_TYPE, clearEntry(clearedGoalId, source));
   };
 
-  const pauseForAbort = (_ctx: ExtensionContext): void => {
+  const pauseForAbort = (ctx: ExtensionContext): void => {
     if (!goal || goal.status !== "active") {
       return;
     }
@@ -199,10 +206,10 @@ export function registerGoalExtension(pi: ExtensionAPI): void {
 
     clearStoppedRuntimeState();
     persistGoal(result.goal, "runtime");
-    refreshUi();
+    refreshUi(ctx);
   };
 
-  const resumePausedGoal = (_ctx: ExtensionContext): void => {
+  const resumePausedGoal = (ctx: ExtensionContext): void => {
     if (!goal || goal.status !== "paused") {
       return;
     }
@@ -214,16 +221,17 @@ export function registerGoalExtension(pi: ExtensionAPI): void {
 
     clearContinuationState();
     persistGoal(result.goal, "runtime");
-    refreshUi();
+    refreshUi(ctx);
   };
 
   const reloadFromSession = (ctx: ExtensionContext): void => {
+    currentUiCtx = ctx;
     goal = reconstructGoal(ctx.sessionManager.getBranch()).goal;
     clearContinuationState();
     if (goal?.status !== "active") {
       clearActiveAccounting();
     }
-    refreshUi();
+    refreshUi(ctx);
   };
 
   const beginAccounting = (): void => {
@@ -239,7 +247,7 @@ export function registerGoalExtension(pi: ExtensionAPI): void {
 
   const accountProgress = (
     ctx: ExtensionContext,
-    allowBudgetSteering: boolean,
+    allowBudgetAbort: boolean,
     completedTurnTokens = 0,
     accountBudgetLimited = false,
   ): void => {
@@ -266,23 +274,16 @@ export function registerGoalExtension(pi: ExtensionAPI): void {
     }
 
     persistGoal(result.goal, "runtime");
-    refreshUi();
+    refreshUi(ctx);
 
     if (
-      allowBudgetSteering &&
+      allowBudgetAbort &&
       result.crossedBudget &&
       accounting.budgetWarningSentFor !== result.goal.goalId
     ) {
       accounting.budgetWarningSentFor = result.goal.goalId;
-      pi.sendMessage(
-        {
-          customType: CUSTOM_ENTRY_TYPE,
-          content: budgetLimitPrompt(result.goal),
-          display: false,
-          details: { kind: "budget_limit", goalId: result.goal.goalId },
-        },
-        { triggerTurn: true, deliverAs: "steer" },
-      );
+      ctx.abort();
+      ctx.ui.notify(budgetLimitNotice(result.goal), "warning");
     }
   };
 
@@ -293,7 +294,7 @@ export function registerGoalExtension(pi: ExtensionAPI): void {
       return result;
     }
     persistGoal(result.goal, source);
-    refreshUi();
+    refreshUi(ctx);
     return result;
   };
 
@@ -341,7 +342,7 @@ export function registerGoalExtension(pi: ExtensionAPI): void {
     getGoal: () => goalForDisplay(),
     setGoal(nextGoal, source, _ctx) {
       persistGoal(nextGoal, source);
-      refreshUi();
+      refreshUi(_ctx);
     },
     completeGoal,
   });
@@ -353,11 +354,11 @@ export function registerGoalExtension(pi: ExtensionAPI): void {
       if (source === "command" && nextGoal.status === "active") {
         continuationQueuedFor = nextGoal.goalId;
       }
-      refreshUi();
+      refreshUi(_ctx);
     },
     clearGoal(source, _ctx) {
       persistClear(source);
-      refreshUi();
+      refreshUi(_ctx);
     },
   });
 
@@ -412,7 +413,7 @@ export function registerGoalExtension(pi: ExtensionAPI): void {
       clearContinuationTimer();
       if (!goal || goal.goalId !== continuationGoalId || goal.status !== "active") {
         ctx.abort();
-        refreshUi();
+        refreshUi(ctx);
         return {
           systemPrompt: [
             _event.systemPrompt,
@@ -427,9 +428,10 @@ export function registerGoalExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("turn_start", async (_event, _ctx) => {
+    currentUiCtx = _ctx;
     clearContinuationState();
     beginAccounting();
-    refreshUi();
+    refreshUi(_ctx);
   });
 
   pi.on("tool_execution_end", async (_event, ctx) => {
@@ -466,10 +468,11 @@ export function registerGoalExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_compact", async (_event, ctx) => {
+    currentUiCtx = ctx;
     if (goal) {
       persistGoal(goal, "runtime");
     }
-    refreshUi();
+    refreshUi(ctx);
     maybeContinue(ctx);
   });
 

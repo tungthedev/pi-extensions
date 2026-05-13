@@ -4,8 +4,18 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 
 ## Unreleased
 
+### Added
+
+- Added `/goal budget N`, `/goal budget 0`, and `/goal resume --budget N` for managing goal token budgets from the command line.
+
+### Changed
+
+- Updated the goal widget to show compact live goal progress above the editor without command helper text.
+
 ### Fixed
 
+- Fixed goal token-budget limits to hard-stop the active turn instead of injecting a hidden steer message that could leave Pi showing a stuck working indicator.
+- Fixed the goal widget width calculation so budgeted token counters reserve space for the usage glyph and do not clip at narrow widths.
 - Fixed Mermaid preview messages to render immediately after assistant turns instead of waiting for the next user turn.
 
 ## [2.6.0] - 2026-05-12

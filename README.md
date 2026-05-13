@@ -9,6 +9,7 @@ The package currently ships these extensions:
 - `web` for `WebSearch`, `WebSummary`, and `FetchUrl`
 - `skill` for loading local Pi skills with the `skill` tool
 - `boomerang` for autonomous task execution with context summarization
+- `goal` for Codex-style long-running goal tracking with token budgets
 - `pi-modes` for Codex/Droid tool-set switching, prompts, and subagents
 - `ext-manager` for managing extensions from inside Pi
 - `openai-responses-image-patch` for preserving OpenAI Responses generated images
@@ -97,6 +98,20 @@ Examples:
 ```bash
 /boomerang Fix the login bug
 ```
+
+### Goal
+
+The `goal` extension adds Codex-style long-running goal tracking with an above-editor progress widget, goal tools, and automatic continuation while a goal is active.
+
+Commands:
+
+- `/goal <objective>` starts or replaces the current goal
+- `/goal pause` pauses goal continuation
+- `/goal resume` resumes a paused goal
+- `/goal resume --budget N` resumes with a new token budget
+- `/goal budget N` sets the current goal token budget
+- `/goal budget 0` clears the token budget
+- `/goal clear` clears the current goal
 
 ### Pi Modes And Subagents
 
