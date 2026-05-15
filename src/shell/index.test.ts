@@ -110,3 +110,26 @@ test("shell execute keeps public details while renderer receives native bash sha
     /bad\n+\nCommand exited with code 7/,
   );
 });
+
+test("shell execute settles timed out commands after truncated output", async () => {
+  const tool = createShellToolDefinition();
+  const startedAt = Date.now();
+
+  await assert.rejects(
+    () =>
+      tool.execute(
+        "call-large-timeout",
+        {
+          command: `${process.execPath} -e 'process.stdout.write("x".repeat(300000)); setInterval(() => {}, 1000)'`,
+          workdir: process.cwd(),
+          timeout_ms: 100,
+        },
+        undefined,
+        undefined,
+        { cwd: process.cwd() },
+      ),
+    /Command timed out after 100ms/,
+  );
+
+  assert.equal(Date.now() - startedAt < 2000, true);
+});

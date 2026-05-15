@@ -49,9 +49,14 @@ export async function readConfiguredShellPath(
 
 const EXIT_STDIO_GRACE_MS = 100;
 const FORCE_KILL_GRACE_MS = 250;
+const STOP_SETTLE_GRACE_MS = FORCE_KILL_GRACE_MS + EXIT_STDIO_GRACE_MS;
 
-function waitForChildProcess(child: ChildProcess): Promise<number | null> {
+function waitForChildProcess(
+  child: ChildProcess,
+  options: { forceFinalizeSignal?: AbortSignal; forcedExitCode?: number | null } = {},
+): Promise<number | null> {
   return new Promise((resolve, reject) => {
+    const { forceFinalizeSignal, forcedExitCode = null } = options;
     let settled = false;
     let exited = false;
     let exitCode: number | null = null;
@@ -70,6 +75,7 @@ function waitForChildProcess(child: ChildProcess): Promise<number | null> {
       child.removeListener("close", onClose);
       child.stdout?.removeListener("end", onStdoutEnd);
       child.stderr?.removeListener("end", onStderrEnd);
+      forceFinalizeSignal?.removeEventListener("abort", onForceFinalize);
     };
 
     const finalize = (code: number | null) => {
@@ -120,11 +126,20 @@ function waitForChildProcess(child: ChildProcess): Promise<number | null> {
       finalize(code);
     };
 
+    const onForceFinalize = () => {
+      finalize(forcedExitCode);
+    };
+
     child.stdout?.once("end", onStdoutEnd);
     child.stderr?.once("end", onStderrEnd);
     child.once("error", onError);
     child.once("exit", onExit);
     child.once("close", onClose);
+    if (forceFinalizeSignal?.aborted) {
+      onForceFinalize();
+    } else {
+      forceFinalizeSignal?.addEventListener("abort", onForceFinalize, { once: true });
+    }
   });
 }
 
@@ -196,13 +211,20 @@ export async function executeShellCommand(
     let aborted = false;
     let settled = false;
     let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+    let stopSettleTimer: ReturnType<typeof setTimeout> | undefined;
     let cancelPendingKill: (() => void) | undefined;
     let stopRequested = false;
+    const forceWaitFinalize = new AbortController();
 
     const cleanup = () => {
       if (timeoutTimer) {
         clearTimeout(timeoutTimer);
         timeoutTimer = undefined;
+      }
+
+      if (stopSettleTimer) {
+        clearTimeout(stopSettleTimer);
+        stopSettleTimer = undefined;
       }
 
       cancelPendingKill?.();
@@ -229,6 +251,10 @@ export async function executeShellCommand(
         timedOut = true;
       }
       cancelPendingKill = killChildProcess(child);
+      stopSettleTimer = setTimeout(() => {
+        forceWaitFinalize.abort();
+        finish({ exitCode: null, timedOut, aborted });
+      }, STOP_SETTLE_GRACE_MS);
     };
 
     const onAbort = () => {
@@ -252,7 +278,7 @@ export async function executeShellCommand(
       }, timeoutMs);
     }
 
-    void waitForChildProcess(child)
+    void waitForChildProcess(child, { forceFinalizeSignal: forceWaitFinalize.signal })
       .then((exitCode) => {
         finish({ exitCode, timedOut, aborted });
       })

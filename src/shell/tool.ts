@@ -117,6 +117,7 @@ function appendTruncationNotice(
 
 async function closeTempFileStream(stream: WriteStream | undefined): Promise<void> {
   if (!stream) return;
+  if (stream.closed || stream.destroyed || stream.writableFinished) return;
 
   await new Promise<void>((resolve, reject) => {
     const onError = (error: Error) => {

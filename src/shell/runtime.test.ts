@@ -193,3 +193,45 @@ test("executeShellCommand force kills processes that ignore SIGTERM after timeou
   assert.equal(result.timedOut, true);
   assert.equal(result.aborted, false);
 });
+
+test("executeShellCommand settles after timeout even when the killed process does not report exit", async () => {
+  const originalKill = process.kill;
+  let capturedPid: number | undefined;
+
+  process.kill = ((pid: number, signal?: NodeJS.Signals | number) => {
+    capturedPid = Math.abs(pid);
+    if (signal === 0) return true;
+    return true;
+  }) as typeof process.kill;
+
+  try {
+    const startedAt = Date.now();
+    const result = await executeShellCommand(
+      {
+        shell: process.execPath,
+        shellArgs: ["-e", "setInterval(() => {}, 1000)"],
+      },
+      process.cwd(),
+      {
+        timeoutMs: 20,
+      },
+    );
+
+    assert.equal(result.timedOut, true);
+    assert.equal(result.aborted, false);
+    assert.equal(Date.now() - startedAt < 1000, true);
+  } finally {
+    process.kill = originalKill;
+    if (capturedPid !== undefined) {
+      try {
+        process.kill(-capturedPid, "SIGKILL");
+      } catch {
+        try {
+          process.kill(capturedPid, "SIGKILL");
+        } catch {
+          // Process may already be gone.
+        }
+      }
+    }
+  }
+});

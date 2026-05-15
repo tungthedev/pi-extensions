@@ -17,6 +17,7 @@ All notable changes to `@tungthedev/pi-extensions` will be documented in this fi
 - Fixed goal token-budget limits to hard-stop the active turn instead of injecting a hidden steer message that could leave Pi showing a stuck working indicator.
 - Fixed the goal widget width calculation so budgeted token counters reserve space for the usage glyph and do not clip at narrow widths.
 - Fixed Mermaid preview messages to render immediately after assistant turns instead of waiting for the next user turn.
+- Fixed shell tool timeouts hanging after truncated command output when temp log streams were cleaned up twice.
 
 ## [2.6.0] - 2026-05-12
 
