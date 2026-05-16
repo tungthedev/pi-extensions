@@ -435,7 +435,6 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
       fixedEditorCompositor.requestRepaint();
       return;
     }
-    if (!editorSettings.fixedEditor) return;
     currentTui?.requestRender();
   };
 
@@ -701,6 +700,10 @@ export function installCodexEditorUi(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_execution_end", async (_event, ctx) => {
+    await syncContext(ctx);
+  });
+
+  pi.on("session_compact", async (_event, ctx) => {
     await syncContext(ctx);
   });
 
