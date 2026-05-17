@@ -174,28 +174,29 @@ export function resolveForkContextSessionFile(options: {
   leafId?: string | null;
   currentCwd: string;
   childCwd: string;
+  forkTurns?: "all" | number;
 }): string {
   const sessionFile = options.sessionFile?.trim();
   if (!sessionFile) {
-    throw new Error("fork_context requires a persisted current session file");
+    throw new Error("fork_turns requires a persisted current session file");
   }
 
   if (!fs.existsSync(sessionFile)) {
     throw new Error(
-      "fork_context requires the current session to be flushed to disk; no session file exists yet",
+      "fork_turns requires the current session to be flushed to disk; no session file exists yet",
     );
   }
 
   const leafId = options.leafId?.trim();
   if (!leafId) {
-    throw new Error("fork_context requires a current session leaf");
+    throw new Error("fork_turns requires a current session leaf");
   }
 
   const currentCwd = path.resolve(options.currentCwd);
   const childCwd = path.resolve(options.childCwd);
   if (childCwd !== currentCwd) {
     throw new Error(
-      `fork_context is only supported when workdir matches the current cwd (${currentCwd})`,
+      `fork_turns is only supported when workdir matches the current cwd (${currentCwd})`,
     );
   }
 
@@ -203,24 +204,71 @@ export function resolveForkContextSessionFile(options: {
   const sessionCwd = path.resolve(sessionManager.getCwd());
   if (sessionCwd !== childCwd) {
     throw new Error(
-      `fork_context is only supported when workdir matches the current session cwd (${sessionCwd})`,
+      `fork_turns is only supported when workdir matches the current session cwd (${sessionCwd})`,
     );
   }
 
   if (!sessionManager.getEntry(leafId)) {
     throw new Error(
-      "fork_context requires the current leaf to exist in the persisted session file",
+      "fork_turns requires the current leaf to exist in the persisted session file",
     );
   }
 
-  const forkedSessionFile = sessionManager.createBranchedSession(leafId);
+  const forkedSessionFile =
+    typeof options.forkTurns === "number"
+      ? createLastUserTurnsSession({
+          sessionManager,
+          sessionFile,
+          sessionCwd,
+          forkTurns: options.forkTurns,
+          leafId,
+        })
+      : sessionManager.createBranchedSession(leafId);
   if (!forkedSessionFile || !fs.existsSync(forkedSessionFile)) {
     throw new Error(
-      "fork_context could not create a durable branched session file for the current leaf",
+      "fork_turns could not create a durable branched session file for the current leaf",
     );
   }
 
   return forkedSessionFile;
+}
+
+function createLastUserTurnsSession(options: {
+  sessionManager: SessionManager;
+  sessionFile: string;
+  sessionCwd: string;
+  forkTurns: number;
+  leafId: string;
+}): string | undefined {
+  const branch = options.sessionManager.getBranch(options.leafId) as any[];
+  const userPositions = branch.flatMap((entry, index) =>
+    entry.type === "message" && entry.message?.role === "user" ? [index] : [],
+  );
+  const startIndex =
+    userPositions.length <= options.forkTurns ? 0 : userPositions[userPositions.length - options.forkTurns];
+  const suffix = branch.slice(startIndex);
+
+  const forked = SessionManager.create(options.sessionCwd, path.dirname(options.sessionFile));
+  forked.newSession({ parentSession: options.sessionFile });
+
+  for (const entry of suffix) {
+    switch (entry.type) {
+      case "message":
+        forked.appendMessage(entry.message);
+        break;
+      case "model_change":
+        forked.appendModelChange(entry.provider, entry.modelId);
+        break;
+      case "thinking_level_change":
+        forked.appendThinkingLevelChange(entry.thinkingLevel);
+        break;
+      case "custom_message":
+        forked.appendCustomMessageEntry(entry.customType, entry.content, entry.display, entry.details);
+        break;
+    }
+  }
+
+  return forked.getSessionFile() ?? undefined;
 }
 
 export function buildDurablePatchFromGetState(

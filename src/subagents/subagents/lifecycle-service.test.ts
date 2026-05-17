@@ -362,7 +362,7 @@ test("lifecycle service wait and stop share active wait and close behavior", asy
   const service = createSubagentLifecycleService(deps);
 
   const waited = await service.wait({ ids: ["agent-1"], timeoutMs: 45_000 });
-  const waitedAny = await service.waitAny({ timeoutMs: 45_000 });
+  const waitedAny = await service.waitAny({ timeoutMs: 300_000 });
   records.set("agent-1", { ...records.get("agent-1")!, status: "live_idle" });
   const stopped = await service.stop("agent-1");
 
@@ -506,7 +506,7 @@ test("lifecycle service waitAny rejects when no child agents are available", asy
   });
   const service = createSubagentLifecycleService(deps);
 
-  await assert.rejects(service.waitAny({ timeoutMs: 45_000 }), /No child agents are available to wait on/);
+  await assert.rejects(service.waitAny({ timeoutMs: 300_000 }), /No child agents are available to wait on/);
 });
 
 test("lifecycle service lets role defaults beat inherited parent defaults when no explicit override is provided", async () => {

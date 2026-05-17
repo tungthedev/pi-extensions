@@ -1,8 +1,8 @@
 import { muxSetupHint } from "./interactive.js";
 
 export const MIN_WAIT_AGENT_TIMEOUT_MS = 30_000;
-export const DEFAULT_WAIT_AGENT_TIMEOUT_MS = 45_000;
-export const MAX_WAIT_AGENT_TIMEOUT_MS = 90_000;
+export const DEFAULT_WAIT_AGENT_TIMEOUT_MS = 300_000;
+export const MAX_WAIT_AGENT_TIMEOUT_MS = 300_000;
 
 export function muxUnavailableError(kind = "interactive child sessions"): Error {
   return new Error(`${kind} require a supported terminal multiplexer. ${muxSetupHint()}`);

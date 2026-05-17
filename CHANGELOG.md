@@ -2,6 +2,13 @@
 
 All notable changes to `@tungthedev/pi-extensions` will be documented in this file.
 
+### Unreleased
+
+### Changed
+
+- Updated `spawn_agent` to support Codex style N last turns `fork_turns.
+- Removed custom timeout on `wait_agent`, default to five minutes.
+
 ## [2.6.1] - 2026-05-15
 
 ### Added

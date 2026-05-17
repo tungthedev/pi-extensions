@@ -133,12 +133,12 @@ function buildSpawnAgentToolDescription(agentRoleGuidance: string): string {
   ].filter((line, index, lines) => !(line === "" && lines[index - 1] === "")).join("\n");
 }
 
-function shouldForkCodexTurns(forkTurns: unknown): boolean {
-  if (forkTurns === undefined || forkTurns === null || forkTurns === "" || forkTurns === "all") {
-    return true;
+function parseCodexForkTurns(forkTurns: unknown): "none" | "all" | number {
+  if (forkTurns === undefined || forkTurns === null || forkTurns === "" || forkTurns === "none") {
+    return "none";
   }
-  if (forkTurns === "none") return false;
-  if (typeof forkTurns === "string" && /^[1-9][0-9]*$/.test(forkTurns)) return true;
+  if (forkTurns === "all") return "all";
+  if (typeof forkTurns === "string" && /^[1-9][0-9]*$/.test(forkTurns)) return Number(forkTurns);
   throw new Error("fork_turns must be `none`, `all`, or a positive integer string");
 }
 
@@ -186,22 +186,10 @@ export function registerCodexToolAdapters(
         description: "",
       }),
     ),
-    fork_context: Type.Optional(
-      Type.Boolean({
-        description:
-          "Compatibility option. When true, fork the current thread history into the new agent before sending the initial prompt. Prefer `fork_turns` for Codex-style launches.",
-      }),
-    ),
     fork_turns: Type.Optional(
       Type.String({
         description:
-          "Optional number of turns to fork. Defaults to `all`. Use `none` or `all`; positive integer strings such as `3` are accepted for Codex compatibility but currently fork all available context.",
-      }),
-    ),
-    model: Type.Optional(
-      Type.String({
-        description:
-          "Optional model override for the new agent. Leave unset to inherit the same model as the parent, which is the preferred default. Only set this when the user explicitly asks for a different model or the task clearly requires one.",
+          "Optional number of turns to fork. Defaults to `none`. Use `none`, `all`, or a positive integer string such as `3` to fork only the most recent user turns.",
       }),
     ),
     reasoning_effort: Type.Optional(
@@ -228,17 +216,17 @@ export function registerCodexToolAdapters(
         throw new Error("message is required");
       }
 
+      const forkTurns = parseCodexForkTurns(params.fork_turns);
       const result = await deps.lifecycle.spawn({
         mode: "codex",
         ctx,
         name: validateSubagentName(params.task_name, "task_name"),
         prompt,
         requestedAgentType: params.agent_type,
-        requestedModel: params.model,
         requestedReasoningEffort: params.reasoning_effort,
         runInBackground: true,
         interactive: params.interactive,
-        forkContext: params.fork_context ?? shouldForkCodexTurns(params.fork_turns),
+        forkTurns,
       });
 
       return {
@@ -428,17 +416,10 @@ export function registerCodexToolAdapters(
     label: "wait_agent",
     description:
       "Wait for a mailbox update from any live agent, including queued messages and final-status notifications. Does not return the content; returns either a summary of which agents have updates (if any), or a timeout summary if no mailbox update arrives before the deadline.",
-    parameters: Type.Object({
-      timeout_ms: Type.Optional(
-        Type.Number({
-          description:
-            "Optional timeout in milliseconds. Defaults to 45000, min 30000, max 90000.",
-        }),
-      ),
-    }),
-    async execute(_toolCallId: any, params: any) {
+    parameters: Type.Object({}),
+    async execute(_toolCallId: any) {
       const result = await deps.lifecycle.waitAny({
-        timeoutMs: deps.normalizeWaitAgentTimeoutMs(params.timeout_ms),
+        timeoutMs: deps.normalizeWaitAgentTimeoutMs(undefined),
       });
       const snapshots = result.snapshots.map(toPublicAgentSnapshot);
       return {

@@ -592,6 +592,8 @@ test("codex tool adapters use public names and do not leak agent ids", async () 
   assert.ok(waitAgent);
   assert.ok(listAgents);
   assert.ok(closeAgent);
+  assert.equal(Boolean((spawnAgent!.parameters as any).properties.fork_context), false);
+  assert.ok((spawnAgent!.parameters as any).properties.fork_turns);
 
   const spawnResult = await (spawnAgent!.execute as (...args: unknown[]) => Promise<any>)("call-1", {
     task_name: "researcher_one",
@@ -601,7 +603,7 @@ test("codex tool adapters use public names and do not leak agent ids", async () 
   assert.equal(calls.spawn.length, 1);
   assert.equal((calls.spawn[0] as { name: string }).name, "researcher_one");
   assert.equal((calls.spawn[0] as { runInBackground: boolean }).runInBackground, true);
-  assert.equal((calls.spawn[0] as { forkContext: boolean }).forkContext, false);
+  assert.equal((calls.spawn[0] as { forkTurns: string }).forkTurns, "none");
   assert.deepEqual(JSON.parse(spawnResult.content[0].text), {
     task_name: "researcher_one",
   });
@@ -617,10 +619,19 @@ test("codex tool adapters use public names and do not leak agent ids", async () 
   assert.equal(defaultForkSpawnCall.name, "researcher_two");
   assert.equal(defaultForkSpawnCall.prompt, "Investigate billing flow");
   assert.equal(defaultForkSpawnCall.runInBackground, true);
-  assert.equal(defaultForkSpawnCall.forkContext, true);
+  assert.equal(defaultForkSpawnCall.forkTurns, "none");
   assert.deepEqual(JSON.parse(spawnDefaultFork.content[0].text), {
     task_name: "researcher_two",
   });
+
+  await (spawnAgent!.execute as (...args: unknown[]) => Promise<any>)("call-1c", {
+    task_name: "researcher_three",
+    message: "Investigate worker flow",
+    fork_turns: "2",
+  }, undefined, undefined, createMockCtx());
+  assert.equal(calls.spawn.length, 3);
+  const partialForkSpawnCall = calls.spawn[2] as Record<string, unknown>;
+  assert.equal(partialForkSpawnCall.forkTurns, 2);
 
   const sendResult = await (sendMessage!.execute as (...args: unknown[]) => Promise<any>)("call-2", {
     target: "researcher_one",
@@ -633,10 +644,8 @@ test("codex tool adapters use public names and do not leak agent ids", async () 
   assert.deepEqual(JSON.parse(sendResult.content[0].text), { submission_id: "submission-1" });
   assert.equal(JSON.stringify(sendResult.details).includes("agent_id"), false);
 
-  const waitResult = await (waitAgent!.execute as (...args: unknown[]) => Promise<any>)("call-3", {
-    timeout_ms: 45_000,
-  });
-  assert.deepEqual(calls.waitAny, [{ timeoutMs: 45_000 }]);
+  const waitResult = await (waitAgent!.execute as (...args: unknown[]) => Promise<any>)("call-3", {});
+  assert.deepEqual(calls.waitAny, [{ timeoutMs: 300_000 }]);
   assert.deepEqual(JSON.parse(waitResult.content[0].text), {
     message: "researcher_one has updates",
     timed_out: false,
@@ -852,7 +861,7 @@ test("task tool adapter always waits for completion and does not leak task ids",
     output: "task_alpha done",
     timed_out: false,
   });
-  assert.deepEqual(calls.waitByNames, [{ names: ["task_alpha"], timeoutMs: 45_000 }]);
+  assert.deepEqual(calls.waitByNames, [{ names: ["task_alpha"], timeoutMs: 300_000 }]);
 
   setSnapshot("task_wait", "running", "still working");
   setWaitedSnapshot("task_wait", "idle", "finished after resume");
@@ -871,8 +880,8 @@ test("task tool adapter always waits for completion and does not leak task ids",
     timed_out: false,
   });
   assert.deepEqual(calls.waitByNames, [
-    { names: ["task_alpha"], timeoutMs: 45_000 },
-    { names: ["task_wait"], timeoutMs: 45_000 },
+    { names: ["task_alpha"], timeoutMs: 300_000 },
+    { names: ["task_wait"], timeoutMs: 300_000 },
   ]);
 });
 
@@ -892,9 +901,7 @@ test("wait_agent returns a running snapshot with update_message", async () => {
     update_message: "still auditing",
   });
 
-  const result = await (waitAgent!.execute as (...args: unknown[]) => Promise<any>)("call-update", {
-    timeout_ms: 45_000,
-  });
+  const result = await (waitAgent!.execute as (...args: unknown[]) => Promise<any>)("call-update", {});
 
   assert.deepEqual(JSON.parse(result.content[0].text), {
     message: "researcher_one has updates",
@@ -1203,7 +1210,35 @@ test("resolveForkContextSessionFile creates a durable branched session for the r
   }
 });
 
-test("resolveForkContextSessionFile rejects workdir changes for fork_context", () => {
+test("resolveForkContextSessionFile creates a suffix branch for numeric fork turns", () => {
+  const fixture = createPersistedSessionFixture();
+
+  try {
+    const forkedSessionFile = resolveForkContextSessionFile({
+      sessionFile: fixture.sessionFile,
+      leafId: fixture.ids.assistant2,
+      currentCwd: fixture.cwd,
+      childCwd: fixture.cwd,
+      forkTurns: 1,
+    });
+
+    assert.ok(existsSync(forkedSessionFile));
+
+    const forked = SessionManager.open(forkedSessionFile);
+    assert.equal(forked.getHeader()?.parentSession, fixture.sessionFile);
+    assert.deepEqual(
+      forked.getEntries().map((entry) => [entry.type, (entry as any).message?.role, (entry as any).message?.content]),
+      [
+        ["message", "user", "follow up"],
+        ["message", "assistant", [{ type: "text", text: "done" }]],
+      ],
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test("resolveForkContextSessionFile rejects workdir changes for fork_turns", () => {
   const fixture = createPersistedSessionFixture();
 
   try {

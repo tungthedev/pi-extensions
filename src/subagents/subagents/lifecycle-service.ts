@@ -36,7 +36,7 @@ export type SpawnLifecycleRequest = {
   requestedReasoningEffort?: string;
   runInBackground?: boolean;
   interactive?: boolean;
-  forkContext?: boolean;
+  forkTurns?: "none" | "all" | number;
   taskSummary?: string;
 };
 
@@ -108,6 +108,7 @@ export type SubagentLifecycleServiceDeps = {
     leafId?: string | null;
     currentCwd: string;
     childCwd: string;
+    forkTurns?: "all" | number;
   }) => string;
   findAddressableChildByName: (name: string) => DurableChildRecord | undefined;
   findAddressableChildByTarget: (
@@ -291,12 +292,13 @@ export function createSubagentLifecycleService(deps: SubagentLifecycleServiceDep
         appliedProfile.effectiveReasoningEffort,
       );
       const forkedSessionFile =
-        request.mode === "codex" && request.forkContext
+        request.mode === "codex" && request.forkTurns !== "none"
           ? deps.resolveForkContextSessionFile({
               sessionFile: request.ctx.sessionManager.getSessionFile(),
               leafId: request.ctx.sessionManager.getLeafId(),
               currentCwd: request.ctx.cwd,
               childCwd: request.ctx.cwd,
+              forkTurns: request.forkTurns === undefined ? "all" : request.forkTurns,
             })
           : undefined;
       const baseRecord = buildBaseRecord(
