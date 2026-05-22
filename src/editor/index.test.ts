@@ -1369,6 +1369,119 @@ test("installCodexEditorUi keeps at least two input rows in the boxed editor", a
   assert.equal(editor.render(80).some((line) => line.startsWith("╰")), false);
 });
 
+test("installCodexEditorUi clamps autocomplete rows after adding editor padding", async () => {
+  const lifecycleHandlers = new Map<string, Function[]>();
+  let editorFactory:
+    | ((
+        tui: { requestRender(): void; terminal: { rows: number } },
+        editorTheme: unknown,
+        keybindings: unknown,
+      ) => unknown)
+    | undefined;
+
+  installCodexEditorUi({
+    getThinkingLevel() {
+      return "low";
+    },
+    getCommands() {
+      return [];
+    },
+    on(event: string, handler: Function) {
+      lifecycleHandlers.set(event, [...(lifecycleHandlers.get(event) ?? []), handler]);
+    },
+    events: {
+      on() {},
+    },
+  } as never);
+
+  const ctx = {
+    cwd: "/tmp/project",
+    model: { id: "gpt-5.4-mini" },
+    getContextUsage() {
+      return undefined;
+    },
+    sessionManager: {
+      getBranch() {
+        return [];
+      },
+    },
+    ui: {
+      theme: {
+        fg: (_color: string, text: string) => text,
+        bg: (_color: string, text: string) => text,
+        bold: (text: string) => text,
+        strikethrough: (text: string) => text,
+        getFgAnsi: () => "",
+        getBgAnsi: () => "",
+        getColorMode: () => "truecolor",
+      },
+      setEditorComponent(factory: typeof editorFactory) {
+        editorFactory = factory;
+      },
+      setFooter(factory: Function) {
+        factory(undefined, undefined, {
+          getGitBranch: () => "main",
+          onBranchChange: () => () => undefined,
+        });
+      },
+      setWidget() {},
+    },
+  };
+
+  for (const handler of lifecycleHandlers.get("session_start") ?? []) {
+    await handler(undefined, ctx as never);
+  }
+
+  assert.ok(editorFactory);
+  const editor = editorFactory!(
+    { requestRender() {}, terminal: { rows: 40 } },
+    {
+      borderColor: (text: string) => text,
+      selectList: {
+        selectedPrefix: (text: string) => text,
+        selectedText: (text: string) => text,
+        description: (text: string) => text,
+        scrollInfo: (text: string) => text,
+        noMatch: (text: string) => text,
+      },
+    },
+    { matches: () => false },
+  ) as {
+    render(width: number): string[];
+    setText(text: string): void;
+    setAutocompleteProvider(provider: AutocompleteProvider): void;
+    tryTriggerAutocomplete(explicitTab?: boolean): void;
+  };
+
+  editor.setAutocompleteProvider({
+    async getSuggestions() {
+      return {
+        prefix: "/",
+        items: [
+          { value: "settings", label: "settings", description: "Open settings menu" },
+          { value: "model", label: "model", description: "Select model (opens selector UI)" },
+        ],
+      };
+    },
+    applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
+      return {
+        lines: [
+          `${(lines[cursorLine] ?? "").slice(0, cursorCol - prefix.length)}${item.value}${(lines[cursorLine] ?? "").slice(cursorCol)}`,
+        ],
+        cursorLine,
+        cursorCol: cursorCol - prefix.length + item.value.length,
+      };
+    },
+  });
+  editor.setText("/");
+  editor.tryTriggerAutocomplete();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  const lines = editor.render(80);
+  assert.ok(lines.some((line) => line.includes("settings")));
+  assert.ok(lines.every((line) => visibleWidth(line) <= 80));
+});
+
 test("installCodexEditorUi renders compact repo metadata below narrow editor", async () => {
   const lifecycleHandlers = new Map<string, Function[]>();
   let editorFactory:
