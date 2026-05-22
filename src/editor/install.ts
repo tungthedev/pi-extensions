@@ -354,7 +354,7 @@ class CodexBoxedEditor extends CustomEditor {
     rendered.push(this.getAppTheme().fg("muted", HORIZONTAL.repeat(width)));
 
     for (let index = bottomIndex + 1; index < lines.length; index += 1) {
-      rendered.push(` ${lines[index] ?? ""} `);
+      rendered.push(this.padWriteZoneRow(lines[index] ?? "", width));
     }
 
     return rendered;
