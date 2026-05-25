@@ -144,7 +144,8 @@ export function isGoalStatus(status: unknown): status is GoalStatus {
     status === "active" ||
     status === "paused" ||
     status === "budgetLimited" ||
-    status === "complete"
+    status === "complete" ||
+    status === "blocked"
   );
 }
 
@@ -242,7 +243,10 @@ export function updateGoalStatus(current: ThreadGoal | null, status: GoalStatus)
   };
 }
 
-export function updateGoalBudget(current: ThreadGoal | null, tokenBudget: number | null): GoalResult {
+export function updateGoalBudget(
+  current: ThreadGoal | null,
+  tokenBudget: number | null,
+): GoalResult {
   if (!current) {
     return {
       ok: false,
@@ -263,9 +267,10 @@ export function updateGoalBudget(current: ThreadGoal | null, tokenBudget: number
 
   return {
     ok: true,
-    message: tokenBudget === null
-      ? "Goal token budget cleared."
-      : `Goal token budget set to ${tokenBudget.toLocaleString("en-US")}.`,
+    message:
+      tokenBudget === null
+        ? "Goal token budget cleared."
+        : `Goal token budget set to ${tokenBudget.toLocaleString("en-US")}.`,
     goal,
   };
 }

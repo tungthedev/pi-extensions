@@ -150,6 +150,10 @@ export function formatFooterStatus(goal: ThreadGoal | null): string | undefined 
     return "Goal abandoned";
   }
 
+  if (goal.status === "blocked") {
+    return "Goal blocked";
+  }
+
   if (goal.tokenBudget !== null) {
     return `Goal achieved (${formatCompactTokenValue(goal.usage.tokensUsed)} tokens)`;
   }

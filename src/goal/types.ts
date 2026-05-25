@@ -1,7 +1,7 @@
 export const CUSTOM_ENTRY_TYPE = "pi-codex-goal";
 export const MAX_OBJECTIVE_CHARS = 8000;
 
-export type GoalStatus = "active" | "paused" | "budgetLimited" | "complete";
+export type GoalStatus = "active" | "paused" | "budgetLimited" | "complete" | "blocked";
 
 export interface GoalUsage {
   tokensUsed: number;

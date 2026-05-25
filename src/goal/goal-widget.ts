@@ -1,16 +1,19 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
-import { formatDuration } from "./format.js";
 import type { GoalStatus, ThreadGoal } from "./types.js";
+
+import { formatDuration } from "./format.js";
 
 export const GOAL_WIDGET_KEY = "goal";
 
 const STATUS_GLYPHS: Record<GoalStatus, string> = {
   active: "●",
-  paused: "‖",
+  paused: "⏸",
   budgetLimited: "▲",
   complete: "●",
+  blocked: "⏸",
 };
 
 const STATUS_COLORS: Record<GoalStatus, "accent" | "success" | "warning" | "error"> = {
@@ -18,6 +21,7 @@ const STATUS_COLORS: Record<GoalStatus, "accent" | "success" | "warning" | "erro
   paused: "warning",
   budgetLimited: "error",
   complete: "success",
+  blocked: "error",
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -48,13 +52,11 @@ function usageFillColor(percent: number): "success" | "warning" | "error" {
   return "success";
 }
 
-function formatCompactUsageGlyph(
-  percent: number,
-  theme: ExtensionContext["ui"]["theme"],
-): string {
+function formatCompactUsageGlyph(percent: number, theme: ExtensionContext["ui"]["theme"]): string {
   const glyphs = ["▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"];
   const clampedPercent = clamp(percent, 0, 100);
-  const glyph = glyphs[Math.min(glyphs.length - 1, Math.floor((clampedPercent / 100) * glyphs.length))] ?? "▏";
+  const glyph =
+    glyphs[Math.min(glyphs.length - 1, Math.floor((clampedPercent / 100) * glyphs.length))] ?? "▏";
   return theme.fg(usageFillColor(clampedPercent), glyph);
 }
 
@@ -85,9 +87,7 @@ function metadataParts(goal: ThreadGoal, theme: ExtensionContext["ui"]["theme"])
   return [
     theme.fg("muted", formatDuration(goal.usage.activeSeconds)),
     tokenUsage(goal, theme),
-  ].filter(
-    (part): part is string => Boolean(part),
-  );
+  ].filter((part): part is string => Boolean(part));
 }
 
 function plainMetadataParts(goal: ThreadGoal): string[] {
@@ -96,7 +96,11 @@ function plainMetadataParts(goal: ThreadGoal): string[] {
   );
 }
 
-function objectiveBudget(maxWidth: number | undefined, prefix: string, suffix: string): number | undefined {
+function objectiveBudget(
+  maxWidth: number | undefined,
+  prefix: string,
+  suffix: string,
+): number | undefined {
   if (maxWidth === undefined) return undefined;
   const reserved = visibleWidth(prefix) + visibleWidth(suffix);
   return Math.max(1, maxWidth - reserved);

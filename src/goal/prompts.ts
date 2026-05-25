@@ -7,8 +7,10 @@ const CONTINUATION_MARKER_PREFIX = '<pi_goal_continuation goal_id="';
 export const TOOL_PROMPT_GUIDELINES = [
   "Use get_goal when you need to inspect the current long-running user objective.",
   "Use create_goal only when the user explicitly asks you to start tracking a concrete goal; do not infer goals from ordinary tasks and do not create a second goal while one already exists.",
+  "When using create_goal, set token_budget only when the user explicitly provides one or clearly asks for a budgeted goal.",
   "Use update_goal with status complete only after a completion audit proves the objective is actually achieved and no required work remains.",
-  "Before using update_goal, map every explicit requirement in the goal to concrete evidence from files, command output, test results, PR state, or other real artifacts; uncertainty means the goal is not complete.",
+  "Use update_goal with status blocked only after the same blocking condition has recurred for at least three consecutive goal turns and you cannot make meaningful progress without user input or an external-state change.",
+  "Before using update_goal with status complete, map every explicit requirement in the goal to concrete evidence from files, command output, test results, PR state, or other real artifacts; uncertainty means the goal is not complete.",
   "Do not use update_goal merely because work is stopping, substantial progress was made, tests passed without covering every requirement, or the token budget is nearly exhausted.",
   "When a goal is active, keep working through clear low-risk next steps instead of stopping at a plan.",
 ];

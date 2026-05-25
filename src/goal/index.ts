@@ -5,8 +5,8 @@ import {
   EDITOR_SET_STATUS_SEGMENT_EVENT,
 } from "../editor/events.js";
 import { registerGoalCommand } from "./commands.js";
-import { budgetLimitNotice, continuationGoalIdFromPrompt, continuationPrompt } from "./prompts.js";
 import { syncGoalWidget } from "./goal-widget.js";
+import { budgetLimitNotice, continuationGoalIdFromPrompt, continuationPrompt } from "./prompts.js";
 import {
   applyUsage,
   clearEntry,
@@ -287,9 +287,13 @@ export function registerGoalExtension(pi: ExtensionAPI): void {
     }
   };
 
-  const completeGoal = (source: GoalEntrySource, ctx: ExtensionContext): GoalResult => {
+  const updateGoal = (
+    status: "complete" | "blocked",
+    source: GoalEntrySource,
+    ctx: ExtensionContext,
+  ): GoalResult => {
     accountProgress(ctx, false, 0, true);
-    const result = updateGoalStatus(goal, "complete");
+    const result = updateGoalStatus(goal, status);
     if (!result.ok || !result.goal) {
       return result;
     }
@@ -344,7 +348,7 @@ export function registerGoalExtension(pi: ExtensionAPI): void {
       persistGoal(nextGoal, source);
       refreshUi(_ctx);
     },
-    completeGoal,
+    updateGoal,
   });
 
   registerGoalCommand(pi, {
