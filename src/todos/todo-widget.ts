@@ -26,9 +26,8 @@ export function syncTodoUi(
   const upcomingPendingItems = items
     .slice(inProgressIndex + 1)
     .filter((item) => item.status === "pending");
-  const visiblePendingItems = upcomingPendingItems.slice(0, 2);
-  const hiddenPendingCount = upcomingPendingItems.length - visiblePendingItems.length;
-  const previewItems = [inProgressItem, ...visiblePendingItems];
+  const hiddenPendingCount = upcomingPendingItems.length;
+  const previewItems = [inProgressItem];
 
   const lines = previewItems.map((item, index) =>
     renderTodoPreviewLine(item, ctx.ui.theme, {

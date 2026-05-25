@@ -32,5 +32,5 @@ test("syncTodoUi leaves a visual spacer line after the todo preview", () => {
     statusKey: "todo-status",
   });
 
-  assert.deepEqual(widgetLines, ["▣ Current task", "□ Next task", "<dim> </dim>"]);
+  assert.deepEqual(widgetLines, ["▣ Current task (+1 more)", "<dim> </dim>"]);
 });
