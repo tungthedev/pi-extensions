@@ -42,12 +42,16 @@ const UpdateGoalParams = Type.Object({
 
 export interface ToolHost {
   getGoal(): ThreadGoal | null;
-  setGoal(goal: ThreadGoal, source: GoalEntrySource, ctx: ExtensionContext): void;
+  setGoal(
+    goal: ThreadGoal,
+    source: GoalEntrySource,
+    ctx: ExtensionContext,
+  ): void | Promise<void>;
   updateGoal(
     status: "complete" | "blocked",
     source: GoalEntrySource,
     ctx: ExtensionContext,
-  ): GoalResult;
+  ): GoalResult | Promise<GoalResult>;
 }
 
 function formatCompactNumber(value: number): string {
@@ -184,7 +188,7 @@ export function registerGoalTools(pi: ExtensionAPI, host: ToolHost): void {
       if (!result.ok || !result.goal) {
         return textResult(result.message, result.goal, true);
       }
-      host.setGoal(result.goal, "tool", ctx);
+      await host.setGoal(result.goal, "tool", ctx);
       return textResult(toToolText(result.goal), result.goal);
     },
     renderCall(args, theme, context) {
@@ -210,7 +214,7 @@ export function registerGoalTools(pi: ExtensionAPI, host: ToolHost): void {
     renderShell: "self",
     parameters: UpdateGoalParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const result = host.updateGoal(params.status, "tool", ctx);
+      const result = await host.updateGoal(params.status, "tool", ctx);
       if (!result.ok || !result.goal) {
         return textResult(result.message, result.goal, true);
       }

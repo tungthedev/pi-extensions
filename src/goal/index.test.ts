@@ -9,7 +9,7 @@ import test from "node:test";
 
 import { EDITOR_SET_STATUS_SEGMENT_EVENT } from "../editor/events.js";
 import goalExtension from "./index.js";
-import type { GoalCustomEntry } from "./types.js";
+import type { GoalCustomEntry, GoalExtensionBridge, GoalBridgeProjectionUpdate } from "./types.js";
 
 const GOAL_ICON = String.fromCodePoint(0x1f3af);
 
@@ -19,7 +19,7 @@ type TestWidgetFactory = (
   theme: ExtensionContext["ui"]["theme"],
 ) => { render(width: number): string[] };
 
-function createGoalHarness() {
+function createGoalHarness(options: { bridge?: GoalExtensionBridge } = {}) {
   const entries: ReturnType<ExtensionCommandContext["sessionManager"]["getBranch"]> = [];
   const handlers = new Map<string, EventHandler[]>();
   const sentMessages: Array<{
@@ -80,38 +80,41 @@ function createGoalHarness() {
     },
   } as unknown as ExtensionCommandContext;
 
-  goalExtension({
-    appendEntry(customType: string, data: unknown) {
-      entries.push({
-        type: "custom",
-        id: `entry-${++entryIndex}`,
-        parentId: null,
-        timestamp: new Date(0).toISOString(),
-        customType,
-        data,
-      });
-    },
-    events: {
-      emit(event: string, data: unknown) {
-        emitted.push({ event, data });
+  goalExtension(
+    {
+      appendEntry(customType: string, data: unknown) {
+        entries.push({
+          type: "custom",
+          id: `entry-${++entryIndex}`,
+          parentId: null,
+          timestamp: new Date(0).toISOString(),
+          customType,
+          data,
+        });
       },
-    },
-    on(event: string, handler: EventHandler) {
-      handlers.set(event, [...(handlers.get(event) ?? []), handler]);
-    },
-    registerCommand(name: string, options: { handler: typeof commandHandler }) {
-      if (name === "goal") commandHandler = options.handler;
-    },
-    registerTool(tool: Record<string, any>) {
-      tools.set(tool.name as string, tool);
-    },
-    sendMessage(
-      message: Parameters<ExtensionAPI["sendMessage"]>[0],
-      options: Parameters<ExtensionAPI["sendMessage"]>[1],
-    ) {
-      sentMessages.push({ message, options });
-    },
-  } as never);
+      events: {
+        emit(event: string, data: unknown) {
+          emitted.push({ event, data });
+        },
+      },
+      on(event: string, handler: EventHandler) {
+        handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+      },
+      registerCommand(name: string, options: { handler: typeof commandHandler }) {
+        if (name === "goal") commandHandler = options.handler;
+      },
+      registerTool(tool: Record<string, any>) {
+        tools.set(tool.name as string, tool);
+      },
+      sendMessage(
+        message: Parameters<ExtensionAPI["sendMessage"]>[0],
+        options: Parameters<ExtensionAPI["sendMessage"]>[1],
+      ) {
+        sentMessages.push({ message, options });
+      },
+    } as never,
+    { bridge: options.bridge },
+  );
 
   return {
     ctx,
@@ -142,6 +145,51 @@ function createGoalHarness() {
     },
   };
 }
+
+test("session reload emits a projection update without a transition", async () => {
+  const updates: GoalBridgeProjectionUpdate[] = [];
+  const harness = createGoalHarness({
+    bridge: {
+      onGoalUpdate(update) {
+        updates.push(update);
+      },
+    },
+  });
+
+  await harness.runCommand("ship the feature");
+  updates.length = 0;
+
+  await harness.runEvent("session_tree", {});
+
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0]?.state.goal?.objective, "ship the feature");
+  assert.equal(updates[0]?.transition, undefined);
+});
+
+test("goal mutations emit one projection update with a Pi-owned transition id", async () => {
+  const updates: GoalBridgeProjectionUpdate[] = [];
+  const harness = createGoalHarness({
+    bridge: {
+      onGoalUpdate(update) {
+        updates.push(update);
+      },
+    },
+  });
+
+  await harness.runCommand("ship the feature");
+
+  const created = updates.at(-1);
+  assert.equal(created?.transition?.kind, "created");
+  assert.match(created?.transition?.eventId ?? "", /^goal-created-/);
+  updates.length = 0;
+
+  await harness.runCommand("pause");
+
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0]?.state.goal?.status, "paused");
+  assert.equal(updates[0]?.transition?.kind, "paused");
+  assert.match(updates[0]?.transition?.eventId ?? "", /^goal-paused-/);
+});
 
 test("/goal objective queues hidden follow-up and shows target icon in editor border", async () => {
   const harness = createGoalHarness();

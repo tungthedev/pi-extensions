@@ -7,8 +7,12 @@ import { CUSTOM_ENTRY_TYPE, type GoalEntrySource, type ThreadGoal } from "./type
 
 export interface CommandHost {
   getGoal(): ThreadGoal | null;
-  setGoal(goal: ThreadGoal, source: GoalEntrySource, ctx: ExtensionCommandContext): void;
-  clearGoal(source: GoalEntrySource, ctx: ExtensionCommandContext): void;
+  setGoal(
+    goal: ThreadGoal,
+    source: GoalEntrySource,
+    ctx: ExtensionCommandContext,
+  ): void | Promise<void>;
+  clearGoal(source: GoalEntrySource, ctx: ExtensionCommandContext): void | Promise<void>;
 }
 
 const COMMANDS = ["pause", "resume", "clear", "budget"] as const;
@@ -85,7 +89,7 @@ export async function handleGoalCommand(
       ctx.ui.notify("No goal is set.", "warning");
       return;
     }
-    host.clearGoal("command", ctx);
+    await host.clearGoal("command", ctx);
     ctx.ui.notify("Goal cleared.");
     return;
   }
@@ -110,7 +114,7 @@ export async function handleGoalCommand(
       return;
     }
 
-    host.setGoal(result.goal, "command", ctx);
+    await host.setGoal(result.goal, "command", ctx);
     ctx.ui.notify(result.message);
     return;
   }
@@ -139,7 +143,7 @@ export async function handleGoalCommand(
       ctx.ui.notify(result.message, "warning");
       return;
     }
-    host.setGoal(result.goal, "command", ctx);
+    await host.setGoal(result.goal, "command", ctx);
     ctx.ui.notify(result.message);
     if (resumeBudget !== null && result.goal.status === "active") {
       queueGoalTurn(pi, result.goal, "command_resume");
@@ -168,7 +172,7 @@ export async function handleGoalCommand(
     ctx.ui.notify(result.message, "error");
     return;
   }
-  host.setGoal(result.goal, "command", ctx);
+  await host.setGoal(result.goal, "command", ctx);
   ctx.ui.notify(result.message);
   queueGoalTurn(pi, result.goal, "command_start");
 }

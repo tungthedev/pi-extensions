@@ -20,6 +20,46 @@ export interface ThreadGoal {
 
 export type GoalEntrySource = "command" | "tool" | "runtime";
 
+export type GoalBridgeTransitionKind =
+  | "created"
+  | "updated"
+  | "paused"
+  | "resumed"
+  | "budget_changed"
+  | "budget_limited"
+  | "completed"
+  | "blocked"
+  | "cleared";
+
+export interface GoalBridgeState {
+  version: 1;
+  goal: ThreadGoal | null;
+  observedAt: number;
+  sourceSdkSessionId?: string;
+}
+
+export interface GoalBridgeTransition {
+  version: 1;
+  eventId: string;
+  kind: GoalBridgeTransitionKind;
+  source: GoalEntrySource;
+  goalId: string | null;
+  previousStatus?: GoalStatus | null;
+  nextStatus?: GoalStatus | null;
+  tokenBudget?: number | null;
+  at: number;
+}
+
+export interface GoalBridgeProjectionUpdate {
+  version: 1;
+  state: GoalBridgeState;
+  transition?: GoalBridgeTransition;
+}
+
+export interface GoalExtensionBridge {
+  onGoalUpdate?(update: GoalBridgeProjectionUpdate): void | Promise<void>;
+}
+
 export type GoalCustomEntry =
   | {
       version: 1;
