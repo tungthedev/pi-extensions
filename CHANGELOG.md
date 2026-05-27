@@ -2,12 +2,18 @@
 
 All notable changes to `@tungthedev/pi-extensions` will be documented in this file.
 
-### Unreleased
+## [2.6.2] - 2026-05-27
 
 ### Changed
 
 - Updated `spawn_agent` to support Codex style N last turns `fork_turns.
 - Removed custom timeout on `wait_agent`, default to five minutes.
+- Updated goal tool to support `blocked` status and more align with Codex.
+- Updated Pi SDK packages to `0.75.5`
+
+### Fixed
+
+- Fixed crash when trigger slash command in normal editor mode.
 
 ## [2.6.1] - 2026-05-15
 
